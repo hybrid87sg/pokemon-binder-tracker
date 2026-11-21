@@ -60,7 +60,11 @@ object CardTextParser {
     private val trailingHp = Regex("""(\s*HP\s*\d+|\s*\d+\s*HP|\s+\d{2,3})\s*$""", RegexOption.IGNORE_CASE)
 
     // Lines that are never a name.
-    private val notAName = Regex("""^(evolves from|put .* on|pok[eé]mon|illus\.?|weakness|resistance|retreat|ability)\b""", RegexOption.IGNORE_CASE)
+    private val notAName = Regex("""^(evolves from|put .* on|illus\.?|weakness|resistance|retreat|ability)\b""", RegexOption.IGNORE_CASE)
+
+    // The word "Pokémon" on its own (or "Pokémon Power") is a label, but
+    // "Pokémon Catcher" is a real card name, so only the label is skipped.
+    private val pokemonLabel = Regex("""^pok[eé]mon(\s+(power|body))?\s*$""", RegexOption.IGNORE_CASE)
 
     /**
      * Sorts every line on the page into its pocket, by where the middle of
@@ -132,7 +136,7 @@ object CardTextParser {
         var text = raw.trim()
         // Remove "BASIC", "STAGE 1" etc. at the start (sometimes twice, e.g. "BASIC POKÉMON TOOL").
         repeat(2) { text = text.replace(leadingNoise, "").trim() }
-        if (notAName.containsMatchIn(text)) return null
+        if (notAName.containsMatchIn(text) || pokemonLabel.matches(text)) return null
         text = text.replace(trailingHp, "").trim()
         // A name needs at least 3 letters (so stray marks like "~" or "V" alone are skipped).
         if (text.count { it.isLetter() } < 3) return null

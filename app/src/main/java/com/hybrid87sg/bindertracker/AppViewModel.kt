@@ -254,7 +254,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 var found = 0
                 for (card in read) {
                     val number = card.number ?: continue
-                    val candidates = db.cardDao().searchByNumber(number, name = "")
+                    val candidates = db.cardDao().allWithNumber(number)
                     val match = PocketMatcher.pick(card, candidates) ?: continue
                     found += pageDao.fillPocketIfUnset(pageId, card.position, match.id)
                 }

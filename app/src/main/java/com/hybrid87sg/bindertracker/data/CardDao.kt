@@ -42,6 +42,11 @@ interface CardDao {
     )
     suspend fun searchByNumber(number: String, name: String, limit: Int = 100): List<Card>
 
+    // Every card with this number, for the camera scanner. No limit, so the
+    // right card is never cut off just because its name sorts late.
+    @Query("SELECT * FROM cards WHERE localId = :number OR ltrim(localId, '0') = ltrim(:number, '0')")
+    suspend fun allWithNumber(number: String): List<Card>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(cards: List<Card>)
 

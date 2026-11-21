@@ -38,6 +38,9 @@ class CardTextParserTest {
         assertEquals("Porygon2", CardTextParser.cleanName("Porygon2"))
         assertNull(CardTextParser.cleanName("Evolves from Charmeleon"))
         assertNull(CardTextParser.cleanName("V"))
+        // "Pokémon" alone is a label, but it can start a real card name.
+        assertNull(CardTextParser.cleanName("Pokémon"))
+        assertEquals("Pokémon Catcher", CardTextParser.cleanName("Pokémon Catcher"))
     }
 
     @Test fun readsLetterNumbersAndFixesLookAlikes() {
@@ -86,5 +89,8 @@ class CardTextParserTest {
         val card = card("sv3pt5-6", "006", "Charizard ex")
         assertEquals(card, PocketMatcher.pick(read, listOf(card)))
         assertEquals(PocketMatcher.simplify("Flabébé"), PocketMatcher.simplify("FLABEBE"))
+        // Same number, but Mew is not Mewtwo.
+        val mew = card("x-25", "25", "Mew")
+        assertNull(PocketMatcher.pick(ReadCard(0, "Mewtwo", "025", null, ""), listOf(mew)))
     }
 }

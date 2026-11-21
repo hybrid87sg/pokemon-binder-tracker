@@ -32,7 +32,7 @@ private fun loadUpright(path: String, maxSide: Int): ImageBitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)
     var sample = 1
-    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide) sample *= 2
     val bitmap = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
 
     // Cameras save photos sideways and note the turn needed in the "EXIF" data.

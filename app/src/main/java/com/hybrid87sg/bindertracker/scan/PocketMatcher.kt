@@ -18,7 +18,17 @@ object PocketMatcher {
         // Exact name first ("Pikachu" = "Pikachu"), then a close one
         // (the camera read "Charizard" but the card is "Charizard ex").
         return sameNumber.firstOrNull { simplify(it.name) == name }
-            ?: sameNumber.firstOrNull { simplify(it.name).let { c -> c.startsWith(name) || name.startsWith(c) } }
+            ?: sameNumber.firstOrNull { sameApartFromSuffix(simplify(it.name), name) }
+    }
+
+    // Endings printed after a Pokémon's name, like "Charizard ex" or "Pikachu VMAX".
+    // Only these count as "close", so "Mew" and "Mewtwo" never get mixed up.
+    private val suffixes = setOf("ex", "gx", "v", "vmax", "vstar", "vunion", "break", "lvx", "prime", "star")
+
+    /** True when one name is the other plus a known ending ("charizard" / "charizardex"). */
+    fun sameApartFromSuffix(a: String, b: String): Boolean {
+        val (short, long) = if (a.length <= b.length) a to b else b to a
+        return long.startsWith(short) && long.removePrefix(short) in suffixes
     }
 
     /** "025" and "25" are the same number; letters like "TG" stay. */
