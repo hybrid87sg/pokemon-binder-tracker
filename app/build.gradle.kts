@@ -113,6 +113,14 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // Scanning: CameraX shows the camera and takes the photo, and ML Kit
+    // reads the text on each card (name and number) on the phone itself,
+    // so it works without internet.
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.mlkit.text.recognition)
+
     // Screenshot tests (run with: ./gradlew testDebugUnitTest)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

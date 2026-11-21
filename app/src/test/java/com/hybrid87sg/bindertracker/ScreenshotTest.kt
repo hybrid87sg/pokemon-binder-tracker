@@ -4,6 +4,13 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.BinderPage
+import com.hybrid87sg.bindertracker.data.PageWithPockets
+import com.hybrid87sg.bindertracker.data.Pocket
+import com.hybrid87sg.bindertracker.scan.CardCandidate
+import com.hybrid87sg.bindertracker.scan.PocketDraft
+import com.hybrid87sg.bindertracker.scan.ReadCard
+import com.hybrid87sg.bindertracker.ui.screens.ReviewStep
 import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
@@ -68,7 +75,48 @@ class ScreenshotTest {
     }
 
     @Test fun binder() = shoot("4-binder") {
-        BinderScreen(binder = sample[0], onBack = {}, onDelete = {})
+        BinderScreen(binder = sample[0], pages = emptyList(), onBack = {}, onDelete = {}, onScan = {})
+    }
+
+    // A binder with one scanned page: 7 cards and 2 empty pockets.
+    private val samplePage = BinderPage(id = "p1", binderId = sample[0].id, pageNumber = 1).let { page ->
+        val names = listOf("Bulbasaur", "Ivysaur", "Venusaur", "Charmander", null, "Charizard", "Squirtle", "Wartortle", null)
+        PageWithPockets(
+            page = page,
+            pockets = names.mapIndexed { i, name ->
+                Pocket(pageId = page.id, position = i, cardId = name?.let { "base1-$i" }, name = name, number = name?.let { "${i + 1}/102" })
+            },
+        )
+    }
+
+    @Test fun binderWithPages() = shoot("4b-binder-with-pages") {
+        BinderScreen(binder = sample[0], pages = listOf(samplePage), onBack = {}, onDelete = {}, onScan = {})
+    }
+
+    @Test fun scanReview() = shoot("7-scan-review") {
+        fun read(i: Int, name: String?, number: String?, total: Int?, text: String = listOfNotNull(name, number).joinToString("\n")) =
+            ReadCard(position = i, name = name, number = number, setTotal = total, text = text)
+        val pikachu = CardCandidate("sv3pt5-25", "Pikachu", "151", "025/165")
+        val pockets = listOf(
+            PocketDraft.from(read(0, "Pikachu", "025", 165), listOf(pikachu)),
+            PocketDraft.from(read(1, "Charmander", "004", 165), emptyList()),
+            PocketDraft.from(read(2, null, null, null, text = "~ 60"), emptyList()),
+            PocketDraft.from(read(3, "Mew ex", "151", 165), listOf(CardCandidate("sv3pt5-151", "Mew ex", "151", "151/165"))),
+            PocketDraft.from(read(4, null, null, null, text = ""), emptyList()),
+            PocketDraft.from(read(5, "Psyduck", "054", 165), emptyList()),
+            PocketDraft.from(read(6, "Snorlax", "143", 165), emptyList()),
+            PocketDraft.from(read(7, "Eevee", "133", 165), emptyList()),
+            PocketDraft.from(read(8, "Dratini", "147", 165), emptyList()),
+        )
+        ReviewStep(
+            binder = sample[0],
+            pockets = pockets,
+            onRetake = {},
+            onChoose = { _, _ -> },
+            onNameByHand = { _, _ -> },
+            onSearch = { emptyList() },
+            onSave = {},
+        )
     }
 
     @Test fun account() = shoot("5-account") {

@@ -19,7 +19,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
+import com.hybrid87sg.bindertracker.scan.ScanViewModel
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.ScanScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -115,14 +117,39 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             val id = entry.arguments?.getString("id").orEmpty()
             val binderFlow = remember(id) { vm.binder(id) }
             val binder by binderFlow.collectAsStateWithLifecycle(initialValue = null)
+            val pagesFlow = remember(id) { vm.pages(id) }
+            val pages by pagesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
             binder?.let { b ->
                 BinderScreen(
                     binder = b,
+                    pages = pages,
                     onBack = { nav.popBackStack() },
                     onDelete = {
                         vm.deleteBinder(b)
                         nav.popBackStack()
                     },
+                    onScan = { nav.navigate("binder/${b.id}/scan") },
+                )
+            }
+        }
+        composable("binder/{id}/scan") {
+            // The scan screen has its own "brain" (ScanViewModel), created
+            // fresh for each scan and thrown away when the screen closes.
+            val scanVm: ScanViewModel = viewModel()
+            val binder by scanVm.binder.collectAsStateWithLifecycle(initialValue = null)
+            val step by scanVm.step.collectAsStateWithLifecycle()
+            binder?.let { b ->
+                ScanScreen(
+                    binder = b,
+                    step = step,
+                    onBack = { nav.popBackStack() },
+                    onPhotoTaken = { photo, rotation, guide -> scanVm.onPhotoTaken(photo, rotation, guide, b) },
+                    onPhotoFailed = scanVm::onPhotoFailed,
+                    onRetake = scanVm::retake,
+                    onChoose = scanVm::choose,
+                    onNameByHand = scanVm::nameByHand,
+                    onSearch = scanVm::search,
+                    onSave = { scanVm.save { nav.popBackStack() } },
                 )
             }
         }

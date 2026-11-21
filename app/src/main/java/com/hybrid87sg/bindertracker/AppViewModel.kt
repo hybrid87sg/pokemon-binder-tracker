@@ -8,6 +8,7 @@ import com.hybrid87sg.bindertracker.auth.AuthManager
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderSize
+import com.hybrid87sg.bindertracker.data.PageWithPockets
 import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.update.Updater
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val binderDao = AppDatabase.get(app).binderDao()
+    private val pageDao = AppDatabase.get(app).pageDao()
     val auth = AuthManager(app)
 
     val user = auth.user
@@ -116,6 +118,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun binder(id: String): Flow<Binder?> = binderDao.observeBinder(id)
+
+    /** A binder's scanned pages, each with its pockets. */
+    fun pages(binderId: String): Flow<List<PageWithPockets>> = pageDao.observePages(binderId)
 
     fun signIn(activityContext: Context) {
         viewModelScope.launch {

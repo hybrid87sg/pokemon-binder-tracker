@@ -17,6 +17,8 @@ googleId = "1.2.1"
 coroutines = "1.11.0"
 junit = "4.13.2"
 robolectric = "4.18.1"
+camerax = "1.5.1"
+mlkitText = "16.0.1"
 roborazzi = "1.79.0"
 
 [libraries]
@@ -39,6 +41,12 @@ androidx-credentials = { module = "androidx.credentials:credentials", version.re
 androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleId" }
 kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
+
+# Camera (CameraX) and on-phone text reading (ML Kit) for scanning binder pages.
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitText" }
 
 # Testing: draws screens on the computer and saves them as PNG screenshots.
 junit = { module = "junit:junit", version.ref = "junit" }

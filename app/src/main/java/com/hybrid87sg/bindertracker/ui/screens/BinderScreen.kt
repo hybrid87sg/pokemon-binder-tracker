@@ -1,6 +1,10 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,11 +40,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.PageWithPockets
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
@@ -50,8 +56,10 @@ import com.hybrid87sg.bindertracker.ui.theme.AppColors
 @Composable
 fun BinderScreen(
     binder: Binder,
+    pages: List<PageWithPockets>,
     onBack: () -> Unit,
     onDelete: () -> Unit,
+    onScan: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -79,29 +87,40 @@ fun BinderScreen(
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(binder.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${binder.sizeLabel} pockets · 0 pages", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+                Text("${binder.sizeLabel} pockets · ${pagesLabel(pages.size)}", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
             }
         }
 
-        Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-            // Empty state. Pages arrive with the camera scan (checklist #36).
-            Column(
-                Modifier.fillMaxWidth().dashedOutline().padding(horizontal = 20.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+        if (pages.isEmpty()) {
+            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().dashedOutline().padding(horizontal = 20.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("No pages yet", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Scan your first page. The camera reads all ${binder.pocketsPerPage} cards on it at once.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppColors.Muted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        } else {
+            // A "LazyColumn" only draws the pages currently on screen, so even
+            // a binder with 50 pages scrolls smoothly.
+            LazyColumn(
+                Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                Text("No pages yet", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Scanning a binder page comes in a later update. Each page will have ${binder.pocketsPerPage} pockets.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AppColors.Muted,
-                    textAlign = TextAlign.Center,
-                )
+                items(pages, key = { it.page.id }) { page -> PageCard(page, binder.columns) }
             }
         }
 
         BottomBar {
-            PrimaryButton(text = "Scan a page (coming soon)", onClick = {}, enabled = false, icon = R.drawable.ic_camera)
+            PrimaryButton(text = "Scan a page", onClick = onScan, icon = R.drawable.ic_camera)
         }
     }
 
@@ -132,4 +151,50 @@ private fun Modifier.dashedOutline(): Modifier = drawBehind {
         cornerRadius = CornerRadius(14.dp.toPx()),
         style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))),
     )
+}
+
+private fun pagesLabel(count: Int) = if (count == 1) "1 page" else "$count pages"
+
+/** One saved page, drawn as a small grid of its pockets. */
+@Composable
+private fun PageCard(page: PageWithPockets, columns: Int) {
+    val filled = page.pockets.count { !it.isEmpty }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "Page ${page.page.pageNumber} · $filled of ${page.pockets.size} filled",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        page.ordered.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { pocket ->
+                    val shape = RoundedCornerShape(8.dp)
+                    Column(
+                        Modifier.weight(1f).aspectRatio(63f / 88f).clip(shape)
+                            .background(if (pocket.isEmpty) AppColors.ShelfBackground else AppColors.White)
+                            .border(1.dp, if (pocket.isEmpty) AppColors.Border else AppColors.BorderStrong, shape)
+                            .padding(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        if (pocket.isEmpty) {
+                            Text("Empty", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+                        } else {
+                            Text(
+                                pocket.name.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            pocket.number?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                // Keep the grid even when the last row is short.
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
 }
