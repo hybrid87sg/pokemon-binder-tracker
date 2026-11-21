@@ -88,11 +88,12 @@ fun ColorPickerSheet(
     initialHex: String,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
+    saveLabel: String = "Save colour",
 ) {
     // skipPartiallyExpanded = open fully, so the Save button is always visible.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = AppColors.Paper) {
-        ColorPicker(binderName, sizeLabel, initialHex, onSave, onDismiss)
+        ColorPicker(binderName, sizeLabel, initialHex, onSave, onDismiss, saveLabel)
     }
 }
 
@@ -104,6 +105,7 @@ fun ColorPicker(
     initialHex: String,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
+    saveLabel: String = "Save colour",
 ) {
     // The colour currently chosen, as a number like 0xFF8C2F2F.
     val start = remember(initialHex) { ColorMath.parseHex(initialHex) ?: ColorMath.parseHex(SpineColor.Red.hex)!! }
@@ -212,7 +214,7 @@ fun ColorPicker(
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onCancel, modifier = Modifier.height(56.dp)) { Text("Cancel", color = AppColors.Ink) }
             Box(Modifier.weight(1f).padding(start = 8.dp)) {
-                PrimaryButton(text = "Save colour", onClick = { onSave(chosenHex) })
+                PrimaryButton(text = saveLabel, onClick = { onSave(chosenHex) })
             }
         }
     }

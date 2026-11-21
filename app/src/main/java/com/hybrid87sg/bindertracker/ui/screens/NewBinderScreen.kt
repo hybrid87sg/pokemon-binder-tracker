@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -36,7 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -47,10 +50,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
+import com.hybrid87sg.bindertracker.ui.components.ColorPickerSheet
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.components.ShelfPlank
 import com.hybrid87sg.bindertracker.ui.components.SpineArt
@@ -62,11 +67,13 @@ private const val MAX_NAME_LENGTH = 20
 @Composable
 fun NewBinderScreen(
     onCancel: () -> Unit,
-    onCreate: (name: String, color: SpineColor, size: BinderSize) -> Unit,
+    onCreate: (name: String, colorHex: String, size: BinderSize) -> Unit,
 ) {
     // "rememberSaveable" keeps what you typed even if the phone rotates.
     var name by rememberSaveable { mutableStateOf("") }
-    var color by rememberSaveable { mutableStateOf(SpineColor.Red) }
+    // The spine colour as text like "#8C2F2F", so it can be any colour, not just the six.
+    var colorHex by rememberSaveable { mutableStateOf(SpineColor.Red.hex) }
+    var showPicker by rememberSaveable { mutableStateOf(false) }
     var size by rememberSaveable { mutableStateOf(BinderSize.ThreeByThree) }
     val canCreate = name.isNotBlank()
 
@@ -92,7 +99,7 @@ fun NewBinderScreen(
                 SpineArt(
                     name = name.trim().ifEmpty { "Name" },
                     tag = size.label,
-                    color = colorFromHex(color.hex),
+                    color = colorFromHex(colorHex),
                     width = 72.dp,
                     height = 176.dp,
                 )
@@ -118,10 +125,13 @@ fun NewBinderScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Spine colour", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val isPreset = SpineColor.entries.any { it.hex.equals(colorHex, ignoreCase = true) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     SpineColor.entries.forEach { option ->
-                        ColorSwatch(option, selected = option == color) { color = option }
+                        ColorSwatch(option, selected = option.hex.equals(colorHex, ignoreCase = true)) { colorHex = option.hex }
                     }
+                    // The last button opens the full picker for any other colour.
+                    CustomSwatch(customHex = colorHex.takeUnless { isPreset }) { showPicker = true }
                 }
             }
 
@@ -142,8 +152,52 @@ fun NewBinderScreen(
             PrimaryButton(
                 text = if (canCreate) "Add to shelf" else "Name your binder to continue",
                 enabled = canCreate,
-                onClick = { onCreate(name, color, size) },
+                onClick = { onCreate(name, colorHex, size) },
             )
+        }
+    }
+
+    if (showPicker) {
+        ColorPickerSheet(
+            binderName = name.trim().ifEmpty { "Name" },
+            sizeLabel = size.label,
+            initialHex = colorHex,
+            onSave = { hex -> colorHex = hex; showPicker = false },
+            onDismiss = { showPicker = false },
+            saveLabel = "Use this colour",
+        )
+    }
+}
+
+/**
+ * The "more colours" button. Shows a rainbow with a plus until a custom
+ * colour is picked, then shows that colour with a ring around it.
+ */
+@Composable
+private fun CustomSwatch(customHex: String?, onClick: () -> Unit) {
+    val selected = customHex != null
+    val rainbow = Brush.sweepGradient(
+        listOf(Color(0xFFE53935), Color(0xFFFDD835), Color(0xFF43A047), Color(0xFF1E88E5), Color(0xFF8E24AA), Color(0xFFE53935)),
+    )
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (selected) colorFromHex(customHex!!) else Color.Transparent,
+        border = BorderStroke(3.dp, if (selected) AppColors.Ink else Color.Transparent),
+        modifier = Modifier.size(44.dp).semantics {
+            contentDescription = if (selected) "Custom colour, tap to change" else "More colours"
+            this.selected = selected
+            role = Role.RadioButton
+        },
+    ) {
+        if (selected) {
+            Box(Modifier.padding(3.dp).border(3.dp, AppColors.Paper, CircleShape))
+        } else {
+            Box(Modifier.fillMaxSize().background(rainbow, CircleShape), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(24.dp).background(AppColors.White, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_plus), contentDescription = null, tint = AppColors.Ink, modifier = Modifier.size(16.dp))
+                }
+            }
         }
     }
 }
