@@ -14,6 +14,8 @@ import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
 import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.scan.PageReader
+import com.hybrid87sg.bindertracker.scan.PocketMatcher
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
 import java.io.File
@@ -223,7 +225,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             guideBottom = guide.bottom,
         )
         pageDao.createPage(page, binder.pocketsPerPage)
+        readCards(page.id, binder, photo, guide)
         return page.id
+    }
+
+    /**
+     * What automatic card reading is doing, per page: "Reading the cards…"
+     * while it works, then a short result. The page screen shows it.
+     */
+    private val _readingStatus = MutableStateFlow<Map<String, String>>(emptyMap())
+    val readingStatus: StateFlow<Map<String, String>> = _readingStatus.asStateFlow()
+
+    private fun setReadingStatus(pageId: String, text: String) {
+        _readingStatus.value = _readingStatus.value + (pageId to text)
+    }
+
+    /**
+     * Reads the cards in a new page photo and fills in the pockets it's sure
+     * about. Runs in the background, so the page opens straight away and
+     * pockets fill in a moment later.
+     */
+    private fun readCards(pageId: String, binder: Binder, photo: File, guide: GuideRect) {
+        setReadingStatus(pageId, "Reading the cards…")
+        viewModelScope.launch {
+            val result = runCatching {
+                if (cardCount.value == 0) return@runCatching "Download the card list (search on the shelf) so pockets can fill in automatically."
+                val read = PageReader.read(photo.absolutePath, guide, binder.columns, binder.rows)
+                var found = 0
+                for (card in read) {
+                    val number = card.number ?: continue
+                    val candidates = db.cardDao().searchByNumber(number, name = "")
+                    val match = PocketMatcher.pick(card, candidates) ?: continue
+                    found += pageDao.fillPocketIfUnset(pageId, card.position, match.id)
+                }
+                val total = binder.pocketsPerPage
+                when (found) {
+                    0 -> "Couldn't recognise any cards automatically. Tap a pocket to choose its card."
+                    total -> "Recognised all $total cards. Tap one to check or change it."
+                    else -> "Recognised $found of $total cards. Tap the others to choose them."
+                }
+            }
+            setReadingStatus(
+                pageId,
+                result.getOrElse { "Couldn't read the cards automatically. Tap a pocket to choose its card." },
+            )
+        }
     }
 
     fun setPocketCard(pageId: String, position: Int, cardId: String) {

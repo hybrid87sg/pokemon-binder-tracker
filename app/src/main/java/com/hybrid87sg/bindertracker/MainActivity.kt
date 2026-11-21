@@ -191,6 +191,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
                 val number by produceState(0, p.id) { value = vm.pageNumber(p) }
                 val photo by rememberPagePhoto(p.photoPath)
+                val reading by vm.readingStatus.collectAsStateWithLifecycle()
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
@@ -200,6 +201,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         pockets = pockets,
                         photo = photo,
                         guide = GuideRect(p.guideLeft, p.guideTop, p.guideRight, p.guideBottom),
+                        readingStatus = reading[p.id],
                         onBack = { nav.popBackStack() },
                         onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
                         onViewCard = { cardId -> nav.navigate("card/${Uri.encode(cardId)}") },

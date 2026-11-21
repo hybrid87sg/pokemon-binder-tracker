@@ -118,6 +118,8 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
     implementation(libs.androidx.exifinterface)
+    // ML Kit: reads each card's name and number from the page photo, offline.
+    implementation(libs.mlkit.text.recognition)
 
     // Coil: loads card pictures from the internet.
     implementation(libs.coil.compose)

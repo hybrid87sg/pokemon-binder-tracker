@@ -79,6 +79,8 @@ fun PageScreen(
     pockets: List<PocketWithCard>,
     photo: ImageBitmap?,
     guide: GuideRect,
+    // What automatic card reading found, e.g. "Recognised 6 of 9 cards", or null.
+    readingStatus: String? = null,
     onBack: () -> Unit,
     onChooseCard: (position: Int) -> Unit,
     onViewCard: (cardId: String) -> Unit,
@@ -111,6 +113,10 @@ fun PageScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppColors.Muted,
             )
+            // Automatic card reading: "Reading the cards…", then what it found.
+            readingStatus?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.Accent, fontWeight = FontWeight.Medium)
+            }
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
@@ -135,7 +141,7 @@ fun PageScreen(
                 }
             }
             Text(
-                "Tap a pocket to choose its card. Automatic card reading is coming in the next update.",
+                "Tap a pocket to choose its card, or to change one the camera recognised.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
