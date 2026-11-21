@@ -12,8 +12,15 @@ Each person signs in with Google and gets their own shelf of binders.
 - Binders are saved on the phone in a Room (SQLite) database
 - **Permissions screen** before first use: Camera (for scanning) and Install apps (for updates)
 - **Self-updating**: each time the app opens it checks for a newer version and offers "Update now"
+- **Card index** (#7): all ~24,000 English cards downloaded once from TCGdex, searchable offline
+  by name or number ("pikachu", "025/165", "charizard 4"); refreshed weekly
+- **Card screen** (#8, #9, #13): picture, set, rarity and market prices from TCGplayer (USD)
+  and Cardmarket (EUR), each with its source and last-updated date
+- **Scan a page** (#4): camera with a pocket guide for the binder's size; the photo is cut into
+  pockets, and you choose each pocket's card from the index or mark it empty
 
-Coming next, in order: card index and search (TCGdex), then camera page scanning.
+Coming next: automatic card reading from the photo (ML Kit, #5/#6), prices in SGD (#10–#12),
+and page value totals (#38).
 See the plan and checklist artifacts linked in the handoff notes.
 
 ## Project layout
@@ -23,11 +30,14 @@ app/src/main/java/com/hybrid87sg/bindertracker/
   MainActivity.kt      app start-up and the list of screens (navigation)
   AppViewModel.kt      holds the data; screens ask it to do things
   auth/AuthManager.kt  Google + Firebase sign-in
-  data/                Binder table, database and queries (Room)
+  data/                database tables and queries (Room): binders, cards, pages, pockets
+  tcgdex/              downloads cards and prices from TCGdex
+  update/              checks GitHub for new versions and installs them
   ui/screens/          one file per screen
   ui/components/       shared pieces: spine, shelf plank, buttons
   ui/theme/            colours and text styles
 app/src/test/          screenshot tests (draw each screen to a PNG)
+app/schemas/           saved database descriptions, used to upgrade safely (don't delete)
 keystore/              the fixed debug signing key (see below)
 ```
 

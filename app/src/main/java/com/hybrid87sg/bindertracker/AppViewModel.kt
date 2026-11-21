@@ -8,6 +8,15 @@ import com.hybrid87sg.bindertracker.auth.AuthManager
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderSize
+import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.data.CardIndex
+import com.hybrid87sg.bindertracker.data.Page
+import com.hybrid87sg.bindertracker.data.PageSummary
+import com.hybrid87sg.bindertracker.data.Pocket
+import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.tcgdex.CardDetails
+import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
+import java.io.File
 import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.update.Updater
@@ -29,7 +38,9 @@ import kotlinx.coroutines.launch
  */
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val binderDao = AppDatabase.get(app).binderDao()
+    private val db = AppDatabase.get(app)
+    private val binderDao = db.binderDao()
+    private val pageDao = db.pageDao()
     val auth = AuthManager(app)
 
     val user = auth.user
@@ -147,6 +158,93 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteBinder(binder: Binder) {
-        viewModelScope.launch { binderDao.delete(binder) }
+        viewModelScope.launch {
+            // Remove the binder's pages and their photos too.
+            pageDao.pagesOf(binder.id).forEach { page ->
+                page.photoPath?.let { File(it).delete() }
+                pageDao.deletePage(page.id)
+            }
+            binderDao.delete(binder)
+        }
+    }
+
+    // ---- Card index (checklist #7) ----
+
+    val cardIndex = CardIndex(app, db.cardDao())
+
+    /** Number of cards in the index on this phone (0 = not downloaded yet). */
+    val cardCount: StateFlow<Int> = cardIndex.countFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    private val _indexDownloading = MutableStateFlow(false)
+    val indexDownloading: StateFlow<Boolean> = _indexDownloading.asStateFlow()
+
+    private val _indexError = MutableStateFlow<String?>(null)
+    val indexError: StateFlow<String?> = _indexError.asStateFlow()
+
+    /** Downloads the card list if it's missing or a week old. [force] = always. */
+    fun refreshCardIndex(force: Boolean = false) {
+        if (_indexDownloading.value) return
+        viewModelScope.launch {
+            if (!force && !cardIndex.needsRefresh()) return@launch
+            _indexDownloading.value = true
+            _indexError.value = null
+            runCatching { cardIndex.refresh() }
+                .onFailure { _indexError.value = "Couldn't download the card list. Check your internet connection and try again." }
+            _indexDownloading.value = false
+        }
+    }
+
+    suspend fun searchCards(query: String): List<Card> = cardIndex.search(query)
+
+    suspend fun card(id: String): Card? = cardIndex.get(id)
+
+    /** Card details and market prices, fetched live from TCGdex. */
+    suspend fun cardDetails(id: String): Result<CardDetails> = runCatching { Tcgdex.cardDetails(id) }
+
+    // ---- Binder pages and pockets (checklist #4, #36) ----
+
+    fun pages(binderId: String): Flow<List<PageSummary>> = pageDao.observePages(binderId)
+
+    fun page(pageId: String): Flow<Page?> = pageDao.observePage(pageId)
+
+    fun pockets(pageId: String): Flow<List<PocketWithCard>> = pageDao.observePockets(pageId)
+
+    suspend fun pageNumber(page: Page): Int = pageDao.pageNumber(page.binderId, page.createdAt)
+
+    /** Saves a new page from a photo and returns its id. */
+    suspend fun createPage(binder: Binder, photo: File, guide: GuideRect): String {
+        val page = Page(
+            binderId = binder.id,
+            photoPath = photo.absolutePath,
+            guideLeft = guide.left,
+            guideTop = guide.top,
+            guideRight = guide.right,
+            guideBottom = guide.bottom,
+        )
+        pageDao.createPage(page, binder.pocketsPerPage)
+        return page.id
+    }
+
+    fun setPocketCard(pageId: String, position: Int, cardId: String) {
+        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position, cardId = cardId)) }
+    }
+
+    fun setPocketEmpty(pageId: String, position: Int) {
+        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position, isEmpty = true)) }
+    }
+
+    fun clearPocket(pageId: String, position: Int) {
+        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position)) }
+    }
+
+    fun deletePage(page: Page) {
+        viewModelScope.launch {
+            page.photoPath?.let { File(it).delete() }
+            pageDao.deletePage(page.id)
+        }
     }
 }
+
+/** Where the page sat in the photo, as fractions (0.0–1.0) of its width and height. */
+data class GuideRect(val left: Float, val top: Float, val right: Float, val bottom: Float)

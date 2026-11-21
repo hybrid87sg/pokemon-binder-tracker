@@ -1,17 +1,30 @@
 package com.hybrid87sg.bindertracker.data
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * The app's database file on the phone. When we add pages, pockets and the
- * card index later, their tables get listed here too and "version" goes up.
+ * The app's database file on the phone.
+ *
+ * Whenever the tables change, "version" goes up by one and an AutoMigration
+ * is listed, so Room upgrades the database already on people's phones
+ * instead of wiping their binders. Version history:
+ * 1: binders
+ * 2: + cards (card index), pages, pockets
  */
-@Database(entities = [Binder::class], version = 1, exportSchema = false)
+@Database(
+    entities = [Binder::class, Card::class, Page::class, Pocket::class],
+    version = 2,
+    exportSchema = true,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun binderDao(): BinderDao
+    abstract fun cardDao(): CardDao
+    abstract fun pageDao(): PageDao
 
     companion object {
         @Volatile

@@ -58,6 +58,7 @@ fun ShelfScreen(
     onOpenBinder: (Binder) -> Unit,
     onAddBinder: () -> Unit,
     onOpenAccount: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     // All binders, then the "Add binder" slot, cut into rows of 4.
     val items: List<ShelfItem> = binders.map { ShelfItem.BinderItem(it) } + ShelfItem.AddItem
@@ -80,6 +81,19 @@ fun ShelfScreen(
                     color = AppColors.Muted,
                 )
             }
+            Surface(
+                onClick = onSearch,
+                shape = RoundedCornerShape(14.dp),
+                color = AppColors.White,
+                contentColor = AppColors.Ink,
+                border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.BorderStrong),
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "Search cards" },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_search), contentDescription = null, modifier = Modifier.size(22.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
             Surface(
                 onClick = onOpenAccount,
                 shape = CircleShape,

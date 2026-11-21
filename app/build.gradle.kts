@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 // Firebase needs app/google-services.json, which you download from the
@@ -86,6 +87,12 @@ android {
     }
 }
 
+// Room saves a description of each database version in app/schemas/. That
+// lets it upgrade people's existing databases safely when tables change.
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -105,6 +112,17 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    // CameraX: camera preview and taking photos of binder pages.
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.androidx.exifinterface)
+
+    // Coil: loads card pictures from the internet.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+
     // Firebase sign-in with a Google account.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
@@ -120,5 +138,7 @@ dependencies {
     testImplementation(libs.roborazzi.compose)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
     debugImplementation(libs.compose.ui.test.manifest)
 }

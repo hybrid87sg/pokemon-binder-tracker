@@ -1,11 +1,23 @@
 package com.hybrid87sg.bindertracker
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
+import com.hybrid87sg.bindertracker.ui.screens.CardRoute
+import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
+import com.hybrid87sg.bindertracker.ui.screens.PageScreen
+import com.hybrid87sg.bindertracker.ui.screens.ScanRoute
+import com.hybrid87sg.bindertracker.ui.screens.SearchRoute
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -90,6 +102,9 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
         return
     }
 
+    // Download the card list the first time (and refresh it weekly).
+    LaunchedEffect(Unit) { vm.refreshCardIndex() }
+
     // Signed in: the NavHost swaps between screens. Each "route" is a screen's address.
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = "shelf") {
@@ -100,6 +115,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
                 onAddBinder = { nav.navigate("new") },
                 onOpenAccount = { nav.navigate("account") },
+                onSearch = { nav.navigate("search") },
             )
         }
         composable("new") {
@@ -113,19 +129,108 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
         }
         composable("binder/{id}") { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
-            val binderFlow = remember(id) { vm.binder(id) }
-            val binder by binderFlow.collectAsStateWithLifecycle(initialValue = null)
+            val binder by remember(id) { vm.binder(id) }.collectAsStateWithLifecycle(initialValue = null)
+            val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
             binder?.let { b ->
                 BinderScreen(
                     binder = b,
+                    pages = pages,
                     onBack = { nav.popBackStack() },
                     onDelete = {
                         vm.deleteBinder(b)
                         nav.popBackStack()
                     },
+                    onScan = { nav.navigate("scan/${b.id}") },
+                    onOpenPage = { nav.navigate("page/${it.id}") },
                 )
             }
         }
+
+        // ---- Card index ----
+        composable("search") {
+            SearchRoute(
+                title = "Search cards",
+                backLabel = "Shelf",
+                status = indexStatus(vm),
+                search = vm::searchCards,
+                onBack = { nav.popBackStack() },
+                onCardClick = { nav.navigate("card/${Uri.encode(it.id)}") },
+                onRefreshIndex = { vm.refreshCardIndex(force = true) },
+            )
+        }
+        composable("card/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val card by produceState<Card?>(null, id) { value = vm.card(id) }
+            card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }) }
+        }
+
+        // ---- Scanning a page ----
+        composable("scan/{binderId}") { entry ->
+            val binderId = entry.arguments?.getString("binderId").orEmpty()
+            val binder by remember(binderId) { vm.binder(binderId) }.collectAsStateWithLifecycle(initialValue = null)
+            val scope = rememberCoroutineScope()
+            binder?.let { b ->
+                ScanRoute(
+                    binder = b,
+                    onBack = { nav.popBackStack() },
+                    onCaptured = { photo, guide ->
+                        scope.launch {
+                            val pageId = vm.createPage(b, photo, guide)
+                            // Swap the camera for the new page, so "back" returns to the binder.
+                            nav.navigate("page/$pageId") { popUpTo("scan/$binderId") { inclusive = true } }
+                        }
+                    },
+                )
+            }
+        }
+        composable("page/{pageId}") { entry ->
+            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
+            val pockets by remember(pageId) { vm.pockets(pageId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            page?.let { p ->
+                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                val number by produceState(0, p.id) { value = vm.pageNumber(p) }
+                val photo by rememberPagePhoto(p.photoPath)
+                binder?.let { b ->
+                    PageScreen(
+                        binderName = b.name,
+                        pageNumber = number,
+                        columns = b.columns,
+                        rows = b.rows,
+                        pockets = pockets,
+                        photo = photo,
+                        guide = GuideRect(p.guideLeft, p.guideTop, p.guideRight, p.guideBottom),
+                        onBack = { nav.popBackStack() },
+                        onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
+                        onViewCard = { cardId -> nav.navigate("card/${Uri.encode(cardId)}") },
+                        onMarkEmpty = { position -> vm.setPocketEmpty(pageId, position) },
+                        onClear = { position -> vm.clearPocket(pageId, position) },
+                        onDeletePage = {
+                            vm.deletePage(p)
+                            nav.popBackStack()
+                        },
+                    )
+                }
+            }
+        }
+        // Search, but tapping a card puts it in a pocket.
+        composable("pick/{pageId}/{position}") { entry ->
+            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
+            SearchRoute(
+                title = "Which card is in pocket ${position + 1}?",
+                backLabel = "Page",
+                status = indexStatus(vm),
+                search = vm::searchCards,
+                onBack = { nav.popBackStack() },
+                onCardClick = { card ->
+                    vm.setPocketCard(pageId, position, card.id)
+                    nav.popBackStack()
+                },
+                onRefreshIndex = { vm.refreshCardIndex(force = true) },
+            )
+        }
+
         composable("account") {
             val updateMessage by vm.updateCheckMessage.collectAsStateWithLifecycle()
             AccountScreen(
@@ -138,4 +243,13 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             )
         }
     }
+}
+
+/** The card list's status, for the search screen. */
+@Composable
+private fun indexStatus(vm: AppViewModel): IndexStatus {
+    val count by vm.cardCount.collectAsStateWithLifecycle()
+    val downloading by vm.indexDownloading.collectAsStateWithLifecycle()
+    val error by vm.indexError.collectAsStateWithLifecycle()
+    return IndexStatus(count, vm.cardIndex.lastUpdated, downloading, error)
 }

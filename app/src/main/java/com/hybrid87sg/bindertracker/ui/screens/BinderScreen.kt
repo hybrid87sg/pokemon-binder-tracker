@@ -41,6 +41,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.PageSummary
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Surface
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
@@ -50,8 +56,11 @@ import com.hybrid87sg.bindertracker.ui.theme.AppColors
 @Composable
 fun BinderScreen(
     binder: Binder,
+    pages: List<PageSummary>,
     onBack: () -> Unit,
     onDelete: () -> Unit,
+    onScan: () -> Unit,
+    onOpenPage: (PageSummary) -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -79,29 +88,63 @@ fun BinderScreen(
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(binder.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${binder.sizeLabel} pockets · 0 pages", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
-            }
-        }
-
-        Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-            // Empty state. Pages arrive with the camera scan (checklist #36).
-            Column(
-                Modifier.fillMaxWidth().dashedOutline().padding(horizontal = 20.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text("No pages yet", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Scanning a binder page comes in a later update. Each page will have ${binder.pocketsPerPage} pockets.",
+                    "${binder.sizeLabel} pockets · ${pages.size} ${if (pages.size == 1) "page" else "pages"}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
-                    textAlign = TextAlign.Center,
                 )
             }
         }
 
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (pages.isEmpty()) {
+                item {
+                    Column(
+                        Modifier.fillMaxWidth().dashedOutline().padding(horizontal = 20.dp, vertical = 28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("No pages yet", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Scan your first page to fill this binder. Each page has ${binder.pocketsPerPage} pockets.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppColors.Muted,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+            itemsIndexed(pages, key = { _, p -> p.id }) { index, page ->
+                Surface(
+                    onClick = { onOpenPage(page) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = AppColors.White,
+                    border = BorderStroke(1.dp, AppColors.Border),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Page ${index + 1}", style = MaterialTheme.typography.titleMedium)
+                        val toCheck = binder.pocketsPerPage - page.identified - page.empty
+                        Text(
+                            buildList {
+                                add("${page.identified} ${if (page.identified == 1) "card" else "cards"}")
+                                if (page.empty > 0) add("${page.empty} empty")
+                                if (toCheck > 0) add("$toCheck to check")
+                            }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppColors.Muted,
+                        )
+                    }
+                }
+            }
+        }
+
         BottomBar {
-            PrimaryButton(text = "Scan a page (coming soon)", onClick = {}, enabled = false, icon = R.drawable.ic_camera)
+            PrimaryButton(text = "Scan a page", onClick = onScan, icon = R.drawable.ic_camera)
         }
     }
 

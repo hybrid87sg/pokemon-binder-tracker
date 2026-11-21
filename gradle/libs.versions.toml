@@ -16,8 +16,12 @@ credentials = "1.6.0"
 googleId = "1.2.1"
 coroutines = "1.11.0"
 junit = "4.13.2"
+camerax = "1.7.0"
+exifinterface = "1.4.2"
+coil = "3.6.3"
 robolectric = "4.18.1"
 roborazzi = "1.79.0"
+androidxTestCore = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -40,11 +44,21 @@ androidx-credentials-play-services = { module = "androidx.credentials:credential
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleId" }
 kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+
 # Testing: draws screens on the computer and saves them as PNG screenshots.
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 
@@ -52,4 +66,5 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+room = { id = "androidx.room", version.ref = "room" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
