@@ -114,8 +114,11 @@ fun PageScreen(
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
             // Rescanning and deleting the page live behind Edit.
-            TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
-                Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+            // Edit mode shows the page's tools (rescan, delete) and a Done button.
+            if (!editing) {
+                TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
+                    Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+                }
             }
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -163,25 +166,17 @@ fun PageScreen(
             )
         }
 
-        BottomBar {
-            PrimaryButton(text = "Done", onClick = onBack)
-        }
-    }
-
-    if (editing) {
-        ModalBottomSheet(onDismissRequest = { editing = false }, containerColor = AppColors.Paper) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Edit page $pageNumber", style = MaterialTheme.typography.titleLarge)
-                SheetButton("Rescan page") { editing = false; onRescan() }
-                Text(
-                    "Take a new photo of this page. Pockets update to the cards the camera recognises now.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.Muted,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-                Spacer(Modifier.height(8.dp))
-                SheetButton("Delete page", color = AppColors.Danger) { editing = false; confirmDelete = true }
+        if (editing) {
+            BottomBar {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SheetButton("Rescan page") { editing = false; onRescan() }
+                    SheetButton("Delete page", color = AppColors.Danger) { confirmDelete = true }
+                    PrimaryButton(text = "Done", onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
+                }
             }
+        } else {
+            // Keep the pockets clear of the phone's own navigation bar.
+            Spacer(Modifier.navigationBarsPadding())
         }
     }
 
