@@ -45,6 +45,19 @@ interface PageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPocket(pocket: Pocket)
 
+    /**
+     * Fills a pocket with a card the camera recognised, but only if the
+     * person hasn't already chosen a card or marked it empty. Returns 1 if
+     * the pocket was filled, 0 if it was left alone.
+     */
+    @Query(
+        """
+        UPDATE pockets SET cardId = :cardId
+        WHERE pageId = :pageId AND position = :position AND cardId IS NULL AND isEmpty = 0
+        """,
+    )
+    suspend fun fillPocketIfUnset(pageId: String, position: Int, cardId: String): Int
+
     @Insert
     suspend fun insertPockets(pockets: List<Pocket>)
 
