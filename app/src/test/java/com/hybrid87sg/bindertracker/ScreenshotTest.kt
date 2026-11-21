@@ -3,6 +3,7 @@ package com.hybrid87sg.bindertracker
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.hybrid87sg.bindertracker.auth.AppUser
+import com.hybrid87sg.bindertracker.cards.Card
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
@@ -10,6 +11,7 @@ import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.ui.screens.PermissionsScreen
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.CardSearchScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -95,6 +97,41 @@ class ScreenshotTest {
             error = null,
             onUpdate = {},
             onLater = {},
+        )
+    }
+
+    private val sampleCards = listOf(
+        Card("swsh1-49", "Pikachu", "049", "swsh1", "Sword & Shield", 202, 3, imageBase = null),
+        Card("sv03.5-025", "Pikachu", "025", "sv03.5", "151", 165, 7, imageBase = null),
+        Card("base1-58", "Pikachu", "58", "base1", "Base Set", 102, 1, imageBase = null),
+        Card("swsh4-44", "Pikachu VMAX", "044", "swsh4", "Vivid Voltage", 185, 4, imageBase = null),
+    )
+
+    @Test fun cardIndexEmpty() = shoot("7-card-index-empty") {
+        CardSearchScreen(
+            cardCount = 0, updatedAt = null, downloadProgress = null, downloadError = null,
+            query = "", results = emptyList(), onQueryChange = {}, onDownload = {}, onBack = {},
+        )
+    }
+
+    @Test fun cardIndexDownloading() = shoot("7b-card-index-downloading") {
+        CardSearchScreen(
+            cardCount = 0, updatedAt = null, downloadProgress = 0.45f, downloadError = null,
+            query = "", results = emptyList(), onQueryChange = {}, onDownload = {}, onBack = {},
+        )
+    }
+
+    @Test fun cardSearch() = shoot("8-card-search") {
+        CardSearchScreen(
+            cardCount = 19_874, updatedAt = 1_795_000_000_000, downloadProgress = null, downloadError = null,
+            query = "pikachu", results = sampleCards, onQueryChange = {}, onDownload = {}, onBack = {},
+        )
+    }
+
+    @Test fun cardSearchNoResults() = shoot("8b-card-search-none") {
+        CardSearchScreen(
+            cardCount = 19_874, updatedAt = 1_795_000_000_000, downloadProgress = null, downloadError = null,
+            query = "pikachoo", results = emptyList(), onQueryChange = {}, onDownload = {}, onBack = {},
         )
     }
 }
