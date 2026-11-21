@@ -189,7 +189,7 @@ private fun PermissionRow(
             }
         }
         if (granted) {
-            Text("Allowed", style = MaterialTheme.typography.titleMedium, color = AppColors.Success, modifier = Modifier.padding(start = 58.dp))
+            Text("Allowed", style = MaterialTheme.typography.titleMedium, color = AppColors.SuccessText, modifier = Modifier.padding(start = 58.dp))
         } else {
             Button(
                 onClick = onAction,

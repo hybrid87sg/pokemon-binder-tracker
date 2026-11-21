@@ -129,7 +129,7 @@ fun PageScreen(
             )
             // Automatic card reading: "Reading the cards…", then what it found.
             readingStatus?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.Accent, fontWeight = FontWeight.Medium)
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
             }
         }
 
