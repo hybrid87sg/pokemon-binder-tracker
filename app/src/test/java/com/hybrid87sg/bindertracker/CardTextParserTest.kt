@@ -4,6 +4,7 @@ import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.scan.CardTextParser
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
 import com.hybrid87sg.bindertracker.scan.ReadCard
+import com.hybrid87sg.bindertracker.scan.ReadingSummary
 import com.hybrid87sg.bindertracker.scan.TextLine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -92,5 +93,19 @@ class CardTextParserTest {
         // Same number, but Mew is not Mewtwo.
         val mew = card("x-25", "25", "Mew")
         assertNull(PocketMatcher.pick(ReadCard(0, "Mewtwo", "025", null, ""), listOf(mew)))
+    }
+
+    @Test fun readingMessages() {
+        assertEquals("Recognised all 9 cards. Tap one to check or change it.", ReadingSummary(9, 9, 9, 0, rescan = false).message())
+        assertEquals(
+            "Updated 2 pockets with new cards (recognised 7 of 9).",
+            ReadingSummary(9, 7, 2, 0, rescan = true).message(),
+        )
+        assertTrue(ReadingSummary(9, 0, 0, 5, rescan = false).message().contains("recognise 5 cards"))
+        assertEquals(
+            "Recognised 8 of 9 cards (3 by picture). Tap the others to choose them.",
+            ReadingSummary(9, 8, 8, 0, rescan = false, byPicture = 3).message(),
+        )
+        assertTrue(ReadingSummary(9, 6, 0, 0, rescan = true).message().contains("Nothing new"))
     }
 }

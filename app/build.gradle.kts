@@ -20,6 +20,16 @@ val versionBase = providers.gradleProperty("appVersionBase").get()
 val buildNumber = providers.gradleProperty("buildNumber").orNull?.toIntOrNull()
 
 android {
+    // The AI picture model is read straight from the app file, so it must not be compressed.
+    androidResources {
+        noCompress += "tflite"
+    }
+    // OpenCV and MediaPipe both bring this helper library; keep one copy.
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
     namespace = "com.hybrid87sg.bindertracker"
     // The Android version we build against (37.2 = Android 17, minor update 2).
     compileSdk {
@@ -34,6 +44,10 @@ android {
         // versionName is the label people see, like "0.1.6".
         versionCode = buildNumber ?: 1
         versionName = if (buildNumber != null) "$versionBase.$buildNumber" else "$versionBase-dev"
+        // Only phone processors (not emulators on PCs), to keep the app download smaller.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
 
         // Where the app checks for new versions (a small file next to the APK
         // on the repo's "Latest debug build" release).
@@ -120,6 +134,10 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     // ML Kit: reads each card's name and number from the page photo, offline.
     implementation(libs.mlkit.text.recognition)
+    // MediaPipe: runs the small AI picture model that recognises cards by their picture.
+    implementation(libs.mediapipe.tasks.vision)
+    // OpenCV: straightens the card in the photo and compares artwork details.
+    implementation(libs.opencv)
 
     // Coil: loads card pictures from the internet.
     implementation(libs.coil.compose)

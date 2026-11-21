@@ -17,10 +17,33 @@ import java.net.URLEncoder
 object Tcgdex {
     private const val BASE = "https://api.tcgdex.net/v2/en"
 
-    /** Downloads every English card (about 24,000) with its set name. */
+    /** Downloads every English card (about 24,000) with its set and series names. */
     suspend fun downloadCardIndex(): List<Card> = withContext(Dispatchers.IO) {
         val sets = parseSetNames(get("$BASE/sets"))
-        parseCardList(get("$BASE/cards"), sets)
+        // Which series each set belongs to: one small download per series (about 20).
+        val seriesOfSet = mutableMapOf<String, SeriesInfo>()
+        parseSeriesList(get("$BASE/series")).forEachIndexed { order, (id, name) ->
+            val info = SeriesInfo(id, name, order)
+            runCatching { parseSeriesSets(get("$BASE/series/${URLEncoder.encode(id, "UTF-8")}")) }
+                .getOrDefault(emptyList())
+                .forEach { setId -> seriesOfSet[setId] = info }
+        }
+        parseCardList(get("$BASE/cards"), sets, seriesOfSet)
+    }
+
+    /** A series, e.g. "swsh" / "Sword & Shield"; [order] counts up from the oldest. */
+    data class SeriesInfo(val id: String, val name: String, val order: Int)
+
+    /** [{"id":"base","name":"Base"},...] -> [("base", "Base"), ...] in TCGdex's order (oldest first). */
+    fun parseSeriesList(json: String): List<Pair<String, String>> {
+        val array = JSONArray(json)
+        return (0 until array.length()).map { i -> array.getJSONObject(i).let { it.getString("id") to it.getString("name") } }
+    }
+
+    /** {"id":"swsh","sets":[{"id":"swsh1"},...]} -> ["swsh1", ...] */
+    fun parseSeriesSets(json: String): List<String> {
+        val sets = JSONObject(json).optJSONArray("sets") ?: return emptyList()
+        return (0 until sets.length()).map { sets.getJSONObject(it).getString("id") }
     }
 
     /** Full details for one card, including market prices. */
@@ -40,7 +63,7 @@ object Tcgdex {
     }
 
     /** [{"id":"swsh3-136","localId":"136","name":"Furret","image":"https://..."}] -> cards */
-    fun parseCardList(json: String, setNames: Map<String, String>): List<Card> {
+    fun parseCardList(json: String, setNames: Map<String, String>, seriesOfSet: Map<String, SeriesInfo> = emptyMap()): List<Card> {
         val array = JSONArray(json)
         return (0 until array.length()).map { i ->
             val c = array.getJSONObject(i)
@@ -55,6 +78,9 @@ object Tcgdex {
                 setId = setId,
                 setName = setNames[setId] ?: setId,
                 imageUrl = c.optString("image").ifEmpty { null },
+                seriesId = seriesOfSet[setId]?.id.orEmpty(),
+                seriesName = seriesOfSet[setId]?.name.orEmpty(),
+                seriesOrder = seriesOfSet[setId]?.order ?: 0,
             )
         }
     }

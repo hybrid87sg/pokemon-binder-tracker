@@ -58,6 +58,19 @@ interface PageDao {
     )
     suspend fun fillPocketIfUnset(pageId: String, position: Int, cardId: String): Int
 
+    @Query("SELECT * FROM pockets WHERE pageId = :pageId")
+    suspend fun pocketsOf(pageId: String): List<Pocket>
+
+    /** Swaps a page's photo for a newer one (rescanning the page). */
+    @Query(
+        """
+        UPDATE pages SET photoPath = :photoPath, guideLeft = :left, guideTop = :top,
+          guideRight = :right, guideBottom = :bottom
+        WHERE id = :pageId
+        """,
+    )
+    suspend fun updatePhoto(pageId: String, photoPath: String, left: Float, top: Float, right: Float, bottom: Float)
+
     @Insert
     suspend fun insertPockets(pockets: List<Pocket>)
 

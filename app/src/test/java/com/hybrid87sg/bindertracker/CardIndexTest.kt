@@ -90,4 +90,27 @@ class CardIndexTest {
         assertEquals(listOf("base1-4"), index.search("charizard 4").map { it.id })
         assertTrue(index.search("zzzz").isEmpty())
     }
+
+    @Test
+    fun filtersBySeries() = runTest {
+        // Small made-up replies in TCGdex's shape.
+        val series = Tcgdex.parseSeriesList("""[{"id":"base","name":"Base"},{"id":"swsh","name":"Sword & Shield"}]""")
+        assertEquals(listOf("base" to "Base", "swsh" to "Sword & Shield"), series)
+        assertEquals(listOf("swsh3"), Tcgdex.parseSeriesSets("""{"id":"swsh","name":"Sword & Shield","sets":[{"id":"swsh3","name":"Darkness Ablaze"}]}"""))
+
+        val seriesOfSet = mapOf(
+            "base1" to Tcgdex.SeriesInfo("base", "Base", 0),
+            "swsh3" to Tcgdex.SeriesInfo("swsh", "Sword & Shield", 1),
+        )
+        val cards = Tcgdex.parseCardList(resource("cards-sample.json"), Tcgdex.parseSetNames(resource("sets.json")), seriesOfSet)
+        db.cardDao().replaceAll(cards)
+        assertEquals("Base", cards.single { it.id == "base1-4" }.seriesName)
+
+        // Newest series first in the drop-down.
+        assertEquals(listOf("swsh", "base").filter { id -> cards.any { it.seriesId == id } }, index.series().map { it.id })
+        // Only Base series cards when Base is chosen.
+        assertTrue(index.search("charizard", seriesId = "base").all { it.seriesId == "base" })
+        assertTrue(index.search("charizard", seriesId = "base").any { it.id == "base1-4" })
+        assertTrue(index.search("charizard 4", seriesId = "swsh").none { it.id == "base1-4" })
+    }
 }

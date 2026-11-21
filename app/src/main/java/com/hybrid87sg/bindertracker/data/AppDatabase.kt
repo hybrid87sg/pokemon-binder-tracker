@@ -14,12 +14,13 @@ import androidx.room.RoomDatabase
  * instead of wiping their binders. Version history:
  * 1: binders
  * 2: + cards (card index), pages, pockets
+ * 3: + cards.seriesId / seriesName / seriesOrder (series filter)
  */
 @Database(
     entities = [Binder::class, Card::class, Page::class, Pocket::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun binderDao(): BinderDao
