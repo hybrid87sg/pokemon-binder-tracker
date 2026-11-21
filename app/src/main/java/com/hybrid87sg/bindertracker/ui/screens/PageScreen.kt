@@ -1,7 +1,9 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,9 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,14 +23,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,20 +45,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.GuideRect
-import com.hybrid87sg.bindertracker.R
+import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
 import com.hybrid87sg.bindertracker.ui.components.CardImage
-import com.hybrid87sg.bindertracker.ui.components.PocketCrop
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.net.URLDecoder
@@ -66,7 +65,7 @@ private val CheckBorder = Color(0xFFB7791F)
 private val CheckFill = Color(0xFFFBE3A6)
 
 /**
- * One binder page: the photo cut into pockets. Tap a pocket to say which
+ * One binder page, shown as its pockets. Tap a pocket to say which
  * card it holds, or that it's empty.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,9 +86,26 @@ fun PageScreen(
     onMarkEmpty: (position: Int) -> Unit,
     onClear: (position: Int) -> Unit,
     onDeletePage: () -> Unit,
+    // Photograph just this pocket's card and fill the pocket with it.
+    onScanCard: (position: Int) -> Unit = {},
+    // Best guesses for pockets the app wasn't sure about, by pocket position.
+    suggestions: Map<Int, List<Card>> = emptyMap(),
+    // Tapping a guess puts that card in the pocket.
+    onPickSuggestion: (position: Int, cardId: String) -> Unit = { _, _ -> },
+    // A pocket whose menu should open by itself, then [onPocketOpened] is called.
+    openPosition: Int? = null,
+    onPocketOpened: () -> Unit = {},
+    // The bit of the photo the app looked at for each pocket, if scanned just now.
+    scanPictures: Map<Int, ImageBitmap> = emptyMap(),
 ) {
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    LaunchedEffect(openPosition, pockets) {
+        val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
+        selected = pocket
+        onPocketOpened()
+    }
     val identified = pockets.count { it.cardId != null }
     val empty = pockets.count { it.isEmpty }
     val toDo = pockets.size - identified - empty
@@ -98,8 +114,11 @@ fun PageScreen(
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { confirmDelete = true }, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_trash), contentDescription = "Delete page $pageNumber", tint = AppColors.Ink)
+            // Deleting the page lives behind Edit, with a Done button to leave.
+            if (!editing) {
+                TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
+                    Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+                }
             }
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -130,7 +149,6 @@ fun PageScreen(
                         row.forEach { pocket ->
                             PocketTile(
                                 pocket = pocket,
-                                crop = photo?.let { { m: Modifier -> PocketCrop(it, guide, columns, rows, pocket.position, m) } },
                                 onClick = { selected = pocket },
                                 modifier = Modifier.weight(1f),
                             )
@@ -141,14 +159,24 @@ fun PageScreen(
                 }
             }
             Text(
-                "Tap a pocket to choose its card, or to change one the camera recognised.",
+                "Tap a pocket to scan its card, or to choose it from the list.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
             )
         }
 
-        BottomBar { PrimaryButton(text = "Done", onClick = onBack) }
+        if (editing) {
+            BottomBar {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SheetButton("Delete page", color = AppColors.Danger) { confirmDelete = true }
+                    PrimaryButton(text = "Done", onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        } else {
+            // Keep the pockets clear of the phone's own navigation bar.
+            Spacer(Modifier.navigationBarsPadding())
+        }
     }
 
     selected?.let { pocket ->
@@ -158,7 +186,36 @@ fun PageScreen(
                     pocket.cardName?.let { "Pocket ${pocket.position + 1}: $it" } ?: "Pocket ${pocket.position + 1}",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                SheetButton(if (pocket.cardId == null) "Choose card" else "Change card") { selected = null; onChooseCard(pocket.position) }
+                scanPictures[pocket.position]?.let { seen ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Image(seen, contentDescription = "What the camera saw", modifier = Modifier.height(96.dp).clip(RoundedCornerShape(6.dp)))
+                        Text(
+                            "What the camera saw. If this isn't just the card, scan again with the card filling the frame.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.Muted,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                suggestions[pocket.position]?.takeIf { it.isNotEmpty() }?.let { guesses ->
+                    Text("Best guesses: tap the right card", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        guesses.take(5).forEach { card ->
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                                    .clickable { selected = null; onPickSuggestion(pocket.position, card.id) },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth())
+                                Text(card.setName, style = MaterialTheme.typography.labelSmall, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        repeat(5 - guesses.take(5).size) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                SheetButton("Scan this card") { selected = null; onScanCard(pocket.position) }
+                SheetButton(if (pocket.cardId == null) "Choose card from list" else "Change card") { selected = null; onChooseCard(pocket.position) }
                 pocket.cardId?.let { id -> SheetButton("View card and price") { selected = null; onViewCard(id) } }
                 if (!pocket.isEmpty) SheetButton("Mark as empty pocket") { selected = null; onMarkEmpty(pocket.position) }
                 if (pocket.cardId != null || pocket.isEmpty) SheetButton("Clear pocket") { selected = null; onClear(pocket.position) }
@@ -170,7 +227,7 @@ fun PageScreen(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete page $pageNumber?") },
-            text = { Text("This removes the page and its photo from $binderName. You can't undo this.") },
+            text = { Text("This removes the page and its cards from $binderName. You can't undo this.") },
             confirmButton = {
                 TextButton(
                     onClick = { confirmDelete = false; onDeletePage() },
@@ -183,7 +240,7 @@ fun PageScreen(
 }
 
 @Composable
-private fun SheetButton(label: String, onClick: () -> Unit) {
+private fun SheetButton(label: String, color: Color = AppColors.Ink, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -191,14 +248,13 @@ private fun SheetButton(label: String, onClick: () -> Unit) {
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
+        Text(label, style = MaterialTheme.typography.titleMedium, color = color, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
     }
 }
 
 @Composable
 private fun PocketTile(
     pocket: PocketWithCard,
-    crop: (@Composable (Modifier) -> Unit)?,
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
@@ -227,8 +283,9 @@ private fun PocketTile(
             ) {
                 when {
                     pocket.isEmpty -> Text("Empty", fontSize = 13.sp, color = AppColors.Muted, textAlign = TextAlign.Center)
-                    crop != null -> crop(Modifier.fillMaxSize())
-                    else -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = null, modifier = Modifier.fillMaxSize())
+                    // Identified: the official card picture from TCGdex, not the photo.
+                    pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
+                    else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
                 }
             }
             Text(

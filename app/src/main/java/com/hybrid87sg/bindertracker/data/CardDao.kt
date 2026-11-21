@@ -24,11 +24,12 @@ interface CardDao {
         """
         SELECT * FROM cards
         WHERE name LIKE '%' || :name || '%'
+          AND (:seriesId = '' OR seriesId = :seriesId)
         ORDER BY CASE WHEN name LIKE :name || '%' THEN 0 ELSE 1 END, name, setName
         LIMIT :limit
         """,
     )
-    suspend fun searchByName(name: String, limit: Int = 100): List<Card>
+    suspend fun searchByName(name: String, limit: Int = 100, seriesId: String = ""): List<Card>
 
     // "025" and "25" both match card number 25, so leading zeros are ignored.
     @Query(
@@ -36,16 +37,21 @@ interface CardDao {
         SELECT * FROM cards
         WHERE (localId = :number OR ltrim(localId, '0') = ltrim(:number, '0'))
           AND name LIKE '%' || :name || '%'
+          AND (:seriesId = '' OR seriesId = :seriesId)
         ORDER BY name, setName
         LIMIT :limit
         """,
     )
-    suspend fun searchByNumber(number: String, name: String, limit: Int = 100): List<Card>
+    suspend fun searchByNumber(number: String, name: String, limit: Int = 100, seriesId: String = ""): List<Card>
 
     // Every card with this number, for the camera scanner. No limit, so the
     // right card is never cut off just because its name sorts late.
     @Query("SELECT * FROM cards WHERE localId = :number OR ltrim(localId, '0') = ltrim(:number, '0')")
     suspend fun allWithNumber(number: String): List<Card>
+
+    // Every series in the card list, newest first, for the series filter.
+    @Query("SELECT seriesId AS id, seriesName AS name FROM cards WHERE seriesId != '' GROUP BY seriesId ORDER BY MAX(seriesOrder) DESC")
+    suspend fun series(): List<SeriesOption>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(cards: List<Card>)

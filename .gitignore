@@ -12,3 +12,4 @@ captures/
 
 # Note: keystore/binder-debug.keystore and app/google-services.json are
 # committed on purpose (see README).
+__pycache__/

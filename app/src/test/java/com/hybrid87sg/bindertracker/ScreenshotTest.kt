@@ -79,7 +79,7 @@ class ScreenshotTest {
     }
 
     @Test fun binder() = shoot("4-binder") {
-        BinderScreen(binder = sample[0], pages = emptyList(), onBack = {}, onDelete = {}, onScan = {}, onOpenPage = {})
+        BinderScreen(binder = sample[0], pages = emptyList(), onBack = {}, onDelete = {}, onAddPages = {}, onOpenPage = {})
     }
 
     @Test fun account() = shoot("5-account") {
@@ -133,7 +133,7 @@ class ScreenshotTest {
                 PageSummary("p1", "b", null, 1, identified = 9, empty = 0),
                 PageSummary("p2", "b", null, 2, identified = 5, empty = 1),
             ),
-            onBack = {}, onDelete = {}, onScan = {}, onOpenPage = {},
+            onBack = {}, onDelete = {}, onAddPages = {}, onOpenPage = {},
         )
     }
 

@@ -66,7 +66,14 @@ private val LightMuted = Color(0xFFB8B4A8)
  * screen is also its position in the photo.
  */
 @Composable
-fun ScanRoute(binder: Binder, onBack: () -> Unit, onCaptured: (File, GuideRect) -> Unit) {
+fun ScanRoute(
+    binder: Binder,
+    onBack: () -> Unit,
+    onCaptured: (File, GuideRect) -> Unit,
+    // For scanning one card: the frame is a single card-shaped box.
+    singleCard: Boolean = false,
+    subtitle: String = "${binder.name} · ${binder.sizeLabel}",
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val controller = remember {
@@ -116,7 +123,9 @@ fun ScanRoute(binder: Binder, onBack: () -> Unit, onCaptured: (File, GuideRect) 
     }
 
     ScanScreen(
-        binder = binder,
+        binder = if (singleCard) binder.copy(columns = 1, rows = 1) else binder,
+        subtitle = subtitle,
+        hint = if (singleCard) "Fit the card inside the frame, filling it as much as you can." else PAGE_HINT,
         capturing = capturing,
         error = error,
         onBack = onBack,
@@ -148,6 +157,8 @@ fun ScanScreen(
     onPreviewPositioned: (Rect) -> Unit,
     onGuidePositioned: (Rect) -> Unit,
     cameraPreview: @Composable (Modifier) -> Unit,
+    subtitle: String = "${binder.name} · ${binder.sizeLabel}",
+    hint: String = PAGE_HINT,
 ) {
     Box(Modifier.fillMaxSize().background(Dark)) {
         cameraPreview(Modifier.fillMaxSize().onGloballyPositioned { onPreviewPositioned(it.boundsInRoot()) })
@@ -160,7 +171,7 @@ fun ScanScreen(
             ) {
                 BackButton("Back", onBack, color = Light)
                 Spacer(Modifier.weight(1f))
-                Text("${binder.name} · ${binder.sizeLabel}", style = MaterialTheme.typography.bodyMedium, color = LightMuted)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = LightMuted)
             }
 
             // The frame, sized to the binder's shape (e.g. 3 columns of cards × 3 rows).
@@ -185,7 +196,7 @@ fun ScanScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Text(
-                    error ?: "Fit the page inside the frame. Each box is one pocket.",
+                    error ?: hint,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (error != null) Color(0xFFFFB4A8) else Light,
                 )
@@ -195,7 +206,7 @@ fun ScanScreen(
                     shape = CircleShape,
                     color = Color.Transparent,
                     border = BorderStroke(4.dp, Light),
-                    modifier = Modifier.size(76.dp).semantics { contentDescription = "Take photo of binder page" },
+                    modifier = Modifier.size(76.dp).semantics { contentDescription = "Take photo" },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         if (capturing) {
@@ -209,6 +220,8 @@ fun ScanScreen(
         }
     }
 }
+
+private const val PAGE_HINT = "Fit the page inside the frame. Each box is one pocket."
 
 /** White frame split into dashed pocket boxes. */
 @Composable

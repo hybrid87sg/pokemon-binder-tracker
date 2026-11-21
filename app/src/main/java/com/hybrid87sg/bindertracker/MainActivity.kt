@@ -1,6 +1,8 @@
 package com.hybrid87sg.bindertracker
 
 import android.net.Uri
+import kotlinx.coroutines.flow.map
+import androidx.compose.ui.graphics.asImageBitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
 import com.hybrid87sg.bindertracker.ui.screens.CardRoute
@@ -17,7 +18,6 @@ import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
 import com.hybrid87sg.bindertracker.ui.screens.PageScreen
 import com.hybrid87sg.bindertracker.ui.screens.ScanRoute
 import com.hybrid87sg.bindertracker.ui.screens.SearchRoute
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -140,7 +140,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         vm.deleteBinder(b)
                         nav.popBackStack()
                     },
-                    onScan = { nav.navigate("scan/${b.id}") },
+                    onAddPages = { count -> vm.addPages(b, count) },
                     onOpenPage = { nav.navigate("page/${it.id}") },
                 )
             }
@@ -153,6 +153,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 backLabel = "Shelf",
                 status = indexStatus(vm),
                 search = vm::searchCards,
+                loadSeries = vm::seriesList,
                 onBack = { nav.popBackStack() },
                 onCardClick = { nav.navigate("card/${Uri.encode(it.id)}") },
                 onRefreshIndex = { vm.refreshCardIndex(force = true) },
@@ -164,25 +165,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }) }
         }
 
-        // ---- Scanning a page ----
-        composable("scan/{binderId}") { entry ->
-            val binderId = entry.arguments?.getString("binderId").orEmpty()
-            val binder by remember(binderId) { vm.binder(binderId) }.collectAsStateWithLifecycle(initialValue = null)
-            val scope = rememberCoroutineScope()
-            binder?.let { b ->
-                ScanRoute(
-                    binder = b,
-                    onBack = { nav.popBackStack() },
-                    onCaptured = { photo, guide ->
-                        scope.launch {
-                            val pageId = vm.createPage(b, photo, guide)
-                            // Swap the camera for the new page, so "back" returns to the binder.
-                            nav.navigate("page/$pageId") { popUpTo("scan/$binderId") { inclusive = true } }
-                        }
-                    },
-                )
-            }
-        }
+        // ---- Pages ----
         composable("page/{pageId}") { entry ->
             val pageId = entry.arguments?.getString("pageId").orEmpty()
             val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
@@ -192,6 +175,10 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 val number by produceState(0, p.id) { value = vm.pageNumber(p) }
                 val photo by rememberPagePhoto(p.photoPath)
                 val reading by vm.readingStatus.collectAsStateWithLifecycle()
+                val suggestions by remember(pageId) { vm.suggestions(pageId) }.collectAsStateWithLifecycle(initialValue = emptyMap())
+                val openPocket by vm.openPocket.collectAsStateWithLifecycle()
+                val scanPictures by remember(pageId) { vm.scanPictures(pageId).map { m -> m.mapValues { it.value.asImageBitmap() } } }
+                    .collectAsStateWithLifecycle(initialValue = emptyMap())
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
@@ -211,6 +198,33 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                             vm.deletePage(p)
                             nav.popBackStack()
                         },
+                        onScanCard = { position -> nav.navigate("scancard/$pageId/$position") },
+                        suggestions = suggestions,
+                        onPickSuggestion = { position, cardId -> vm.setPocketCard(pageId, position, cardId) },
+                        openPosition = openPocket?.takeIf { it.first == pageId }?.second,
+                        onPocketOpened = vm::pocketOpened,
+                        scanPictures = scanPictures,
+                    )
+                }
+            }
+        }
+        // Photograph one card for one pocket; then back to the page.
+        composable("scancard/{pageId}/{position}") { entry ->
+            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
+            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
+            page?.let { p ->
+                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                binder?.let { b ->
+                    ScanRoute(
+                        binder = b,
+                        singleCard = true,
+                        subtitle = "Pocket ${position + 1}",
+                        onBack = { nav.popBackStack() },
+                        onCaptured = { photo, guide ->
+                            vm.scanPocket(pageId, position, photo, guide)
+                            nav.popBackStack()
+                        },
                     )
                 }
             }
@@ -224,6 +238,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 backLabel = "Page",
                 status = indexStatus(vm),
                 search = vm::searchCards,
+                loadSeries = vm::seriesList,
                 onBack = { nav.popBackStack() },
                 onCardClick = { card ->
                     vm.setPocketCard(pageId, position, card.id)

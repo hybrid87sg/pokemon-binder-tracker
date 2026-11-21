@@ -1,0 +1,56 @@
+# Builds the "picture description" list for every card (card-embeddings.bin)
+# and publishes it as the release "Card pictures list" (tag card-pictures).
+# The app downloads it once to recognise cards by their picture.
+#
+# Runs when the script or this file changes, once a month (new sets come
+# out), or by hand from the Actions tab. Takes roughly 20-40 minutes.
+name: Build card pictures list
+
+on:
+  push:
+    paths:
+      - scripts/build_card_embeddings.py
+      - .github/workflows/card-pictures.yml
+      - app/src/main/assets/card_embedder.tflite
+  schedule:
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: card-pictures
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # MediaPipe needs these graphics libraries even without a screen.
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libegl1 libgles2
+          pip install mediapipe==1.2.3 numpy pillow requests
+
+      - name: Describe every card picture
+        run: python scripts/build_card_embeddings.py --model app/src/main/assets/card_embedder.tflite --out card-embeddings.bin
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete card-pictures --cleanup-tag --yes || true
+          gh release create card-pictures card-embeddings.bin \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Card pictures list" \
+            --notes "Picture descriptions for every card, used by the app to recognise scanned cards. Built $(date -u +%Y-%m-%d) from branch \`${GITHUB_REF_NAME}\`."
