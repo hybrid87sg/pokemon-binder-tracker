@@ -26,13 +26,15 @@ class Palette(
     val border: Color,
     val borderStrong: Color,
     val dashedBorder: Color,
-    val accent: Color,          // blue buttons
+    val accent: Color,          // blue buttons (white text sits on it)
+    val accentText: Color,      // blue words and links on the background
     val wood: Color,            // shelf plank
     val woodDark: Color,
     val disabled: Color,
     val onDisabled: Color,
     val danger: Color,
-    val success: Color,
+    val success: Color,         // green circles (white tick sits on it)
+    val successText: Color,     // green words on the background
     // The card-back picture shown in empty pockets (see CardBack.kt).
     val cardBack: Color,        // top-left of the blue
     val cardBackDeep: Color,    // bottom-right of the blue
@@ -51,12 +53,14 @@ val LightPalette = Palette(
     borderStrong = Color(0xFFA29E94),
     dashedBorder = Color(0xFF8A867B),
     accent = Color(0xFF2447C8),
+    accentText = Color(0xFF2447C8),
     wood = Color(0xFFA67C52),
     woodDark = Color(0xFF8A6743),
     disabled = Color(0xFFD9D5CB),
     onDisabled = Color(0xFF3E3C38),
     danger = Color(0xFF9B2C2C),
     success = Color(0xFF2F6B3A),
+    successText = Color(0xFF2F6B3A),
     cardBack = Color(0xFF23379A),
     cardBackDeep = Color(0xFF1A2A78),
     cardBackFrame = Color(0xFFC9D2F5),
@@ -74,13 +78,17 @@ val DarkPalette = Palette(
     border = Color(0xFF3A3934),
     borderStrong = Color(0xFF5C5A55),
     dashedBorder = Color(0xFF7A766C),
-    accent = Color(0xFF4A6CF0),   // a little brighter, so it stands out on dark
+    // Two blues in dark mode, so both pass the 4.5:1 readability rule:
+    // white on accent is 5.7:1, accentText on the background is 8:1.
+    accent = Color(0xFF3B5BDB),
+    accentText = Color(0xFF8FA8FF),
     wood = Color(0xFF7A5A3B),
     woodDark = Color(0xFF5E452D),
     disabled = Color(0xFF3A3934),
     onDisabled = Color(0xFFA8A49A),
     danger = Color(0xFFE58A8A),
-    success = Color(0xFF3F8A4C),
+    success = Color(0xFF2F7A3E),      // white tick on it: 5.3:1
+    successText = Color(0xFF6CC27B),  // on the background: 8.3:1
     // Darker blue so it isn't glaring at night, with a brighter frame so the
     // card still stands out from the charcoal background.
     cardBack = Color(0xFF1C2B6E),
@@ -111,12 +119,14 @@ object AppColors {
     val BorderStrong get() = palette.borderStrong
     val DashedBorder get() = palette.dashedBorder
     val Accent get() = palette.accent
+    val AccentText get() = palette.accentText
     val Wood get() = palette.wood
     val WoodDark get() = palette.woodDark
     val Disabled get() = palette.disabled
     val OnDisabled get() = palette.onDisabled
     val Danger get() = palette.danger
     val Success get() = palette.success
+    val SuccessText get() = palette.successText
     val CardBack get() = palette.cardBack
     val CardBackDeep get() = palette.cardBackDeep
     val CardBackFrame get() = palette.cardBackFrame
@@ -131,8 +141,9 @@ object AppColors {
 private fun materialColors(p: Palette, dark: Boolean): ColorScheme {
     val base = if (dark) darkColorScheme() else lightColorScheme()
     return base.copy(
-        primary = p.accent,
-        onPrimary = AppColors.White,
+        // Dialog buttons and other Material text use primary, so give it the readable blue.
+        primary = p.accentText,
+        onPrimary = if (dark) p.paper else AppColors.White,
         background = p.paper,
         onBackground = p.ink,
         surface = p.surface,

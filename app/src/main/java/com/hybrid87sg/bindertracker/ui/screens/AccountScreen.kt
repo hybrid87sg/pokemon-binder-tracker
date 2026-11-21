@@ -186,7 +186,7 @@ fun AccountScreen(
                 TextButton(
                     onClick = onCheckForUpdates,
                     modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Accent),
+                    colors = ButtonDefaults.textButtonColors(contentColor = AppColors.AccentText),
                 ) { Text("Check for updates", style = MaterialTheme.typography.titleMedium) }
             }
             if (updateMessage != null) {

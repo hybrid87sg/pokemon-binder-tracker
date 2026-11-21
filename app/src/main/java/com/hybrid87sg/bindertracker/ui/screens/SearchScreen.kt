@@ -261,7 +261,7 @@ private fun IndexEmptyState(status: IndexStatus, onRefresh: () -> Unit) {
         } else {
             Text("The card list isn't downloaded yet.", style = MaterialTheme.typography.titleMedium)
             status.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.Danger) }
-            TextButton(onClick = onRefresh, colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Accent)) {
+            TextButton(onClick = onRefresh, colors = ButtonDefaults.textButtonColors(contentColor = AppColors.AccentText)) {
                 Text("Download card list", fontWeight = FontWeight.SemiBold)
             }
         }
