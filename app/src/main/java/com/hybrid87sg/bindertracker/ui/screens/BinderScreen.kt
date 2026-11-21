@@ -63,6 +63,7 @@ fun BinderScreen(
     onDelete: () -> Unit,
     // Adds this many empty pages to the end of the binder.
     onAddPages: (count: Int) -> Unit,
+    onEdit: () -> Unit,
     onOpenPage: (PageSummary) -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
@@ -75,6 +76,9 @@ fun BinderScreen(
         ) {
             BackButton("Shelf", onBack)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit binder ${binder.name}", tint = AppColors.Ink)
+            }
             IconButton(onClick = { addingPages = true }, modifier = Modifier.size(48.dp)) {
                 Icon(painterResource(R.drawable.ic_plus), contentDescription = "Add pages", tint = AppColors.Ink)
             }

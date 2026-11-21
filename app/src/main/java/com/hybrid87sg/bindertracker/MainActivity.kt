@@ -32,6 +32,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -142,12 +143,32 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         nav.popBackStack()
                     },
                     onAddPages = { count -> vm.addPages(b, count) },
+                    onEdit = { nav.navigate("edit/${b.id}") },
                     onOpenPage = { nav.navigate("page/${it.id}") },
                 )
             }
         }
 
         // ---- Card index ----
+        // Edit binder: change name, colour and size. Opened from the pencil on a binder.
+        composable("edit/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val binder by remember(id) { vm.binder(id) }.collectAsStateWithLifecycle(initialValue = null)
+            val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            val filled by remember(id) { vm.filledPositions(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            binder?.let { b ->
+                EditBinderScreen(
+                    binder = b,
+                    pageCount = pages.size,
+                    filledPositions = filled,
+                    onCancel = { nav.popBackStack() },
+                    onSave = { name, colorHex, size ->
+                        vm.updateBinder(b, name, colorHex, size)
+                        nav.popBackStack()
+                    },
+                )
+            }
+        }
         composable("search") {
             SearchRoute(
                 title = "Search cards",

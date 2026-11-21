@@ -11,6 +11,7 @@ import com.hybrid87sg.bindertracker.backup.BackupFile
 import com.hybrid87sg.bindertracker.backup.BinderBackup
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.BinderResize
 import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.CardIndex
@@ -27,6 +28,7 @@ import com.hybrid87sg.bindertracker.scan.PocketMatcher
 import com.hybrid87sg.bindertracker.scan.ReadCard
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
+import androidx.room.withTransaction
 import java.io.File
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.update.Updater
@@ -171,6 +173,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Repaints a binder's spine. [colorHex] is text like "#F2C230". */
     fun setBinderColor(binder: Binder, colorHex: String) {
         viewModelScope.launch { binderDao.updateColor(binder.id, colorHex) }
+    }
+
+    /** Pocket numbers holding a card in this binder (for the Edit binder warning). */
+    fun filledPositions(binderId: String): Flow<List<Int>> = pageDao.observeFilledPositions(binderId)
+
+    /**
+     * Saves the Edit binder screen: new name, colour and size.
+     *
+     * Bigger size: every page gets the extra (empty) pockets.
+     * Smaller size: cards in pockets that no longer exist move, in order,
+     * onto new pages added at the back (see [BinderResize]).
+     *
+     * "withTransaction" means all of these changes happen together or not
+     * at all, so a crash halfway can never lose a card.
+     */
+    fun updateBinder(binder: Binder, name: String, colorHex: String, size: BinderSize) {
+        viewModelScope.launch {
+            db.withTransaction {
+                val oldCount = binder.pocketsPerPage
+                val newCount = size.pockets
+                val pages = pageDao.pagesOf(binder.id).sortedBy { it.createdAt }
+                if (newCount > oldCount) {
+                    pages.forEach { page ->
+                        pageDao.insertPocketsIfMissing((oldCount until newCount).map { Pocket(page.id, it) })
+                    }
+                } else if (newCount < oldCount) {
+                    val moved = BinderResize.cardsThatDontFit(pages.map { pageDao.pocketsOf(it.id) }, newCount)
+                    pages.forEach { pageDao.deletePocketsFrom(it.id, newCount) }
+                    // New pages go after the last existing page.
+                    val start = maxOf(System.currentTimeMillis(), (pages.maxOfOrNull { it.createdAt } ?: 0L) + 1)
+                    BinderResize.newPages(moved, newCount).forEachIndexed { i, cards ->
+                        val page = Page(binderId = binder.id, photoPath = null, createdAt = start + i)
+                        pageDao.createPage(page, newCount)
+                        cards.forEachIndexed { position, cardId ->
+                            pageDao.upsertPocket(Pocket(page.id, position, cardId = cardId))
+                        }
+                    }
+                }
+                binderDao.update(
+                    binder.copy(name = name.trim(), colorHex = colorHex, columns = size.columns, rows = size.rows),
+                )
+            }
+        }
     }
 
     fun deleteBinder(binder: Binder) {

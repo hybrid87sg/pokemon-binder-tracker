@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -64,4 +65,8 @@ interface BinderDao {
         pages.forEach { insertPageForBackup(it) }
         insertPocketsForBackup(pockets)
     }
+
+    // Saves every column of an existing binder (Edit binder: name, colour, size).
+    @Update
+    suspend fun update(binder: Binder)
 }
