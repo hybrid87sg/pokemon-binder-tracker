@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,11 +21,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,14 +42,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.GuideRect
-import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
@@ -91,9 +84,12 @@ fun PageScreen(
     onDeletePage: () -> Unit,
     // Take a new photo of this page; pockets update with any new cards read.
     onRescan: () -> Unit = {},
+    // Photograph just this pocket's card and fill the pocket with it.
+    onScanCard: (position: Int) -> Unit = {},
 ) {
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
     val identified = pockets.count { it.cardId != null }
     val empty = pockets.count { it.isEmpty }
     val toDo = pockets.size - identified - empty
@@ -102,8 +98,9 @@ fun PageScreen(
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { confirmDelete = true }, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_trash), contentDescription = "Delete page $pageNumber", tint = AppColors.Ink)
+            // Rescanning and deleting the page live behind Edit.
+            TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
+                Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
             }
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -152,17 +149,23 @@ fun PageScreen(
         }
 
         BottomBar {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = onRescan,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Icon(painterResource(R.drawable.ic_camera), contentDescription = null, modifier = Modifier.size(20.dp), tint = AppColors.Ink)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Rescan page", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
-                }
-                PrimaryButton(text = "Done", onClick = onBack, modifier = Modifier.weight(1f))
+            PrimaryButton(text = "Done", onClick = onBack)
+        }
+    }
+
+    if (editing) {
+        ModalBottomSheet(onDismissRequest = { editing = false }, containerColor = AppColors.Paper) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Edit page $pageNumber", style = MaterialTheme.typography.titleLarge)
+                SheetButton("Rescan page") { editing = false; onRescan() }
+                Text(
+                    "Take a new photo of this page. Pockets update to the cards the camera recognises now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.Muted,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                SheetButton("Delete page", color = AppColors.Danger) { editing = false; confirmDelete = true }
             }
         }
     }
@@ -174,7 +177,8 @@ fun PageScreen(
                     pocket.cardName?.let { "Pocket ${pocket.position + 1}: $it" } ?: "Pocket ${pocket.position + 1}",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                SheetButton(if (pocket.cardId == null) "Choose card" else "Change card") { selected = null; onChooseCard(pocket.position) }
+                SheetButton("Scan this card") { selected = null; onScanCard(pocket.position) }
+                SheetButton(if (pocket.cardId == null) "Choose card from list" else "Change card") { selected = null; onChooseCard(pocket.position) }
                 pocket.cardId?.let { id -> SheetButton("View card and price") { selected = null; onViewCard(id) } }
                 if (!pocket.isEmpty) SheetButton("Mark as empty pocket") { selected = null; onMarkEmpty(pocket.position) }
                 if (pocket.cardId != null || pocket.isEmpty) SheetButton("Clear pocket") { selected = null; onClear(pocket.position) }
@@ -199,7 +203,7 @@ fun PageScreen(
 }
 
 @Composable
-private fun SheetButton(label: String, onClick: () -> Unit) {
+private fun SheetButton(label: String, color: Color = AppColors.Ink, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -207,7 +211,7 @@ private fun SheetButton(label: String, onClick: () -> Unit) {
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
+        Text(label, style = MaterialTheme.typography.titleMedium, color = color, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
     }
 }
 

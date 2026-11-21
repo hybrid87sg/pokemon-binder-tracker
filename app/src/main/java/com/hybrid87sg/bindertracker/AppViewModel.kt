@@ -14,8 +14,11 @@ import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
 import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.scan.CardPictures
 import com.hybrid87sg.bindertracker.scan.PageReader
+import com.hybrid87sg.bindertracker.scan.PictureMatcher
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
+import com.hybrid87sg.bindertracker.scan.ReadCard
 import com.hybrid87sg.bindertracker.scan.ReadingSummary
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
@@ -259,13 +262,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val current = pageDao.pocketsOf(pageId).associateBy { it.position }
                 var recognised = 0
                 var changed = 0
-                var noNumber = 0
-                for (card in read) {
+                var unmatched = 0
+                var byPicture = 0
+                for ((card, picture) in read) {
                     if (card.looksEmpty) continue
-                    val number = card.number
-                    if (number == null) { noNumber++; continue }
-                    val match = PocketMatcher.pick(card, db.cardDao().allWithNumber(number)) ?: continue
+                    val result = recognise(card, picture)
+                    if (result == null) { unmatched++; continue }
+                    val (match, fromPicture) = result
                     recognised++
+                    if (fromPicture) byPicture++
                     val before = current[card.position]
                     if (before?.cardId == match.id) continue
                     if (rescan) {
@@ -275,13 +280,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         changed += pageDao.fillPocketIfUnset(pageId, card.position, match.id)
                     }
                 }
-                ReadingSummary(binder.pocketsPerPage, recognised, changed, noNumber, rescan).message()
+                ReadingSummary(binder.pocketsPerPage, recognised, changed, unmatched, rescan, byPicture).message()
             }
             setReadingStatus(
                 pageId,
                 result.getOrElse { "Couldn't read the cards automatically. Tap a pocket to choose its card." },
             )
         }
+    }
+
+    /**
+     * Works out which card is in one pocket. Returns the card and whether it
+     * was found by picture, or null when it isn't sure.
+     */
+    private suspend fun recognise(card: ReadCard, picture: Long?): Pair<Card, Boolean>? {
+        // 1. Name and number both read and both match: surest.
+        card.number?.let { PocketMatcher.pick(card, db.cardDao().allWithNumber(it)) }?.let { return it to false }
+        // 2. Otherwise compare the pocket's picture with the official
+        //    pictures of the cards it could be (same name, or same number).
+        if (picture == null) return null
+        return matchByPicture(card, picture)?.let { it to true }
+    }
+
+    /**
+     * Scans one card on its own (from a pocket's menu) and puts it in that
+     * pocket. A photo of a single card is much bigger and sharper than the
+     * same card in a whole-page photo, so it's easier to read. The photo is
+     * only used for reading and is deleted afterwards.
+     */
+    fun scanPocket(pageId: String, position: Int, photo: File, guide: GuideRect) {
+        setReadingStatus(pageId, "Reading the card for pocket ${position + 1}…")
+        viewModelScope.launch {
+            val message = runCatching {
+                if (cardCount.value == 0) return@runCatching "The card list isn't downloaded yet, so cards can't be recognised. Open search on the shelf and download it first."
+                val scanned = PageReader.read(photo.absolutePath, guide, columns = 1, rows = 1).firstOrNull()
+                val found = scanned?.let { recognise(it.read.copy(position = position), it.picture) }?.first
+                if (found == null) {
+                    "Couldn't recognise the card for pocket ${position + 1}. Try again closer, with less glare, or tap the pocket to choose it."
+                } else {
+                    pageDao.upsertPocket(Pocket(pageId, position, cardId = found.id))
+                    "Pocket ${position + 1}: ${found.name} (${found.setName} ${found.number})."
+                }
+            }.getOrElse { "Couldn't read the card. Tap the pocket to choose it." }
+            File(photo.absolutePath).delete()
+            setReadingStatus(pageId, message)
+        }
+    }
+
+    /**
+     * Finds the card by its picture. Comparing against every card would mean
+     * downloading tens of thousands of pictures, so it first shortlists the
+     * cards it could be: ones with the name that was read, or failing that,
+     * ones with the number that was read. Then it downloads just those
+     * official pictures and picks the clearly closest one (or none).
+     */
+    private suspend fun matchByPicture(card: ReadCard, picture: Long): Card? {
+        val shortlist = card.name?.let { PocketMatcher.sameName(it, db.cardDao().searchByName(it, limit = 400)) }
+            ?.takeIf { it.isNotEmpty() }
+            ?: card.number?.let { db.cardDao().allWithNumber(it) }
+            ?: return null
+        if (shortlist.size > MAX_PICTURES_TO_COMPARE) return null
+        return PictureMatcher.best(picture, CardPictures.officialFingerprints(shortlist))
     }
 
     /**
@@ -318,3 +377,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
 /** Where the page sat in the photo, as fractions (0.0–1.0) of its width and height. */
 data class GuideRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+// Most pictures to download for one pocket. Common names like "Pikachu"
+// have a couple of hundred prints; beyond this it'd be too slow.
+private const val MAX_PICTURES_TO_COMPARE = 250

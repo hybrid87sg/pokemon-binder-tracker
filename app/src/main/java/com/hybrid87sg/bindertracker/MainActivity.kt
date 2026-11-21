@@ -212,6 +212,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                             nav.popBackStack()
                         },
                         onRescan = { nav.navigate("rescan/$pageId") },
+                        onScanCard = { position -> nav.navigate("scancard/$pageId/$position") },
                     )
                 }
             }
@@ -229,6 +230,27 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         onBack = { nav.popBackStack() },
                         onCaptured = { photo, guide ->
                             vm.rescanPage(p, b, photo, guide)
+                            nav.popBackStack()
+                        },
+                    )
+                }
+            }
+        }
+        // Photograph one card for one pocket; then back to the page.
+        composable("scancard/{pageId}/{position}") { entry ->
+            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
+            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
+            page?.let { p ->
+                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                binder?.let { b ->
+                    ScanRoute(
+                        binder = b,
+                        singleCard = true,
+                        subtitle = "Pocket ${position + 1}",
+                        onBack = { nav.popBackStack() },
+                        onCaptured = { photo, guide ->
+                            vm.scanPocket(pageId, position, photo, guide)
                             nav.popBackStack()
                         },
                     )

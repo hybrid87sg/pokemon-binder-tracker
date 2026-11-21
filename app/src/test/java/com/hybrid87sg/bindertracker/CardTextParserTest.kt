@@ -101,7 +101,11 @@ class CardTextParserTest {
             "Updated 2 pockets with new cards (recognised 7 of 9).",
             ReadingSummary(9, 7, 2, 0, rescan = true).message(),
         )
-        assertTrue(ReadingSummary(9, 0, 0, 5, rescan = false).message().contains("number on 5 cards"))
+        assertTrue(ReadingSummary(9, 0, 0, 5, rescan = false).message().contains("recognise 5 cards"))
+        assertEquals(
+            "Recognised 8 of 9 cards (3 by picture). Tap the others to choose them.",
+            ReadingSummary(9, 8, 8, 0, rescan = false, byPicture = 3).message(),
+        )
         assertTrue(ReadingSummary(9, 6, 0, 0, rescan = true).message().contains("Nothing new"))
     }
 }

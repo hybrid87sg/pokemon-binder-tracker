@@ -16,10 +16,11 @@ import kotlinx.coroutines.withContext
  * Reads a saved page photo: cuts out the frame, asks ML Kit (Google's
  * on-phone text reader, works offline) for every line of text, then works out
  * which pocket each line is in and which card name and number it shows.
+ * It also takes a fingerprint of each pocket's picture (see PictureMatcher).
  */
 object PageReader {
 
-    suspend fun read(photoPath: String, guide: GuideRect, columns: Int, rows: Int): List<ReadCard> {
+    suspend fun read(photoPath: String, guide: GuideRect, columns: Int, rows: Int): List<ScannedPocket> {
         val page = withContext(Dispatchers.IO) { loadFrame(photoPath, guide) } ?: return emptyList()
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
@@ -31,9 +32,16 @@ object PageReader {
                 }
             }
             val perPocket = CardTextParser.splitIntoPockets(lines, page.width, page.height, columns, rows)
+            val pocketWidth = page.width / columns
             val pocketHeight = page.height / rows
             return perPocket.mapIndexed { position, pocketLines ->
-                CardTextParser.readPocket(position, pocketLines, pocketTop = (position / columns) * pocketHeight, pocketHeight = pocketHeight)
+                val read = CardTextParser.readPocket(position, pocketLines, pocketTop = (position / columns) * pocketHeight, pocketHeight = pocketHeight)
+                // The pocket's own bit of the photo, fingerprinted for matching by picture.
+                val picture = runCatching {
+                    val pocket = Bitmap.createBitmap(page, (position % columns) * pocketWidth, (position / columns) * pocketHeight, pocketWidth, pocketHeight)
+                    CardPictures.fingerprint(pocket)
+                }.getOrNull()
+                ScannedPocket(read, picture)
             }
         } finally {
             recognizer.close()
@@ -67,3 +75,6 @@ object PageReader {
         return Bitmap.createBitmap(photo, left, top, right - left, bottom - top)
     }
 }
+
+/** What was found in one pocket: the text read, and the picture's fingerprint (null if it failed). */
+data class ScannedPocket(val read: ReadCard, val picture: Long?)
