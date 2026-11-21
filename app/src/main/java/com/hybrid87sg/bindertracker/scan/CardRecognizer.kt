@@ -68,9 +68,19 @@ class CardRecognizer private constructor(private val context: Context) {
      */
     suspend fun guesses(card: Bitmap, count: Int = 5): List<EmbeddingIndex.Guess> = withContext(Dispatchers.Default) {
         val index = lock.withLock { loadIndex() } ?: return@withContext emptyList()
-        val numbers = lock.withLock { describe(card) } ?: return@withContext emptyList()
+        val numbers = lock.withLock { runModel(card) } ?: return@withContext emptyList()
         if (numbers.size != index.dim) return@withContext emptyList()
         index.nearest(numbers, count)
+    }
+
+    /**
+     * The 1024 numbers describing a picture, plus the list to compare them
+     * with, or null if the list isn't downloaded or the model failed.
+     */
+    suspend fun describe(card: Bitmap): Pair<EmbeddingIndex, FloatArray>? = withContext(Dispatchers.Default) {
+        val index = lock.withLock { loadIndex() } ?: return@withContext null
+        val numbers = lock.withLock { runModel(card) } ?: return@withContext null
+        if (numbers.size != index.dim) null else index to numbers
     }
 
     private fun loadIndex(): EmbeddingIndex? {
@@ -79,7 +89,7 @@ class CardRecognizer private constructor(private val context: Context) {
         return runCatching { file.inputStream().use { EmbeddingIndex.read(it) } }.getOrNull()?.also { index = it }
     }
 
-    private fun describe(card: Bitmap): FloatArray? = runCatching {
+    private fun runModel(card: Bitmap): FloatArray? = runCatching {
         val e = embedder ?: ImageEmbedder.createFromOptions(
             context,
             ImageEmbedder.ImageEmbedderOptions.builder()

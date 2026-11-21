@@ -1,6 +1,7 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -96,6 +97,8 @@ fun PageScreen(
     // A pocket whose menu should open by itself, then [onPocketOpened] is called.
     openPosition: Int? = null,
     onPocketOpened: () -> Unit = {},
+    // The bit of the photo the app looked at for each pocket, if scanned just now.
+    scanPictures: Map<Int, ImageBitmap> = emptyMap(),
 ) {
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -187,6 +190,17 @@ fun PageScreen(
                     pocket.cardName?.let { "Pocket ${pocket.position + 1}: $it" } ?: "Pocket ${pocket.position + 1}",
                     style = MaterialTheme.typography.titleLarge,
                 )
+                scanPictures[pocket.position]?.let { seen ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Image(seen, contentDescription = "What the camera saw", modifier = Modifier.height(96.dp).clip(RoundedCornerShape(6.dp)))
+                        Text(
+                            "What the camera saw. If this isn't just the card, scan again with the card filling the frame.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.Muted,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
                 suggestions[pocket.position]?.takeIf { it.isNotEmpty() }?.let { guesses ->
                     Text("Best guesses: tap the right card", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

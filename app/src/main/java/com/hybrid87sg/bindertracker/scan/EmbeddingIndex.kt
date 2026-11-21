@@ -29,6 +29,23 @@ class EmbeddingIndex(
     /** One guess: the card and how alike it looks, from about 0 (not alike) to 1 (identical). */
     data class Guess(val cardId: String, val score: Float)
 
+    private val rowOf: Map<String, Int> by lazy { ids.withIndex().associate { (i, id) -> id to i } }
+
+    /**
+     * How alike [query] looks to each of [cardIds] (a shortlist, e.g. every
+     * card with the name that was read), best first. Ids not in the file are left out.
+     */
+    fun rank(query: FloatArray, cardIds: Collection<String>): List<Guess> {
+        require(query.size == dim) { "Expected $dim numbers, got ${query.size}" }
+        val qLen = sqrt(query.fold(0f) { acc, v -> acc + v * v }).coerceAtLeast(1e-6f)
+        return cardIds.mapNotNull { id ->
+            val i = rowOf[id] ?: return@mapNotNull null
+            var dot = 0f
+            for (j in 0 until dim) dot += query[j] * values[i * dim + j]
+            Guess(id, dot / (qLen * lengths[i]))
+        }.sortedByDescending { it.score }
+    }
+
     /** The [count] cards that look most like [query] (the scan's 1024 numbers), best first. */
     fun nearest(query: FloatArray, count: Int = 5): List<Guess> {
         require(query.size == dim) { "Expected $dim numbers, got ${query.size}" }
@@ -89,6 +106,21 @@ object GuessPicker {
     // Below this the top guess is too unlike the scan to use on its own.
     // (Even unrelated pictures score around 0.6-0.7 with this model.)
     const val MIN_SCORE = 0.7f
+
+    /**
+     * Choosing among cards that all have the name that was read (so they
+     * mostly differ by set): use the best-looking one if it's the only
+     * one, or clearly ahead of the next.
+     */
+    fun chooseAmongSameName(ranked: List<EmbeddingIndex.Guess>): String? {
+        val top = ranked.firstOrNull() ?: return null
+        val next = ranked.getOrNull(1) ?: return top.cardId
+        return if (top.score - next.score >= SAME_NAME_LEAD) top.cardId else null
+    }
+
+    // Prints of one Pokémon can share artwork, so a smaller lead is enough
+    // here, but not none. A first guess, to be tuned on real scans.
+    const val SAME_NAME_LEAD = 0.03f
 
     /**
      * @param guesses best first, with each guess's card name and number.

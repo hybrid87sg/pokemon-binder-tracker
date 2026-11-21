@@ -1,6 +1,8 @@
 package com.hybrid87sg.bindertracker
 
 import android.net.Uri
+import kotlinx.coroutines.flow.map
+import androidx.compose.ui.graphics.asImageBitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -194,6 +196,8 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 val reading by vm.readingStatus.collectAsStateWithLifecycle()
                 val suggestions by remember(pageId) { vm.suggestions(pageId) }.collectAsStateWithLifecycle(initialValue = emptyMap())
                 val openPocket by vm.openPocket.collectAsStateWithLifecycle()
+                val scanPictures by remember(pageId) { vm.scanPictures(pageId).map { m -> m.mapValues { it.value.asImageBitmap() } } }
+                    .collectAsStateWithLifecycle(initialValue = emptyMap())
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
@@ -219,6 +223,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         onPickSuggestion = { position, cardId -> vm.setPocketCard(pageId, position, cardId) },
                         openPosition = openPocket?.takeIf { it.first == pageId }?.second,
                         onPocketOpened = vm::pocketOpened,
+                        scanPictures = scanPictures,
                     )
                 }
             }

@@ -263,6 +263,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _suggestions.value = _suggestions.value + (pageId to updated)
     }
 
+    /**
+     * The bit of the photo the app looked at for each pocket, so the
+     * pocket's menu can show "what the camera saw". Kept while the app is open.
+     */
+    private val _scanPictures = MutableStateFlow<Map<String, Map<Int, Bitmap>>>(emptyMap())
+
+    fun scanPictures(pageId: String): Flow<Map<Int, Bitmap>> = _scanPictures.map { it[pageId].orEmpty() }
+
+    private fun setScanPicture(pageId: String, position: Int, picture: Bitmap?) {
+        val page = _scanPictures.value[pageId].orEmpty()
+        _scanPictures.value = _scanPictures.value + (pageId to if (picture == null) page - position else page + (position to picture))
+    }
+
     /** A pocket whose menu should open by itself (after scanning one card it wasn't sure about). */
     private val _openPocket = MutableStateFlow<Pair<String, Int>?>(null)
     val openPocket: StateFlow<Pair<String, Int>?> = _openPocket.asStateFlow()
@@ -306,6 +319,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 var byPicture = 0
                 for ((card, picture) in read) {
                     if (card.looksEmpty && picture == null) continue
+                    setScanPicture(pageId, card.position, picture)
                     val found = recognise(card, picture)
                     // No text at all usually means an empty pocket, so a picture
                     // match there is only offered as a guess, never filled in.
@@ -343,7 +357,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun recognise(card: ReadCard, picture: Bitmap?): Recognition {
         card.number?.let { PocketMatcher.pick(card, db.cardDao().allWithNumber(it)) }?.let { return Recognition(it, false, emptyList()) }
         if (picture == null) return Recognition(null, false, emptyList())
-        val guesses = recognizer.guesses(picture, count = 5)
+        val (index, numbers) = recognizer.describe(picture) ?: return Recognition(null, false, emptyList())
+        // 2. The name was read: shortlist every card with that name (every
+        //    Charizard, say) and let the picture choose between just those.
+        val sameName = card.name?.let { PocketMatcher.sameName(it, db.cardDao().searchByName(it, limit = 400)) }.orEmpty()
+        if (sameName.isNotEmpty()) {
+            val byId = sameName.associateBy { it.id }
+            val ranked = index.rank(numbers, byId.keys)
+            if (ranked.isNotEmpty()) {
+                val chosen = GuessPicker.chooseAmongSameName(ranked)?.let(byId::get)
+                return Recognition(chosen, chosen != null, ranked.take(5).mapNotNull { byId[it.cardId] })
+            }
+        }
+        // 3. No name: compare with every card.
+        val guesses = index.nearest(numbers, count = 5)
             .mapNotNull { g -> db.cardDao().get(g.cardId)?.let { g to it } }
         val chosen = GuessPicker.choose(card, guesses.map { (g, c) -> g to (c.name to c.number) })
         return Recognition(guesses.firstOrNull { it.second.id == chosen }?.second, chosen != null, guesses.map { it.second })
@@ -365,6 +392,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 setReadingStatus(pageId, "Recognising the card for pocket ${position + 1}…")
                 val scanned = PageReader.read(photo.absolutePath, guide, columns = 1, rows = 1).firstOrNull()
                     ?: return@runCatching "Couldn't open the photo. Try scanning the card again."
+                setScanPicture(pageId, position, scanned.picture)
                 val found = recognise(scanned.read.copy(position = position), scanned.picture)
                 val match = found.card
                 when {

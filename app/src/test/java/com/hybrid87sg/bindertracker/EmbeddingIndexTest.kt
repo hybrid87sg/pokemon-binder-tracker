@@ -67,4 +67,17 @@ class EmbeddingIndexTest {
         val guesses = listOf(guess("a", 0.40f, "Charizard", "4"), guess("b", 0.20f, "Charmeleon", "24"))
         assertNull(GuessPicker.choose(read(null, null), guesses))
     }
+
+    @Test fun ranksOnlyTheShortlist() {
+        val index = EmbeddingIndex.read(ByteArrayInputStream(file()))
+        val ranked = index.rank(noisy(cards[8].second), listOf("set-3", "set-8", "set-40", "not-a-card"))
+        assertEquals(listOf("set-8"), ranked.take(1).map { it.cardId })
+        assertEquals(3, ranked.size)
+    }
+
+    @Test fun sameNameChoice() {
+        assertEquals("a", GuessPicker.chooseAmongSameName(listOf(EmbeddingIndex.Guess("a", 0.8f))))
+        assertEquals("a", GuessPicker.chooseAmongSameName(listOf(EmbeddingIndex.Guess("a", 0.85f), EmbeddingIndex.Guess("b", 0.80f))))
+        assertNull(GuessPicker.chooseAmongSameName(listOf(EmbeddingIndex.Guess("a", 0.81f), EmbeddingIndex.Guess("b", 0.80f))))
+    }
 }
