@@ -38,7 +38,10 @@ jobs:
       # It holds the app (named with its version) and latest.json, the small
       # file the app reads to find out whether a newer version exists.
       # Releases don't count toward the Actions storage quota.
+      # Only builds of main are published, so unfinished work on other
+      # branches never shows up on the phone as an "Update available".
       - name: Publish pre-release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
