@@ -30,7 +30,11 @@ import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
+import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.BinderTrackerTheme
+import com.hybrid87sg.bindertracker.ui.theme.DarkPalette
+import com.hybrid87sg.bindertracker.ui.theme.LightPalette
+import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,8 +62,9 @@ class ScreenshotTest {
         Binder(ownerId = "t", name = "Scarlet & Violet era", colorHex = SpineColor.Plum.hex, columns = 3, rows = 3),
     )
 
-    private fun shoot(name: String, content: @androidx.compose.runtime.Composable () -> Unit) {
-        compose.setContent { BinderTrackerTheme { content() } }
+    private fun shoot(name: String, dark: Boolean = false, content: @androidx.compose.runtime.Composable () -> Unit) {
+        AppColors.palette = if (dark) DarkPalette else LightPalette
+        compose.setContent { BinderTrackerTheme(dark = dark) { content() } }
         compose.waitForIdle()
         captureScreenRoboImage("build/outputs/roborazzi/$name.png")
     }
@@ -108,10 +113,29 @@ class ScreenshotTest {
             version = "0.1.7",
             updateMessage = "You have the latest version.",
             onCheckForUpdates = {},
+            themeMode = ThemeMode.System,
+            onThemeModeChange = {},
             onBack = {},
             onSignOut = {},
             backupMessage = "Backed up 2 binders with 5 pages.",
         )
+    }
+
+    @Test fun accountDark() = shoot("5b-account-dark", dark = true) {
+        AccountScreen(
+            user = AppUser("u", "Ash Ketchum", "ash@example.com", isLocalOnly = false),
+            version = "0.1.7",
+            updateMessage = null,
+            onCheckForUpdates = {},
+            themeMode = ThemeMode.Dark,
+            onThemeModeChange = {},
+            onBack = {},
+            onSignOut = {},
+        )
+    }
+
+    @Test fun shelfDark() = shoot("2c-shelf-dark", dark = true) {
+        ShelfScreen(binders = sample, onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
     }
 
     @Test fun shelfWithSearch() = shoot("2-shelf") {
