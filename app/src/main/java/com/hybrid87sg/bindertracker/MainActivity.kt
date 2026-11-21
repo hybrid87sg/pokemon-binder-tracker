@@ -211,6 +211,26 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                             vm.deletePage(p)
                             nav.popBackStack()
                         },
+                        onRescan = { nav.navigate("rescan/$pageId") },
+                    )
+                }
+            }
+        }
+        // Take a new photo of an existing page. Pockets update with any new
+        // cards the camera reads; then it goes back to the page.
+        composable("rescan/{pageId}") { entry ->
+            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
+            page?.let { p ->
+                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                binder?.let { b ->
+                    ScanRoute(
+                        binder = b,
+                        onBack = { nav.popBackStack() },
+                        onCaptured = { photo, guide ->
+                            vm.rescanPage(p, b, photo, guide)
+                            nav.popBackStack()
+                        },
                     )
                 }
             }

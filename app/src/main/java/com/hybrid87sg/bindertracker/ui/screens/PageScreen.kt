@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,7 +60,6 @@ import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
 import com.hybrid87sg.bindertracker.ui.components.CardImage
-import com.hybrid87sg.bindertracker.ui.components.PocketCrop
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.net.URLDecoder
@@ -87,6 +89,8 @@ fun PageScreen(
     onMarkEmpty: (position: Int) -> Unit,
     onClear: (position: Int) -> Unit,
     onDeletePage: () -> Unit,
+    // Take a new photo of this page; pockets update with any new cards read.
+    onRescan: () -> Unit = {},
 ) {
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -130,7 +134,6 @@ fun PageScreen(
                         row.forEach { pocket ->
                             PocketTile(
                                 pocket = pocket,
-                                crop = photo?.let { { m: Modifier -> PocketCrop(it, guide, columns, rows, pocket.position, m) } },
                                 onClick = { selected = pocket },
                                 modifier = Modifier.weight(1f),
                             )
@@ -148,7 +151,20 @@ fun PageScreen(
             )
         }
 
-        BottomBar { PrimaryButton(text = "Done", onClick = onBack) }
+        BottomBar {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = onRescan,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(painterResource(R.drawable.ic_camera), contentDescription = null, modifier = Modifier.size(20.dp), tint = AppColors.Ink)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rescan page", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+                }
+                PrimaryButton(text = "Done", onClick = onBack, modifier = Modifier.weight(1f))
+            }
+        }
     }
 
     selected?.let { pocket ->
@@ -198,7 +214,6 @@ private fun SheetButton(label: String, onClick: () -> Unit) {
 @Composable
 private fun PocketTile(
     pocket: PocketWithCard,
-    crop: (@Composable (Modifier) -> Unit)?,
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
@@ -227,8 +242,9 @@ private fun PocketTile(
             ) {
                 when {
                     pocket.isEmpty -> Text("Empty", fontSize = 13.sp, color = AppColors.Muted, textAlign = TextAlign.Center)
-                    crop != null -> crop(Modifier.fillMaxSize())
-                    else -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = null, modifier = Modifier.fillMaxSize())
+                    // Identified: the official card picture from TCGdex, not the photo.
+                    pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
+                    else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
                 }
             }
             Text(
