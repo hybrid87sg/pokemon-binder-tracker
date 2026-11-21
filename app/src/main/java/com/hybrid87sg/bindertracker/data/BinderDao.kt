@@ -3,7 +3,9 @@ package com.hybrid87sg.bindertracker.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -27,4 +29,35 @@ interface BinderDao {
 
     @Delete
     suspend fun delete(binder: Binder)
+
+    // ---- Backups ----
+
+    @Query("SELECT * FROM binders WHERE ownerId = :ownerId ORDER BY createdAt")
+    suspend fun bindersOf(ownerId: String): List<Binder>
+
+    @Query("SELECT * FROM pockets WHERE pageId = :pageId ORDER BY position")
+    suspend fun pocketsOf(pageId: String): List<Pocket>
+
+    @Query("SELECT COUNT(*) FROM binders WHERE id = :id")
+    suspend fun binderCount(id: String): Int
+
+    @Insert
+    suspend fun insertPageForBackup(page: Page)
+
+    // REPLACE because the backup lists every pocket, including ones we may
+    // already have created as blank.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPocketsForBackup(pockets: List<Pocket>)
+
+    /**
+     * Puts one binder from a backup back on the shelf, with all its pages
+     * and pockets. "@Transaction" means it all goes in together, or not at
+     * all if something fails halfway.
+     */
+    @Transaction
+    suspend fun restoreBinder(binder: Binder, pages: List<Page>, pockets: List<Pocket>) {
+        insert(binder)
+        pages.forEach { insertPageForBackup(it) }
+        insertPocketsForBackup(pockets)
+    }
 }

@@ -2,9 +2,12 @@ package com.hybrid87sg.bindertracker
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hybrid87sg.bindertracker.auth.AuthManager
+import com.hybrid87sg.bindertracker.backup.BackupFile
+import com.hybrid87sg.bindertracker.backup.BinderBackup
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderSize
@@ -283,6 +286,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun clearPocket(pageId: String, position: Int) {
         viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position)) }
     }
+
+    // ---- Backups ----
+
+    private val backup = BinderBackup(binderDao, pageDao, File(app.filesDir, "pages"))
+
+    /** True while a backup is being saved or restored. */
+    private val _backupBusy = MutableStateFlow(false)
+    val backupBusy: StateFlow<Boolean> = _backupBusy.asStateFlow()
+
+    /** The result of the last backup or restore, shown on the Account screen. */
+    private val _backupMessage = MutableStateFlow<String?>(null)
+    val backupMessage: StateFlow<String?> = _backupMessage.asStateFlow()
+
+    /** Saves every binder into the file the person picked in Android's "Save to" screen. */
+    fun backUpTo(uri: Uri) {
+        val owner = user.value ?: return
+        if (_backupBusy.value) return
+        viewModelScope.launch {
+            _backupBusy.value = true
+            _backupMessage.value = "Saving your backup…"
+            _backupMessage.value = runCatching {
+                val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: error("Couldn't open the file")
+                val result = out.use { backup.write(owner.uid, it) }
+                "Backed up ${plural(result.binders, "binder")} with ${plural(result.pages, "page")}."
+            }.getOrElse { "Couldn't save the backup. Try again, or pick a different place to save it." }
+            _backupBusy.value = false
+        }
+    }
+
+    /** Adds the binders from a backup file the person picked in Android's "Open" screen. */
+    fun restoreFrom(uri: Uri) {
+        val owner = user.value ?: return
+        if (_backupBusy.value) return
+        viewModelScope.launch {
+            _backupBusy.value = true
+            _backupMessage.value = "Restoring your backup…"
+            _backupMessage.value = runCatching {
+                val input = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?: error("Couldn't open the file")
+                val result = input.use { backup.restore(owner.uid, it) }
+                when {
+                    result.binders == 0 && result.skipped > 0 -> "Everything in this backup is already on your shelf."
+                    result.binders == 0 -> "This backup has no binders in it."
+                    else -> "Restored ${plural(result.binders, "binder")} with ${plural(result.pages, "page")}." +
+                        if (result.skipped > 0) " ${plural(result.skipped, "binder")} already on your shelf ${if (result.skipped == 1) "was" else "were"} left as ${if (result.skipped == 1) "it was" else "they were"}." else ""
+                }
+            }.getOrElse { e ->
+                (e as? BackupFile.NotABackup)?.message ?: "Couldn't restore the backup. Try again."
+            }
+            _backupBusy.value = false
+        }
+    }
+
+    private fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
 
     fun deletePage(page: Page) {
         viewModelScope.launch {
