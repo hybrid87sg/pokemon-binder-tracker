@@ -12,8 +12,17 @@ Each person signs in with Google and gets their own shelf of binders.
 - Binders are saved on the phone in a Room (SQLite) database
 - **Permissions screen** before first use: Camera (for scanning) and Install apps (for updates)
 - **Self-updating**: each time the app opens it checks for a newer version and offers "Update now"
+- **Card index and search**: the magnifying-glass button on the shelf opens the card index.
+  Tap **Download card list** once to save every Pokémon card from [TCGdex](https://tcgdex.dev)
+  on the phone (Pokémon TCG Pocket cards are left out). Then search by name (`pikachu`),
+  name plus set (`charizard base`) or the number printed on the card (`049/202`). Searching
+  works offline; card pictures load from the internet. **Update list** fetches new sets.
 
-Coming next, in order: card index and search (TCGdex), then camera page scanning.
+- **Scan a page**: in a binder, the camera shows a pocket grid the size of the binder.
+  Take one photo and the phone reads each card's name and number (ML Kit, offline),
+  matches it against the card index, and shows a **Check the scan** screen to fix or
+  empty pockets before saving. Saved pages appear in the binder. Without a downloaded
+  card index, pockets keep the name read from the photo.
 See the plan and checklist artifacts linked in the handoff notes.
 
 ## Project layout
@@ -23,11 +32,13 @@ app/src/main/java/com/hybrid87sg/bindertracker/
   MainActivity.kt      app start-up and the list of screens (navigation)
   AppViewModel.kt      holds the data; screens ask it to do things
   auth/AuthManager.kt  Google + Firebase sign-in
-  data/                Binder table, database and queries (Room)
+  data/                Binder, page and pocket tables, database and queries (Room)
+  scan/                camera page scanning: reading card text, matching, saving
+  cards/               card index: TCGdex download, its own database (card-index.db) and search
   ui/screens/          one file per screen
   ui/components/       shared pieces: spine, shelf plank, buttons
   ui/theme/            colours and text styles
-app/src/test/          screenshot tests (draw each screen to a PNG)
+app/src/test/          screenshot tests (draw each screen to a PNG) and search tests
 keystore/              the fixed debug signing key (see below)
 ```
 

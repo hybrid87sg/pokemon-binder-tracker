@@ -105,6 +105,10 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    // Coil: shows card pictures downloaded from the internet.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network)
+
     // Firebase sign-in with a Google account.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

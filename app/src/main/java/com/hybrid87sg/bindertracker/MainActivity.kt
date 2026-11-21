@@ -21,6 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.scan.ScanViewModel
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.CardSearchScreen
 import com.hybrid87sg.bindertracker.ui.screens.ScanScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
@@ -102,6 +103,26 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
                 onAddBinder = { nav.navigate("new") },
                 onOpenAccount = { nav.navigate("account") },
+                onOpenCards = { nav.navigate("cards") },
+            )
+        }
+        composable("cards") {
+            val cardCount by vm.cardCount.collectAsStateWithLifecycle()
+            val updatedAt by vm.cardsUpdatedAt.collectAsStateWithLifecycle()
+            val progress by vm.cardDownloadProgress.collectAsStateWithLifecycle()
+            val error by vm.cardDownloadError.collectAsStateWithLifecycle()
+            val query by vm.cardQuery.collectAsStateWithLifecycle()
+            val results by vm.cardResults.collectAsStateWithLifecycle()
+            CardSearchScreen(
+                cardCount = cardCount,
+                updatedAt = updatedAt,
+                downloadProgress = progress,
+                downloadError = error,
+                query = query,
+                results = results,
+                onQueryChange = vm::setCardQuery,
+                onDownload = vm::downloadCards,
+                onBack = { nav.popBackStack() },
             )
         }
         composable("new") {

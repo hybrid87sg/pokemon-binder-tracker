@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ fun ShelfScreen(
     onOpenBinder: (Binder) -> Unit,
     onAddBinder: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenCards: () -> Unit = {},
 ) {
     // All binders, then the "Add binder" slot, cut into rows of 4.
     val items: List<ShelfItem> = binders.map { ShelfItem.BinderItem(it) } + ShelfItem.AddItem
@@ -80,17 +82,9 @@ fun ShelfScreen(
                     color = AppColors.Muted,
                 )
             }
-            Surface(
-                onClick = onOpenAccount,
-                shape = CircleShape,
-                color = AppColors.Accent,
-                contentColor = AppColors.White,
-                modifier = Modifier.size(48.dp).semantics { contentDescription = "Account" },
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_person), contentDescription = null, modifier = Modifier.size(22.dp))
-                }
-            }
+            HeaderButton(R.drawable.ic_search, "Search cards", onOpenCards)
+            Spacer(Modifier.width(10.dp))
+            HeaderButton(R.drawable.ic_person, "Account", onOpenAccount)
         }
 
         // LazyColumn only builds the rows that are on screen, so a shelf
@@ -117,6 +111,22 @@ fun ShelfScreen(
                     ShelfPlank()
                 }
             }
+        }
+    }
+}
+
+/** A round blue button in the header, like "Account". */
+@Composable
+private fun HeaderButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = AppColors.Accent,
+        contentColor = AppColors.White,
+        modifier = Modifier.size(48.dp).semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(22.dp))
         }
     }
 }

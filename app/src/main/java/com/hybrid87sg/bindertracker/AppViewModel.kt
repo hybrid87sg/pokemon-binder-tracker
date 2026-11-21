@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hybrid87sg.bindertracker.auth.AuthManager
+import com.hybrid87sg.bindertracker.cards.Card
+import com.hybrid87sg.bindertracker.cards.CardIndex
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderSize
@@ -13,6 +15,11 @@ import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.update.Updater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -115,6 +122,62 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         postponedVersionCode = _update.value?.versionCode
         _update.value = null
         _updateError.value = null
+    }
+
+    // ---- Card index and search ----
+
+    /** Every Pokémon card, stored on the phone. Shared with the camera scanner. */
+    val cardIndex = CardIndex.get(app)
+
+    /** How many cards are on the phone (0 = not downloaded yet). */
+    val cardCount: StateFlow<Int> = cardIndex.cardCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** When the card list was last downloaded, or null if never. */
+    private val _cardsUpdatedAt = MutableStateFlow(cardIndex.lastUpdated)
+    val cardsUpdatedAt: StateFlow<Long?> = _cardsUpdatedAt.asStateFlow()
+
+    /** Download progress 0.0–1.0 while the card list downloads, otherwise null. */
+    private val _cardDownloadProgress = MutableStateFlow<Float?>(null)
+    val cardDownloadProgress: StateFlow<Float?> = _cardDownloadProgress.asStateFlow()
+
+    private val _cardDownloadError = MutableStateFlow<String?>(null)
+    val cardDownloadError: StateFlow<String?> = _cardDownloadError.asStateFlow()
+
+    /** What's typed in the search box. */
+    private val _cardQuery = MutableStateFlow("")
+    val cardQuery: StateFlow<String> = _cardQuery.asStateFlow()
+
+    /**
+     * Search results. "debounce" waits until typing pauses for a moment, so
+     * we search once per word instead of once per letter. Results also
+     * refresh when the card list changes (e.g. right after downloading).
+     */
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    val cardResults: StateFlow<List<Card>> = combine(_cardQuery.debounce(250), cardIndex.cardCount) { q, _ -> q }
+        .mapLatest { q -> if (q.isBlank()) emptyList() else cardIndex.search(q) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setCardQuery(text: String) {
+        _cardQuery.value = text
+    }
+
+    /** Downloads (or refreshes) the card list from TCGdex. */
+    fun downloadCards() {
+        if (_cardDownloadProgress.value != null) return // already downloading
+        viewModelScope.launch {
+            _cardDownloadError.value = null
+            _cardDownloadProgress.value = 0f
+            try {
+                cardIndex.download { _cardDownloadProgress.value = it }
+                _cardsUpdatedAt.value = cardIndex.lastUpdated
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _cardDownloadError.value = "Couldn't download the card list. Check your internet connection and try again."
+            } finally {
+                _cardDownloadProgress.value = null
+            }
+        }
     }
 
     fun binder(id: String): Flow<Binder?> = binderDao.observeBinder(id)
