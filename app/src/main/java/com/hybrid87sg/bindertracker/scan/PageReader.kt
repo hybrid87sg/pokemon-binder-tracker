@@ -20,9 +20,9 @@ import kotlinx.coroutines.withContext
  */
 object PageReader {
 
-    // Height of the pocket pictures kept for recognising (the AI model
-    // looks at 224 x 224, so more detail than this isn't needed).
-    private const val PICTURE_HEIGHT = 336
+    // Height of the pocket pictures kept for recognising. Detail matching
+    // needs the artwork's small details, so this keeps a fair amount.
+    private const val PICTURE_HEIGHT = 800
 
     suspend fun read(photoPath: String, guide: GuideRect, columns: Int, rows: Int): List<ScannedPocket> {
         val page = withContext(Dispatchers.IO) { loadFrame(photoPath, guide) } ?: return emptyList()

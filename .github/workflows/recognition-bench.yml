@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q libegl1 libgles2
-          pip install mediapipe==1.2.3 opencv-python-headless==5.1.0 numpy pillow requests
+          pip install mediapipe==1.2.3 opencv-python-headless==4.14.0.94 numpy pillow requests
 
       - name: Score recognition
         run: python scripts/recognition_bench.py --model app/src/main/assets/card_embedder.tflite --summary "$GITHUB_STEP_SUMMARY"

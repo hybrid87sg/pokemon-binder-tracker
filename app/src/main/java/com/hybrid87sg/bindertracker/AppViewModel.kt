@@ -17,6 +17,7 @@ import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.SeriesOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
+import com.hybrid87sg.bindertracker.scan.DetailMatcher
 import com.hybrid87sg.bindertracker.scan.GuessPicker
 import com.hybrid87sg.bindertracker.scan.PageReader
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
@@ -360,23 +361,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun recognise(card: ReadCard, picture: Bitmap?): Recognition {
         card.number?.let { PocketMatcher.pick(card, db.cardDao().allWithNumber(it)) }?.let { return Recognition(it, false, emptyList()) }
         if (picture == null) return Recognition(null, false, emptyList())
-        val (index, numbers) = recognizer.describe(picture) ?: return Recognition(null, false, emptyList())
-        // 2. The name was read: shortlist every card with that name (every
-        //    Charizard, say) and let the picture choose between just those.
+        // Find the card's corners and flatten it, so it lines up with official pictures.
+        val flat = DetailMatcher.straighten(picture) ?: picture
+        val (index, numbers) = recognizer.describe(flat) ?: return Recognition(null, false, emptyList())
+        // 2. Shortlist about 20 look-alikes with the AI picture model: among
+        //    cards with the name that was read if there is one, else all cards.
         val sameName = card.name?.let { PocketMatcher.sameName(it, db.cardDao().searchByName(it, limit = 400)) }.orEmpty()
-        if (sameName.isNotEmpty()) {
-            val byId = sameName.associateBy { it.id }
-            val ranked = index.rank(numbers, byId.keys)
-            if (ranked.isNotEmpty()) {
-                val chosen = GuessPicker.chooseAmongSameName(ranked)?.let(byId::get)
-                return Recognition(chosen, chosen != null, ranked.take(5).mapNotNull { byId[it.cardId] })
-            }
+        val ranked = if (sameName.isNotEmpty()) index.rank(numbers, sameName.map { it.id }) else emptyList()
+        val shortlist = (ranked.ifEmpty { index.nearest(numbers, count = SHORTLIST) }).take(SHORTLIST)
+            .mapNotNull { g -> db.cardDao().get(g.cardId) }
+        // 3. Detail matching picks the exact card from the shortlist.
+        val byDetails = DetailMatcher.pickByDetails(flat, shortlist.mapNotNull { c -> c.imageUrl?.let { c.id to it } })
+        if (byDetails.isNotEmpty() && byDetails.first().matches > 0) {
+            val byId = shortlist.associateBy { it.id }
+            val chosen = DetailMatcher.confident(byDetails)?.let(byId::get)
+            return Recognition(chosen, chosen != null, byDetails.take(5).mapNotNull { byId[it.cardId] })
         }
-        // 3. No name: compare with every card.
-        val guesses = index.nearest(numbers, count = 5)
-            .mapNotNull { g -> db.cardDao().get(g.cardId)?.let { g to it } }
-        val chosen = GuessPicker.choose(card, guesses.map { (g, c) -> g to (c.name to c.number) })
-        return Recognition(guesses.firstOrNull { it.second.id == chosen }?.second, chosen != null, guesses.map { it.second })
+        // Detail matching couldn't run (no internet?): fall back to the picture model alone.
+        if (ranked.isNotEmpty()) {
+            val chosen = GuessPicker.chooseAmongSameName(ranked)?.let { id -> shortlist.firstOrNull { it.id == id } }
+            return Recognition(chosen, chosen != null, shortlist.take(5))
+        }
+        val guesses = shortlist.take(5)
+        val scored = index.rank(numbers, guesses.map { it.id }).mapNotNull { g -> guesses.firstOrNull { it.id == g.cardId }?.let { g to it } }
+        val chosen = GuessPicker.choose(card, scored.map { (g, c) -> g to (c.name to c.number) })
+        return Recognition(guesses.firstOrNull { it.id == chosen }, chosen != null, guesses)
     }
 
     /**
@@ -453,3 +462,5 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 /** Where the page sat in the photo, as fractions (0.0–1.0) of its width and height. */
 data class GuideRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
+// How many look-alikes the picture model hands to detail matching.
+private const val SHORTLIST = 20
