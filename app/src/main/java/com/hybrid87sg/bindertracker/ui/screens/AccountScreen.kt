@@ -1,6 +1,11 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +43,7 @@ import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
+import java.time.LocalDate
 
 @Composable
 fun AccountScreen(
@@ -47,11 +53,26 @@ fun AccountScreen(
     onCheckForUpdates: () -> Unit,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
+    backupMessage: String? = null,
+    backupBusy: Boolean = false,
+    onBackUp: (Uri) -> Unit = {},
+    onRestore: (Uri) -> Unit = {},
 ) {
+    // Android's own "Save to" and "Open" screens. The person picks where the
+    // file goes (Google Drive, Downloads, ...); we get back a link to it.
+    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) onBackUp(uri)
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onRestore(uri)
+    }
+
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Shelf", onBack) }
 
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("Account", style = MaterialTheme.typography.headlineMedium)
 
             Row(
@@ -95,6 +116,43 @@ fun AccountScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
             ) {
                 Text(if (user.isLocalOnly) "Go to sign-in" else "Sign out", style = MaterialTheme.typography.labelLarge)
+            }
+
+            HorizontalDivider(color = AppColors.Border)
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Backups", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Save all your binders, pages and photos into one file. Keep it in Google Drive or your Downloads folder, and restore it if you change or reset your phone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.Muted,
+                )
+                OutlinedButton(
+                    onClick = { saveBackup.launch("binder-backup-${LocalDate.now()}.zip") },
+                    enabled = !backupBusy,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(2.dp, AppColors.Ink),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
+                ) { Text("Back up binders", style = MaterialTheme.typography.labelLarge) }
+                OutlinedButton(
+                    // Some file apps don't label zip files properly, so allow any file;
+                    // the app checks it really is a backup before using it.
+                    onClick = { openBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    enabled = !backupBusy,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(2.dp, AppColors.Ink),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
+                ) { Text("Restore from a backup", style = MaterialTheme.typography.labelLarge) }
+                if (backupMessage != null) {
+                    Text(
+                        backupMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppColors.Muted,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
             }
 
             HorizontalDivider(color = AppColors.Border)

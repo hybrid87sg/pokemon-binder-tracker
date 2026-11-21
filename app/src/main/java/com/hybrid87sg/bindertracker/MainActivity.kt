@@ -250,6 +250,8 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
 
         composable("account") {
             val updateMessage by vm.updateCheckMessage.collectAsStateWithLifecycle()
+            val backupMessage by vm.backupMessage.collectAsStateWithLifecycle()
+            val backupBusy by vm.backupBusy.collectAsStateWithLifecycle()
             AccountScreen(
                 user = current,
                 version = vm.currentVersion,
@@ -257,6 +259,10 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 onCheckForUpdates = { vm.checkForUpdate(manual = true) },
                 onBack = { nav.popBackStack() },
                 onSignOut = vm::signOut,
+                backupMessage = backupMessage,
+                backupBusy = backupBusy,
+                onBackUp = vm::backUpTo,
+                onRestore = vm::restoreFrom,
             )
         }
     }

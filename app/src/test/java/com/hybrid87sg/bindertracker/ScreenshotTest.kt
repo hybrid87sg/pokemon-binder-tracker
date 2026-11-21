@@ -90,6 +90,7 @@ class ScreenshotTest {
             onCheckForUpdates = {},
             onBack = {},
             onSignOut = {},
+            backupMessage = "Backed up 2 binders with 5 pages.",
         )
     }
 
