@@ -97,7 +97,7 @@ fun SignInScreen(
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(14.dp),
             border = BorderStroke(2.dp, if (firebaseReady) AppColors.Ink else AppColors.Border),
-            colors = ButtonDefaults.outlinedButtonColors(containerColor = AppColors.White, contentColor = AppColors.Ink),
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = AppColors.Surface, contentColor = AppColors.Ink),
         ) {
             if (signingIn) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = AppColors.Ink)

@@ -40,10 +40,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
+import com.hybrid87sg.bindertracker.ui.theme.LightPalette
 
 /** Turns "#8C2F2F" into a colour Compose can draw. */
 fun colorFromHex(hex: String): Color =
-    runCatching { Color(hex.toColorInt()) }.getOrDefault(AppColors.Ink)
+    runCatching { Color(hex.toColorInt()) }.getOrDefault(LightPalette.ink)
 
 /**
  * Turns text sideways so it reads bottom-to-top, like the name on a real
@@ -91,13 +92,14 @@ fun SpineArt(
                 .fillMaxWidth()
                 .padding(start = 9.dp, end = 9.dp, top = 14.dp, bottom = 8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(AppColors.Paper),
+                // The paper label stays pale in dark mode too, like a real binder.
+                .background(LightPalette.paper),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = name,
                 modifier = Modifier.verticalText(),
-                color = AppColors.Ink,
+                color = LightPalette.ink,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,

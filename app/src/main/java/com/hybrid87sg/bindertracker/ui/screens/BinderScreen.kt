@@ -133,7 +133,7 @@ fun BinderScreen(
                 Surface(
                     onClick = { onOpenPage(page) },
                     shape = RoundedCornerShape(12.dp),
-                    color = AppColors.White,
+                    color = AppColors.Surface,
                     border = BorderStroke(1.dp, AppColors.Border),
                     modifier = Modifier.fillMaxWidth(),
                 ) {

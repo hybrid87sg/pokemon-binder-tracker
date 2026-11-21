@@ -44,6 +44,12 @@ import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.time.LocalDate
+import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.Surface
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 
 @Composable
 fun AccountScreen(
@@ -51,6 +57,8 @@ fun AccountScreen(
     version: String,
     updateMessage: String?,
     onCheckForUpdates: () -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
     backupMessage: String? = null,
@@ -71,14 +79,14 @@ fun AccountScreen(
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Shelf", onBack) }
 
         Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+            Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("Account", style = MaterialTheme.typography.headlineMedium)
 
             Row(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(AppColors.White)
+                    .background(AppColors.Surface)
                     .border(1.dp, AppColors.Border, RoundedCornerShape(14.dp))
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -116,6 +124,19 @@ fun AccountScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
             ) {
                 Text(if (user.isLocalOnly) "Go to sign-in" else "Sign out", style = MaterialTheme.typography.labelLarge)
+            }
+
+            HorizontalDivider(color = AppColors.Border)
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                ThemePicker(selected = themeMode, onSelect = onThemeModeChange)
+                Text(
+                    if (themeMode == ThemeMode.System) "Light or dark, matching your phone's own setting."
+                    else "Always ${themeMode.label.lowercase()}, whatever your phone is set to.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.Muted,
+                )
             }
 
             HorizontalDivider(color = AppColors.Border)
@@ -175,6 +196,35 @@ fun AccountScreen(
                     color = AppColors.Muted,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Three buttons side by side (Follow phone, Light, Dark). The picked one is
+ * filled in; tapping another switches the whole app at once.
+ */
+@Composable
+private fun ThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ThemeMode.entries.forEach { mode ->
+            val isSelected = mode == selected
+            Surface(
+                selected = isSelected,
+                onClick = { onSelect(mode) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected) AppColors.Ink else AppColors.Surface,
+                contentColor = if (isSelected) AppColors.Paper else AppColors.Ink,
+                border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) AppColors.Ink else AppColors.Border),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { role = Role.RadioButton },
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp)) {
+                    Text(mode.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                }
             }
         }
     }

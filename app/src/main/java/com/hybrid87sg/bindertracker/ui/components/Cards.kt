@@ -54,9 +54,9 @@ private fun BlankCard() {
     }
 }
 
-private val CardPlaceholder = androidx.compose.ui.graphics.Color(0xFFE4E0D4)
-private val CardPlaceholderBorder = androidx.compose.ui.graphics.Color(0xFFCFCABD)
-private val CardArtPlaceholder = androidx.compose.ui.graphics.Color(0xFFD4CFC0)
+private val CardPlaceholder get() = androidx.compose.ui.graphics.Color(if (AppColors.isDark) 0xFF34332F else 0xFFE4E0D4)
+private val CardPlaceholderBorder get() = androidx.compose.ui.graphics.Color(if (AppColors.isDark) 0xFF4A4843 else 0xFFCFCABD)
+private val CardArtPlaceholder get() = androidx.compose.ui.graphics.Color(if (AppColors.isDark) 0xFF3E3C38 else 0xFFD4CFC0)
 
 /** 0.26 + "USD" -> "US$0.26"; 0.14 + "EUR" -> "€0.14". */
 fun formatMoney(amount: Double, currencyCode: String): String {

@@ -165,7 +165,7 @@ private fun PermissionRow(
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(AppColors.White)
+            .background(AppColors.Surface)
             .border(1.dp, AppColors.Border, RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),

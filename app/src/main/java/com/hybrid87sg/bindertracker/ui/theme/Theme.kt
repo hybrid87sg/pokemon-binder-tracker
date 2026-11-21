@@ -1,46 +1,130 @@
 package com.hybrid87sg.bindertracker.ui.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
-/** The prototype's colours, named by what they are used for. */
+/** One full set of the app's colours. There is a light set and a dark set. */
+class Palette(
+    val paper: Color,           // main background
+    val shelfBackground: Color,
+    val surface: Color,         // cards, rows and boxes that sit on the background
+    val ink: Color,             // main text
+    val muted: Color,           // secondary text
+    val border: Color,
+    val borderStrong: Color,
+    val dashedBorder: Color,
+    val accent: Color,          // blue buttons
+    val wood: Color,            // shelf plank
+    val woodDark: Color,
+    val disabled: Color,
+    val onDisabled: Color,
+    val danger: Color,
+    val success: Color,
+)
+
+val LightPalette = Palette(
+    paper = Color(0xFFF6F4EF),
+    shelfBackground = Color(0xFFEDE8DD),
+    surface = Color(0xFFFFFFFF),
+    ink = Color(0xFF1A1A18),
+    muted = Color(0xFF5C5A55),
+    border = Color(0xFFD9D5CB),
+    borderStrong = Color(0xFFA29E94),
+    dashedBorder = Color(0xFF8A867B),
+    accent = Color(0xFF2447C8),
+    wood = Color(0xFFA67C52),
+    woodDark = Color(0xFF8A6743),
+    disabled = Color(0xFFD9D5CB),
+    onDisabled = Color(0xFF3E3C38),
+    danger = Color(0xFF9B2C2C),
+    success = Color(0xFF2F6B3A),
+)
+
+/** Warm charcoal rather than pure black, so it still feels like the paper look. */
+val DarkPalette = Palette(
+    paper = Color(0xFF161614),
+    shelfBackground = Color(0xFF1E1D1A),
+    surface = Color(0xFF262522),
+    ink = Color(0xFFEDEBE6),
+    muted = Color(0xFFA8A49A),
+    border = Color(0xFF3A3934),
+    borderStrong = Color(0xFF5C5A55),
+    dashedBorder = Color(0xFF7A766C),
+    accent = Color(0xFF4A6CF0),   // a little brighter, so it stands out on dark
+    wood = Color(0xFF7A5A3B),
+    woodDark = Color(0xFF5E452D),
+    disabled = Color(0xFF3A3934),
+    onDisabled = Color(0xFFA8A49A),
+    danger = Color(0xFFE58A8A),
+    success = Color(0xFF3F8A4C),
+)
+
+/**
+ * The colours every screen uses, e.g. `AppColors.Paper`.
+ *
+ * Each name looks up the colour in whichever set (light or dark) is showing
+ * right now. [palette] is "state": when it changes, Compose redraws every
+ * part of the screen that used a colour, so switching modes is instant and
+ * no screen needs to know which mode is on.
+ */
 object AppColors {
-    val Paper = Color(0xFFF6F4EF)       // main background
-    val ShelfBackground = Color(0xFFEDE8DD)
-    val Ink = Color(0xFF1A1A18)         // main text
-    val Muted = Color(0xFF5C5A55)       // secondary text
-    val Border = Color(0xFFD9D5CB)
-    val BorderStrong = Color(0xFFA29E94)
-    val DashedBorder = Color(0xFF8A867B)
-    val Accent = Color(0xFF2447C8)      // blue buttons
-    val Wood = Color(0xFFA67C52)        // shelf plank
-    val WoodDark = Color(0xFF8A6743)
-    val Disabled = Color(0xFFD9D5CB)
-    val OnDisabled = Color(0xFF3E3C38)
+    var palette by mutableStateOf(LightPalette)
+    val isDark: Boolean get() = palette === DarkPalette
+
+    val Paper get() = palette.paper
+    val ShelfBackground get() = palette.shelfBackground
+    val Surface get() = palette.surface
+    val Ink get() = palette.ink
+    val Muted get() = palette.muted
+    val Border get() = palette.border
+    val BorderStrong get() = palette.borderStrong
+    val DashedBorder get() = palette.dashedBorder
+    val Accent get() = palette.accent
+    val Wood get() = palette.wood
+    val WoodDark get() = palette.woodDark
+    val Disabled get() = palette.disabled
+    val OnDisabled get() = palette.onDisabled
+    val Danger get() = palette.danger
+    val Success get() = palette.success
+
+    /** Always white, in both modes: for text and icons on blue buttons and coloured spines. */
     val White = Color(0xFFFFFFFF)
-    val Danger = Color(0xFF9B2C2C)
-    val Success = Color(0xFF2F6B3A)
 }
 
-private val colorScheme = lightColorScheme(
-    primary = AppColors.Accent,
-    onPrimary = AppColors.White,
-    background = AppColors.Paper,
-    onBackground = AppColors.Ink,
-    surface = AppColors.White,
-    onSurface = AppColors.Ink,
-    onSurfaceVariant = AppColors.Muted,
-    outline = AppColors.BorderStrong,
-    outlineVariant = AppColors.Border,
-    error = AppColors.Danger,
-)
+/** Material's own components (dialogs, text fields) take their colours from here. */
+private fun materialColors(p: Palette, dark: Boolean): ColorScheme {
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = p.accent,
+        onPrimary = AppColors.White,
+        background = p.paper,
+        onBackground = p.ink,
+        surface = p.surface,
+        onSurface = p.ink,
+        surfaceVariant = p.surface,
+        onSurfaceVariant = p.muted,
+        surfaceContainer = p.surface,
+        surfaceContainerHigh = p.surface,
+        surfaceContainerHighest = p.surface,
+        surfaceContainerLow = p.surface,
+        outline = p.borderStrong,
+        outlineVariant = p.border,
+        error = p.danger,
+    )
+}
 
 private val headline = TextStyle(fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em)
 
@@ -55,7 +139,16 @@ private val typography = Typography(
     labelLarge = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
 )
 
+/**
+ * Wraps the whole app. [dark] says which colours to show; MainActivity works
+ * it out from the setting on the Account screen (and the phone's own setting
+ * when that is "Follow phone").
+ */
 @Composable
-fun BinderTrackerTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colorScheme, typography = typography, content = content)
+fun BinderTrackerTheme(dark: Boolean, content: @Composable () -> Unit) {
+    val palette = if (dark) DarkPalette else LightPalette
+    // Swap the colour set after this frame is drawn. MainActivity also sets it
+    // once before the first frame, so the app never flashes the wrong colours.
+    SideEffect { AppColors.palette = palette }
+    MaterialTheme(colorScheme = materialColors(palette, dark), typography = typography, content = content)
 }

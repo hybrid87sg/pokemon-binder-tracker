@@ -59,6 +59,7 @@ import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
 import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
+import com.hybrid87sg.bindertracker.ui.theme.LightPalette
 import java.net.URLDecoder
 
 private val CheckBorder = Color(0xFFB7791F)
@@ -140,7 +141,7 @@ fun PageScreen(
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.White)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Surface)
                     .border(1.dp, AppColors.Border, RoundedCornerShape(16.dp)).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -244,7 +245,7 @@ private fun SheetButton(label: String, color: Color = AppColors.Ink, onClick: ()
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = AppColors.White,
+        color = AppColors.Surface,
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -294,7 +295,7 @@ private fun PocketTile(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (pocket.cardId == null && !pocket.isEmpty) AppColors.Ink else AppColors.Ink,
+                color = if (pocket.cardId == null && !pocket.isEmpty) LightPalette.ink else AppColors.Ink,
                 modifier = if (pocket.cardId == null && !pocket.isEmpty) {
                     Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 6.dp, vertical = 2.dp)
                 } else Modifier,

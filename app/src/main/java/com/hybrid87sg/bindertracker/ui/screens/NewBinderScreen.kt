@@ -143,8 +143,8 @@ internal fun BinderForm(
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = AppColors.White,
-                    focusedContainerColor = AppColors.White,
+                    unfocusedContainerColor = AppColors.Surface,
+                    focusedContainerColor = AppColors.Surface,
                     unfocusedBorderColor = AppColors.BorderStrong,
                 ),
                 modifier = Modifier.fillMaxWidth(),
@@ -251,7 +251,7 @@ private fun ColorSwatch(option: SpineColor, selected: Boolean, onClick: () -> Un
 
 @Composable
 private fun SizeTile(option: BinderSize, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val bg = if (selected) AppColors.Ink else AppColors.White
+    val bg = if (selected) AppColors.Ink else AppColors.Surface
     val fg = if (selected) AppColors.Paper else AppColors.Ink
     Surface(
         onClick = onClick,
@@ -289,7 +289,7 @@ private fun SizeTile(option: BinderSize, selected: Boolean, modifier: Modifier, 
             Text(
                 "${option.pockets} cards",
                 fontSize = 13.sp,
-                color = if (selected) Color(0xFFCFCABD) else AppColors.Muted,
+                color = if (selected) AppColors.Paper.copy(alpha = 0.75f) else AppColors.Muted,
             )
         }
     }

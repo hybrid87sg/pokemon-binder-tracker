@@ -98,7 +98,7 @@ fun ShelfScreen(
             Surface(
                 onClick = onSearch,
                 shape = RoundedCornerShape(14.dp),
-                color = AppColors.White,
+                color = AppColors.Surface,
                 contentColor = AppColors.Ink,
                 border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.BorderStrong),
                 modifier = Modifier.size(48.dp).semantics { contentDescription = "Search cards" },
@@ -215,7 +215,7 @@ private fun AddBinderSpine(onClick: () -> Unit) {
     }
 }
 
-private val Color4A = androidx.compose.ui.graphics.Color(0xFF4A4843)
+private val Color4A get() = if (AppColors.isDark) AppColors.Muted else androidx.compose.ui.graphics.Color(0xFF4A4843)
 
 /** Draws a dashed outline, like the empty slot in the prototype. */
 private fun Modifier.dashedBorder(): Modifier = drawBehind {
