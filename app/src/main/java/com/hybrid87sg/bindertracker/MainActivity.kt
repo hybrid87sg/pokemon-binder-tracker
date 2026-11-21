@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
 import com.hybrid87sg.bindertracker.ui.screens.CardRoute
@@ -19,7 +18,6 @@ import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
 import com.hybrid87sg.bindertracker.ui.screens.PageScreen
 import com.hybrid87sg.bindertracker.ui.screens.ScanRoute
 import com.hybrid87sg.bindertracker.ui.screens.SearchRoute
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -142,7 +140,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         vm.deleteBinder(b)
                         nav.popBackStack()
                     },
-                    onScan = { nav.navigate("scan/${b.id}") },
+                    onAddPages = { count -> vm.addPages(b, count) },
                     onOpenPage = { nav.navigate("page/${it.id}") },
                 )
             }
@@ -167,25 +165,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }) }
         }
 
-        // ---- Scanning a page ----
-        composable("scan/{binderId}") { entry ->
-            val binderId = entry.arguments?.getString("binderId").orEmpty()
-            val binder by remember(binderId) { vm.binder(binderId) }.collectAsStateWithLifecycle(initialValue = null)
-            val scope = rememberCoroutineScope()
-            binder?.let { b ->
-                ScanRoute(
-                    binder = b,
-                    onBack = { nav.popBackStack() },
-                    onCaptured = { photo, guide ->
-                        scope.launch {
-                            val pageId = vm.createPage(b, photo, guide)
-                            // Swap the camera for the new page, so "back" returns to the binder.
-                            nav.navigate("page/$pageId") { popUpTo("scan/$binderId") { inclusive = true } }
-                        }
-                    },
-                )
-            }
-        }
+        // ---- Pages ----
         composable("page/{pageId}") { entry ->
             val pageId = entry.arguments?.getString("pageId").orEmpty()
             val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
@@ -218,32 +198,12 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                             vm.deletePage(p)
                             nav.popBackStack()
                         },
-                        onRescan = { nav.navigate("rescan/$pageId") },
                         onScanCard = { position -> nav.navigate("scancard/$pageId/$position") },
                         suggestions = suggestions,
                         onPickSuggestion = { position, cardId -> vm.setPocketCard(pageId, position, cardId) },
                         openPosition = openPocket?.takeIf { it.first == pageId }?.second,
                         onPocketOpened = vm::pocketOpened,
                         scanPictures = scanPictures,
-                    )
-                }
-            }
-        }
-        // Take a new photo of an existing page. Pockets update with any new
-        // cards the camera reads; then it goes back to the page.
-        composable("rescan/{pageId}") { entry ->
-            val pageId = entry.arguments?.getString("pageId").orEmpty()
-            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
-            page?.let { p ->
-                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
-                binder?.let { b ->
-                    ScanRoute(
-                        binder = b,
-                        onBack = { nav.popBackStack() },
-                        onCaptured = { photo, guide ->
-                            vm.rescanPage(p, b, photo, guide)
-                            nav.popBackStack()
-                        },
                     )
                 }
             }

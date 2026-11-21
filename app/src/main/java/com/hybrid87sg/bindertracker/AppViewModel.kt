@@ -22,7 +22,6 @@ import com.hybrid87sg.bindertracker.scan.GuessPicker
 import com.hybrid87sg.bindertracker.scan.PageReader
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
 import com.hybrid87sg.bindertracker.scan.ReadCard
-import com.hybrid87sg.bindertracker.scan.ReadingSummary
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
 import java.io.File
@@ -224,19 +223,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun pageNumber(page: Page): Int = pageDao.pageNumber(page.binderId, page.createdAt)
 
-    /** Saves a new page from a photo and returns its id. */
-    suspend fun createPage(binder: Binder, photo: File, guide: GuideRect): String {
-        val page = Page(
-            binderId = binder.id,
-            photoPath = photo.absolutePath,
-            guideLeft = guide.left,
-            guideTop = guide.top,
-            guideRight = guide.right,
-            guideBottom = guide.bottom,
-        )
-        pageDao.createPage(page, binder.pocketsPerPage)
-        readCards(page.id, binder, photo, guide)
-        return page.id
+    /**
+     * Adds [count] empty pages to the end of a binder. Each pocket is then
+     * filled by scanning its card on its own (from the pocket's menu).
+     */
+    fun addPages(binder: Binder, count: Int) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            // A millisecond apart, so the pages keep their order.
+            repeat(count) { i -> pageDao.createPage(Page(binderId = binder.id, photoPath = null, createdAt = now + i), binder.pocketsPerPage) }
+        }
     }
 
     /**
@@ -297,58 +293,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (recognizer.isDownloaded) return true
         setReadingStatus(pageId, "Downloading the card pictures list (one time, about 20 MB)…")
         return recognizer.download()
-    }
-
-    /**
-     * Reads the cards in a page photo and fills in the pockets it's sure
-     * about. Runs in the background, so the page opens straight away and
-     * pockets fill in a moment later.
-     *
-     * [rescan] = the person took a new photo of a page that already exists.
-     * Then a pocket also changes when the camera clearly sees a different
-     * card there (the card was swapped). Pockets it can't read stay as they were.
-     */
-    private fun readCards(pageId: String, binder: Binder, photo: File, guide: GuideRect, rescan: Boolean = false) {
-        setReadingStatus(pageId, "Reading the cards…")
-        viewModelScope.launch {
-            val result = runCatching {
-                if (cardCount.value == 0) return@runCatching "The card list isn't downloaded yet, so cards can't be recognised. Open search on the shelf and download it, then rescan this page."
-                val pictures = ensurePicturesList(pageId)
-                setReadingStatus(pageId, "Reading the cards…")
-                val read = PageReader.read(photo.absolutePath, guide, binder.columns, binder.rows)
-                val current = pageDao.pocketsOf(pageId).associateBy { it.position }
-                var recognised = 0
-                var changed = 0
-                var unmatched = 0
-                var byPicture = 0
-                for ((card, picture) in read) {
-                    if (card.looksEmpty && picture == null) continue
-                    setScanPicture(pageId, card.position, picture)
-                    val found = recognise(card, picture)
-                    // No text at all usually means an empty pocket, so a picture
-                    // match there is only offered as a guess, never filled in.
-                    val match = if (card.looksEmpty) null else found.card
-                    setSuggestions(pageId, card.position, if (match == null) found.guesses.takeUnless { card.looksEmpty && current[card.position]?.isEmpty == true }.orEmpty() else emptyList())
-                    if (match == null) { if (!card.looksEmpty) unmatched++; continue }
-                    recognised++
-                    if (found.fromPicture) byPicture++
-                    val before = current[card.position]
-                    if (before?.cardId == match.id) continue
-                    if (rescan) {
-                        pageDao.upsertPocket(Pocket(pageId, card.position, cardId = match.id))
-                        changed++
-                    } else {
-                        changed += pageDao.fillPocketIfUnset(pageId, card.position, match.id)
-                    }
-                }
-                val summary = ReadingSummary(binder.pocketsPerPage, recognised, changed, unmatched, rescan, byPicture).message()
-                if (pictures) summary else "$summary (Couldn't download the card pictures list, so only text was used.)"
-            }
-            setReadingStatus(
-                pageId,
-                result.getOrElse { "Couldn't read the cards automatically. Tap a pocket to choose its card." },
-            )
-        }
     }
 
     /**
@@ -423,18 +367,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.getOrElse { "Couldn't read the card. Tap the pocket to choose it." }
             File(photo.absolutePath).delete()
             setReadingStatus(pageId, message)
-        }
-    }
-
-    /**
-     * Takes a new photo for an existing page: swaps the photo, then reads it
-     * again and updates any pockets whose card changed.
-     */
-    fun rescanPage(page: Page, binder: Binder, photo: File, guide: GuideRect) {
-        viewModelScope.launch {
-            page.photoPath?.let { old -> if (old != photo.absolutePath) File(old).delete() }
-            pageDao.updatePhoto(page.id, photo.absolutePath, guide.left, guide.top, guide.right, guide.bottom)
-            readCards(page.id, binder, photo, guide, rescan = true)
         }
     }
 

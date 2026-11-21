@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,10 +61,12 @@ fun BinderScreen(
     pages: List<PageSummary>,
     onBack: () -> Unit,
     onDelete: () -> Unit,
-    onScan: () -> Unit,
+    // Adds this many empty pages to the end of the binder.
+    onAddPages: (count: Int) -> Unit,
     onOpenPage: (PageSummary) -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
+    var addingPages by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
         Row(
@@ -71,6 +75,9 @@ fun BinderScreen(
         ) {
             BackButton("Shelf", onBack)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { addingPages = true }, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_plus), contentDescription = "Add pages", tint = AppColors.Ink)
+            }
             IconButton(onClick = { confirmDelete = true }, modifier = Modifier.size(48.dp)) {
                 Icon(painterResource(R.drawable.ic_trash), contentDescription = "Delete binder ${binder.name}", tint = AppColors.Ink)
             }
@@ -110,7 +117,7 @@ fun BinderScreen(
                     ) {
                         Text("No pages yet", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Scan your first page to fill this binder. Each page has ${binder.pocketsPerPage} pockets.",
+                            "Tap + at the top to add pages. Each page has ${binder.pocketsPerPage} pockets; tap a pocket to scan its card.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                             textAlign = TextAlign.Center,
@@ -143,9 +150,21 @@ fun BinderScreen(
             }
         }
 
-        BottomBar {
-            PrimaryButton(text = "Scan a page", onClick = onScan, icon = R.drawable.ic_camera)
+        if (pages.isEmpty()) {
+            BottomBar {
+                PrimaryButton(text = "Add pages", onClick = { addingPages = true }, icon = R.drawable.ic_plus)
+            }
+        } else {
+            // Keep the list clear of the phone's own navigation bar.
+            Spacer(Modifier.navigationBarsPadding())
         }
+    }
+
+    if (addingPages) {
+        AddPagesDialog(
+            onDismiss = { addingPages = false },
+            onAdd = { count -> addingPages = false; onAddPages(count) },
+        )
     }
 
     if (confirmDelete) {
@@ -165,6 +184,44 @@ fun BinderScreen(
         )
     }
 }
+
+/** Asks how many empty pages to add, from 1 to [MAX_NEW_PAGES]. */
+@Composable
+private fun AddPagesDialog(onDismiss: () -> Unit, onAdd: (Int) -> Unit) {
+    var count by remember { mutableIntStateOf(1) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add pages") },
+        text = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { count-- }, enabled = count > 1, modifier = Modifier.size(56.dp)) {
+                    Text("−", style = MaterialTheme.typography.headlineMedium)
+                }
+                Text(
+                    "$count",
+                    style = MaterialTheme.typography.headlineMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(64.dp),
+                )
+                TextButton(onClick = { count++ }, enabled = count < MAX_NEW_PAGES, modifier = Modifier.size(56.dp)) {
+                    Text("+", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(count) }) { Text(if (count == 1) "Add 1 page" else "Add $count pages") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+private const val MAX_NEW_PAGES = 50
 
 private fun Modifier.dashedOutline(): Modifier = drawBehind {
     val stroke = 2.dp.toPx()

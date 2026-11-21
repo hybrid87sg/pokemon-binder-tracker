@@ -16,18 +16,16 @@ Each person signs in with Google and gets their own shelf of binders.
   by name or number ("pikachu", "025/165", "charizard 4"); refreshed weekly
 - **Card screen** (#8, #9, #13): picture, set, rarity and market prices from TCGplayer (USD)
   and Cardmarket (EUR), each with its source and last-updated date
-- **Scan a page** (#4): camera with a pocket guide for the binder's size; the photo is cut into
-  pockets, and you choose each pocket's card from the index or mark it empty
-- **Automatic card reading**: after a scan, the app reads each card's name and number from the
-  photo (ML Kit, on the phone) and fills pockets it is sure about; each pocket shows the official
-  card picture from the card index
+- **Add pages** (+ on the binder screen): adds one or more empty pages; you fill each pocket by
+  scanning its card, choosing it from the index, or marking it empty
+- **Automatic card reading**: when you scan a card, the app reads its name and number
+  (ML Kit, on the phone); each pocket shows the official card picture from the card index
 - **Recognise by picture**: a small AI picture model (MobileNet via MediaPipe, on the phone) compares
   each card with every official card picture. The picture descriptions are prepared on GitHub by
   `scripts/build_card_embeddings.py` (workflow "Build card pictures list", release `card-pictures`)
   and downloaded once (~20 MB). Unsure pockets offer their 5 best guesses to tap
-- **Rescan a page** (page's Edit menu): take a new photo of a page you already scanned; pockets
-  update to the cards it reads now
-- **Scan this card** (pocket menu): photograph one card on its own to fill that pocket
+- **Scan this card** (pocket menu): photograph one card on its own to fill that pocket. The card is
+  straightened, then matched by artwork details against the official pictures
 
 Coming next: prices in SGD (#10–#12),
 and page value totals (#38).

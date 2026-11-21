@@ -65,7 +65,7 @@ private val CheckBorder = Color(0xFFB7791F)
 private val CheckFill = Color(0xFFFBE3A6)
 
 /**
- * One binder page: the photo cut into pockets. Tap a pocket to say which
+ * One binder page, shown as its pockets. Tap a pocket to say which
  * card it holds, or that it's empty.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,8 +86,6 @@ fun PageScreen(
     onMarkEmpty: (position: Int) -> Unit,
     onClear: (position: Int) -> Unit,
     onDeletePage: () -> Unit,
-    // Take a new photo of this page; pockets update with any new cards read.
-    onRescan: () -> Unit = {},
     // Photograph just this pocket's card and fill the pocket with it.
     onScanCard: (position: Int) -> Unit = {},
     // Best guesses for pockets the app wasn't sure about, by pocket position.
@@ -116,8 +114,7 @@ fun PageScreen(
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
-            // Rescanning and deleting the page live behind Edit.
-            // Edit mode shows the page's tools (rescan, delete) and a Done button.
+            // Deleting the page lives behind Edit, with a Done button to leave.
             if (!editing) {
                 TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
                     Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
@@ -162,7 +159,7 @@ fun PageScreen(
                 }
             }
             Text(
-                "Tap a pocket to choose its card, or to change one the camera recognised.",
+                "Tap a pocket to scan its card, or to choose it from the list.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
@@ -172,7 +169,6 @@ fun PageScreen(
         if (editing) {
             BottomBar {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SheetButton("Rescan page") { editing = false; onRescan() }
                     SheetButton("Delete page", color = AppColors.Danger) { confirmDelete = true }
                     PrimaryButton(text = "Done", onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
                 }
@@ -231,7 +227,7 @@ fun PageScreen(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete page $pageNumber?") },
-            text = { Text("This removes the page and its photo from $binderName. You can't undo this.") },
+            text = { Text("This removes the page and its cards from $binderName. You can't undo this.") },
             confirmButton = {
                 TextButton(
                     onClick = { confirmDelete = false; onDeletePage() },
