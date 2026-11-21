@@ -10,6 +10,8 @@ Each person signs in with Google and gets their own shelf of binders.
 - **New binder**: name, spine colour, and size (2 × 2, 3 × 3 or 3 × 4)
 - **Binder** screen, with delete (asks first)
 - Binders are saved on the phone in a Room (SQLite) database
+- **Permissions screen** before first use: Camera (for scanning) and Install apps (for updates)
+- **Self-updating**: each time the app opens it checks for a newer version and offers "Update now"
 
 Coming next, in order: card index and search (TCGdex), then camera page scanning.
 See the plan and checklist artifacts linked in the handoff notes.
@@ -39,8 +41,20 @@ Needs JDK 17+ and the Android SDK.
 ```
 
 GitHub Actions builds the app on every push and publishes it as a pre-release called
-**Latest debug build** (tag `debug-latest`). On the repo's GitHub page, open **Releases**
-and download `binder-tracker-debug.apk` onto your phone. Each push replaces it.
+**Latest debug build vX.Y.Z** (tag `debug-latest`). On the repo's GitHub page, open
+**Releases** and download `binder-tracker-v0.1.N.apk` onto your phone. Each push replaces it.
+
+## Versions and updates
+
+- The version is `appVersionBase` from `gradle.properties` (now `0.1`) plus the GitHub
+  Actions run number, e.g. `0.1.7`. Change `appVersionBase` to `0.2` for a new milestone.
+- Builds on your own computer are called `0.1-dev` and always see GitHub's version as newer.
+- Next to the APK, the release has `latest.json`, for example
+  `{"versionCode":7,"versionName":"0.1.7","apkUrl":"https://.../binder-tracker-v0.1.7.apk"}`.
+  The app reads it each time it opens; if `versionCode` is higher than its own, it offers the update.
+- Updates install over the old app, keeping your binders, only because every build is
+  signed with the same key in `keystore/`. Don't change that key.
+- The repo must be **public** for the app to read the release without a GitHub login.
 
 ## Fixed debug key
 

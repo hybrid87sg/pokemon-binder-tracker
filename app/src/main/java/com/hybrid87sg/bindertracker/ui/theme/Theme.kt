@@ -26,6 +26,7 @@ object AppColors {
     val OnDisabled = Color(0xFF3E3C38)
     val White = Color(0xFFFFFFFF)
     val Danger = Color(0xFF9B2C2C)
+    val Success = Color(0xFF2F6B3A)
 }
 
 private val colorScheme = lightColorScheme(

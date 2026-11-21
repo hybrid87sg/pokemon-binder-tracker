@@ -1,12 +1,14 @@
 package com.hybrid87sg.bindertracker
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onRoot
-import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.SpineColor
+import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
+import com.hybrid87sg.bindertracker.ui.screens.PermissionsScreen
+import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
@@ -24,6 +26,7 @@ import org.robolectric.annotation.GraphicsMode
  * of it to app/build/outputs/roborazzi/. Handy for checking layouts.
  * Run with: ./gradlew testDebugUnitTest
  */
+@OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp-xxhdpi")
@@ -40,7 +43,8 @@ class ScreenshotTest {
 
     private fun shoot(name: String, content: @androidx.compose.runtime.Composable () -> Unit) {
         compose.setContent { BinderTrackerTheme { content() } }
-        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        compose.waitForIdle()
+        captureScreenRoboImage("build/outputs/roborazzi/$name.png")
     }
 
     @Test fun signIn() = shoot("1-sign-in") {
@@ -68,6 +72,29 @@ class ScreenshotTest {
     }
 
     @Test fun account() = shoot("5-account") {
-        AccountScreen(user = AppUser("u", "Ash Ketchum", "ash@example.com", isLocalOnly = false), onBack = {}, onSignOut = {})
+        AccountScreen(
+            user = AppUser("u", "Ash Ketchum", "ash@example.com", isLocalOnly = false),
+            version = "0.1.7",
+            updateMessage = "You have the latest version.",
+            onCheckForUpdates = {},
+            onBack = {},
+            onSignOut = {},
+        )
+    }
+
+    @Test fun permissions() = shoot("0-permissions") {
+        PermissionsScreen(cameraGranted = true, installGranted = false, cameraBlocked = false, onAllowCamera = {}, onAllowInstall = {})
+    }
+
+    @Test fun updateDialog() = shoot("6-update-dialog") {
+        ShelfScreen(binders = sample, onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {})
+        UpdateDialog(
+            update = UpdateInfo(8, "0.1.8", "https://example.com/app.apk"),
+            currentVersion = "0.1.7",
+            progress = 0.4f,
+            error = null,
+            onUpdate = {},
+            onLater = {},
+        )
     }
 }

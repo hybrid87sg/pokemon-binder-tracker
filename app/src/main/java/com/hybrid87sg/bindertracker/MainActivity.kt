@@ -6,7 +6,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.hybrid87sg.bindertracker.permissions.Permissions
+import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
+import com.hybrid87sg.bindertracker.ui.screens.PermissionsGate
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -36,7 +42,42 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
     val signInError by vm.signInError.collectAsStateWithLifecycle()
     val signingIn by vm.signingIn.collectAsStateWithLifecycle()
 
-    // Not signed in? Show only the sign-in screen.
+    val update by vm.update.collectAsStateWithLifecycle()
+    val updateProgress by vm.updateProgress.collectAsStateWithLifecycle()
+    val updateError by vm.updateError.collectAsStateWithLifecycle()
+
+    // Step 1: permissions. Checked again every time the app comes to the
+    // front, e.g. after the person comes back from the Settings app.
+    var cameraGranted by remember { mutableStateOf(Permissions.hasCamera(activity)) }
+    var installGranted by remember { mutableStateOf(Permissions.canInstallUpdates(activity)) }
+    LifecycleResumeEffect(Unit) {
+        cameraGranted = Permissions.hasCamera(activity)
+        installGranted = Permissions.canInstallUpdates(activity)
+        vm.checkForUpdate() // also look for a new version each time
+        onPauseOrDispose { }
+    }
+    if (!cameraGranted || !installGranted) {
+        PermissionsGate(
+            cameraGranted = cameraGranted,
+            installGranted = installGranted,
+            onCameraResult = { cameraGranted = Permissions.hasCamera(activity) },
+        )
+        return
+    }
+
+    // Step 2: if a newer version exists, offer it on top of whatever screen is showing.
+    update?.let { info ->
+        UpdateDialog(
+            update = info,
+            currentVersion = vm.currentVersion,
+            progress = updateProgress,
+            error = updateError,
+            onUpdate = vm::installUpdate,
+            onLater = vm::postponeUpdate,
+        )
+    }
+
+    // Step 3: not signed in? Show only the sign-in screen.
     val current = user
     if (current == null) {
         SignInScreen(
@@ -86,7 +127,15 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             }
         }
         composable("account") {
-            AccountScreen(user = current, onBack = { nav.popBackStack() }, onSignOut = vm::signOut)
+            val updateMessage by vm.updateCheckMessage.collectAsStateWithLifecycle()
+            AccountScreen(
+                user = current,
+                version = vm.currentVersion,
+                updateMessage = updateMessage,
+                onCheckForUpdates = { vm.checkForUpdate(manual = true) },
+                onBack = { nav.popBackStack() },
+                onSignOut = vm::signOut,
+            )
         }
     }
 }

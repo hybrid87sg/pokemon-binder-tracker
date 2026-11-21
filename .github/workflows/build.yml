@@ -30,19 +30,29 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # The run number (1, 2, 3...) becomes the version, e.g. 0.1.6.
       - name: Build and test
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }}
 
       # Replace the previous "Latest debug build" pre-release with this one.
+      # It holds the app (named with its version) and latest.json, the small
+      # file the app reads to find out whether a newer version exists.
       # Releases don't count toward the Actions storage quota.
       - name: Publish pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk binder-tracker-debug.apk
+          BASE=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2)
+          VERSION="$BASE.$GITHUB_RUN_NUMBER"
+          APK="binder-tracker-v$VERSION.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          APK_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/debug-latest/$APK"
+          printf '{"versionCode":%s,"versionName":"%s","apkUrl":"%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$VERSION" "$APK_URL" > latest.json
+          cat latest.json
           gh release delete debug-latest --cleanup-tag --yes || true
-          gh release create debug-latest binder-tracker-debug.apk \
+          gh release create debug-latest "$APK" latest.json \
             --prerelease \
             --target "$GITHUB_SHA" \
-            --title "Latest debug build" \
-            --notes "Debug build from branch \`${GITHUB_REF_NAME}\`, commit ${GITHUB_SHA::7}. Install binder-tracker-debug.apk on your phone."
+            --title "Latest debug build v$VERSION" \
+            --notes "Version $VERSION, built from branch \`${GITHUB_REF_NAME}\` (commit ${GITHUB_SHA::7}). Install $APK on your phone. Already have the app? It will offer this update by itself."

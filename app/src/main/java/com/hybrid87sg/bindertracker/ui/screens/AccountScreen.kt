@@ -22,6 +22,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +40,14 @@ import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 
 @Composable
-fun AccountScreen(user: AppUser, onBack: () -> Unit, onSignOut: () -> Unit) {
+fun AccountScreen(
+    user: AppUser,
+    version: String,
+    updateMessage: String?,
+    onCheckForUpdates: () -> Unit,
+    onBack: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Shelf", onBack) }
 
@@ -82,6 +95,28 @@ fun AccountScreen(user: AppUser, onBack: () -> Unit, onSignOut: () -> Unit) {
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
             ) {
                 Text(if (user.isLocalOnly) "Go to sign-in" else "Sign out", style = MaterialTheme.typography.labelLarge)
+            }
+
+            HorizontalDivider(color = AppColors.Border)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("App version", style = MaterialTheme.typography.titleMedium)
+                    Text(version, style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+                }
+                TextButton(
+                    onClick = onCheckForUpdates,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Accent),
+                ) { Text("Check for updates", style = MaterialTheme.typography.titleMedium) }
+            }
+            if (updateMessage != null) {
+                Text(
+                    updateMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.Muted,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
         }
     }

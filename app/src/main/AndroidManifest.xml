@@ -2,8 +2,15 @@
 <!-- The manifest is the app's ID card: its name, icon, permissions and screens. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Needed for Google sign-in. Camera permission is added with the scan screen. -->
+    <!-- Internet: Google sign-in and checking for app updates. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Camera: photographing binder pages. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Install apps: lets the app install its own updates. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- The app works on phones without a camera too (scan just won't be offered). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -21,5 +28,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Shares downloaded updates with Android's installer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

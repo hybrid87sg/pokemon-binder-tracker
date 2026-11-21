@@ -9,6 +9,8 @@ import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.SpineColor
+import com.hybrid87sg.bindertracker.update.UpdateInfo
+import com.hybrid87sg.bindertracker.update.Updater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +45,75 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val binders: StateFlow<List<Binder>> = user
         .flatMapLatest { u -> if (u == null) flowOf(emptyList()) else binderDao.observeBinders(u.uid) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ---- App updates ----
+
+    private val updater = Updater(app)
+    val currentVersion: String = updater.currentVersionName
+
+    /** A newer version waiting to be installed, or null. Shows the update pop-up. */
+    private val _update = MutableStateFlow<UpdateInfo?>(null)
+    val update: StateFlow<UpdateInfo?> = _update.asStateFlow()
+
+    /** Download progress 0.0–1.0 while downloading, otherwise null. */
+    private val _updateProgress = MutableStateFlow<Float?>(null)
+    val updateProgress: StateFlow<Float?> = _updateProgress.asStateFlow()
+
+    private val _updateError = MutableStateFlow<String?>(null)
+    val updateError: StateFlow<String?> = _updateError.asStateFlow()
+
+    /** Result of pressing "Check for updates" on the Account screen. */
+    private val _updateCheckMessage = MutableStateFlow<String?>(null)
+    val updateCheckMessage: StateFlow<String?> = _updateCheckMessage.asStateFlow()
+
+    // The version the person said "Later" to, so we don't keep asking about it.
+    private var postponedVersionCode: Int? = null
+
+    /**
+     * Asks GitHub whether a newer version exists. Runs every time the app
+     * comes to the front. [manual] = the person pressed "Check for updates".
+     */
+    fun checkForUpdate(manual: Boolean = false) {
+        if (_updateProgress.value != null) return // already downloading
+        viewModelScope.launch {
+            if (manual) _updateCheckMessage.value = "Checking…"
+            val newer = runCatching { updater.findNewerVersion() }
+            newer.onSuccess { info ->
+                if (info != null && (manual || info.versionCode != postponedVersionCode)) {
+                    _updateError.value = null
+                    _update.value = info
+                }
+                if (manual) _updateCheckMessage.value = if (info == null) "You have the latest version." else null
+            }
+            newer.onFailure {
+                if (manual) _updateCheckMessage.value = "Couldn't check for updates. Check your internet connection and try again."
+            }
+        }
+    }
+
+    /** Downloads the new version, then opens Android's install screen. */
+    fun installUpdate() {
+        val info = _update.value ?: return
+        viewModelScope.launch {
+            _updateError.value = null
+            _updateProgress.value = 0f
+            try {
+                val file = updater.download(info) { _updateProgress.value = it }
+                _updateProgress.value = null
+                _update.value = null
+                updater.install(file)
+            } catch (e: Exception) {
+                _updateProgress.value = null
+                _updateError.value = "Download failed. Check your internet connection and try again."
+            }
+        }
+    }
+
+    fun postponeUpdate() {
+        postponedVersionCode = _update.value?.versionCode
+        _update.value = null
+        _updateError.value = null
+    }
 
     fun binder(id: String): Flow<Binder?> = binderDao.observeBinder(id)
 

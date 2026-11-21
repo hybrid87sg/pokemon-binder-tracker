@@ -12,6 +12,12 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+// Version numbers. GitHub Actions passes its build number (1, 2, 3...) as
+// -PbuildNumber, so each published build is newer than the last one.
+// A build on your own computer without it is called "0.1-dev".
+val versionBase = providers.gradleProperty("appVersionBase").get()
+val buildNumber = providers.gradleProperty("buildNumber").orNull?.toIntOrNull()
+
 android {
     namespace = "com.hybrid87sg.bindertracker"
     // The Android version we build against (37.2 = Android 17, minor update 2).
@@ -23,8 +29,18 @@ android {
         applicationId = "com.hybrid87sg.bindertracker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // versionCode is the number Android compares to decide what is newer.
+        // versionName is the label people see, like "0.1.6".
+        versionCode = buildNumber ?: 1
+        versionName = if (buildNumber != null) "$versionBase.$buildNumber" else "$versionBase-dev"
+
+        // Where the app checks for new versions (a small file next to the APK
+        // on the repo's "Latest debug build" release).
+        buildConfigField(
+            "String",
+            "UPDATE_INFO_URL",
+            "\"https://github.com/hybrid87sg/pokemon-binder-tracker/releases/download/debug-latest/latest.json\"",
+        )
     }
 
     // A fixed debug key, committed to the repo on purpose. Google sign-in
@@ -56,6 +72,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true // lets the code read the version number and update URL
     }
 
     testOptions {
