@@ -37,16 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +49,7 @@ import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
+import com.hybrid87sg.bindertracker.ui.components.CardBack
 import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
@@ -275,7 +269,7 @@ private fun PocketTile(
                 Modifier.fillMaxWidth().aspectRatio(CARD_ASPECT).clip(shape)
                     .then(
                         when {
-                            pocket.isEmpty -> Modifier.dashed(AppColors.BorderStrong)
+                            pocket.isEmpty -> Modifier
                             pocket.cardId == null -> Modifier.border(2.dp, CheckBorder, shape)
                             else -> Modifier.border(1.dp, AppColors.Border, shape)
                         },
@@ -283,7 +277,8 @@ private fun PocketTile(
                 contentAlignment = Alignment.Center,
             ) {
                 when {
-                    pocket.isEmpty -> Text("Empty", fontSize = 13.sp, color = AppColors.Muted, textAlign = TextAlign.Center)
+                    // Our own card-back picture, so an empty pocket looks like a card turned over.
+                    pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
                     // Identified: the official card picture from TCGdex, not the photo.
                     pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
                     else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
@@ -306,15 +301,4 @@ private fun PocketTile(
             }
         }
     }
-}
-
-private fun Modifier.dashed(color: Color): Modifier = drawBehind {
-    val stroke = 2.dp.toPx()
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(stroke / 2, stroke / 2),
-        size = Size(size.width - stroke, size.height - stroke),
-        cornerRadius = CornerRadius(6.dp.toPx()),
-        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
-    )
 }
