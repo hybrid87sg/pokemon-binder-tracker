@@ -5,6 +5,7 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.SpineColor
+import com.hybrid87sg.bindertracker.ui.components.ColorPicker
 import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -71,7 +72,13 @@ class ScreenshotTest {
     }
 
     @Test fun shelfEmpty() = shoot("2b-shelf-empty") {
-        ShelfScreen(binders = emptyList(), onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+        ShelfScreen(binders = emptyList(), onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+    }
+
+    @Test fun colorPicker() = shoot("2c-color-picker") {
+        Box(Modifier.background(Color(0xFFF6F4EF))) {
+            ColorPicker(binderName = "Vintage", sizeLabel = "3 × 3", initialHex = "#F2C230", onSave = {}, onCancel = {})
+        }
     }
 
     @Test fun newBinder() = shoot("3-new-binder") {
@@ -95,7 +102,7 @@ class ScreenshotTest {
     }
 
     @Test fun shelfWithSearch() = shoot("2-shelf") {
-        ShelfScreen(binders = sample, onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+        ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
     }
 
     private val sampleCards = listOf(
@@ -178,7 +185,7 @@ class ScreenshotTest {
     }
 
     @Test fun updateDialog() = shoot("6-update-dialog") {
-        ShelfScreen(binders = sample, onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+        ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
         UpdateDialog(
             update = UpdateInfo(8, "0.1.8", "https://example.com/app.apk"),
             currentVersion = "0.1.7",

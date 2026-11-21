@@ -30,6 +30,10 @@ interface BinderDao {
     @Delete
     suspend fun delete(binder: Binder)
 
+    // Changes just the spine colour of one binder, e.g. to "#F2C230".
+    @Query("UPDATE binders SET colorHex = :colorHex WHERE id = :id")
+    suspend fun updateColor(id: String, colorHex: String)
+
     // ---- Backups ----
 
     @Query("SELECT * FROM binders WHERE ownerId = :ownerId ORDER BY createdAt")

@@ -28,7 +28,6 @@ import com.hybrid87sg.bindertracker.scan.ReadCard
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
 import java.io.File
-import com.hybrid87sg.bindertracker.data.SpineColor
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.update.Updater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -154,19 +153,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { auth.signOut() }
     }
 
-    fun createBinder(name: String, color: SpineColor, size: BinderSize) {
+    fun createBinder(name: String, colorHex: String, size: BinderSize) {
         val owner = user.value ?: return
         viewModelScope.launch {
             binderDao.insert(
                 Binder(
                     ownerId = owner.uid,
                     name = name.trim(),
-                    colorHex = color.hex,
+                    colorHex = colorHex,
                     columns = size.columns,
                     rows = size.rows,
                 ),
             )
         }
+    }
+
+    /** Repaints a binder's spine. [colorHex] is text like "#F2C230". */
+    fun setBinderColor(binder: Binder, colorHex: String) {
+        viewModelScope.launch { binderDao.updateColor(binder.id, colorHex) }
     }
 
     fun deleteBinder(binder: Binder) {
