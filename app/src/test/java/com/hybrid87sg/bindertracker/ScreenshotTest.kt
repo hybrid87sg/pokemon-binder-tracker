@@ -135,7 +135,7 @@ class ScreenshotTest {
     }
 
     @Test fun shelfDark() = shoot("2c-shelf-dark", dark = true) {
-        ShelfScreen(binders = sample, onOpenBinder = {}, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+        ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
     }
 
     @Test fun shelfWithSearch() = shoot("2-shelf") {
