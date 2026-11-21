@@ -146,8 +146,8 @@ fun SearchScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = AppColors.White,
-                    focusedContainerColor = AppColors.White,
+                    unfocusedContainerColor = AppColors.Surface,
+                    focusedContainerColor = AppColors.Surface,
                     unfocusedBorderColor = AppColors.BorderStrong,
                 ),
                 trailingIcon = if (searching) {
@@ -230,7 +230,7 @@ private fun CardRow(card: Card, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = AppColors.White,
+        color = AppColors.Surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth(),
     ) {

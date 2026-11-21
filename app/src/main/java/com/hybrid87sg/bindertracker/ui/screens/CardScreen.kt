@@ -120,7 +120,7 @@ fun CardScreen(
 @Composable
 private fun PriceTable(prices: List<MarketPrice>) {
     val shape = RoundedCornerShape(14.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(AppColors.White).border(1.dp, AppColors.Border, shape)) {
+    Column(Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)) {
         prices.groupBy { it.source }.entries.forEachIndexed { index, (source, rows) ->
             if (index > 0) HorizontalDivider(color = AppColors.Border)
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

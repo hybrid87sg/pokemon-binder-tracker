@@ -204,8 +204,8 @@ fun ColorPicker(
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = AppColors.White,
-                focusedContainerColor = AppColors.White,
+                unfocusedContainerColor = AppColors.Surface,
+                focusedContainerColor = AppColors.Surface,
                 unfocusedBorderColor = AppColors.BorderStrong,
             ),
             modifier = Modifier.fillMaxWidth(),

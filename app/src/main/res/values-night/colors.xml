@@ -1,0 +1,5 @@
+<resources>
+    <!-- Used for the split second while the app starts, when the phone is in dark mode. -->
+    <color name="paper">#161614</color>
+    <color name="shelf">#1E1D1A</color>
+</resources>

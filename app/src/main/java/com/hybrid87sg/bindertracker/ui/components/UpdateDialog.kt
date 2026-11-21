@@ -31,7 +31,7 @@ fun UpdateDialog(
     AlertDialog(
         onDismissRequest = { if (!downloading) onLater() },
         properties = DialogProperties(dismissOnClickOutside = false),
-        containerColor = AppColors.White,
+        containerColor = AppColors.Surface,
         title = { Text("Update available") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -5,7 +5,9 @@ import kotlinx.coroutines.flow.map
 import androidx.compose.ui.graphics.asImageBitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,16 +38,38 @@ import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
+import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.BinderTrackerTheme
+import com.hybrid87sg.bindertracker.ui.theme.DarkPalette
+import com.hybrid87sg.bindertracker.ui.theme.LightPalette
+import com.hybrid87sg.bindertracker.ui.theme.ThemeSetting
 
 /** The app's single Activity (window). Every screen is drawn inside it. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge() // draw behind the status bar, like modern apps do
+        // Light or dark: read the saved choice and pick the colours before
+        // anything is drawn, so the first frame already has the right ones.
+        ThemeSetting.load(this)
+        val startDark = ThemeSetting.isDark(ThemeSetting.mode, ThemeSetting.phoneIsDark(this))
+        AppColors.palette = if (startDark) DarkPalette else LightPalette
+        drawBehindSystemBars(startDark)
         setContent {
-            BinderTrackerTheme { App(activity = this) }
+            val dark = ThemeSetting.isDark(ThemeSetting.mode, isSystemInDarkTheme())
+            // When the mode changes, flip the clock and battery icons too.
+            LaunchedEffect(dark) { drawBehindSystemBars(dark) }
+            BinderTrackerTheme(dark = dark) { App(activity = this) }
         }
+    }
+
+    /**
+     * Draws the app behind the status bar, like modern apps do, with dark
+     * icons on the light theme and white icons on the dark theme.
+     */
+    private fun drawBehindSystemBars(dark: Boolean) {
+        val clear = android.graphics.Color.TRANSPARENT
+        val style = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear)
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 }
 
@@ -279,6 +303,8 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 version = vm.currentVersion,
                 updateMessage = updateMessage,
                 onCheckForUpdates = { vm.checkForUpdate(manual = true) },
+                themeMode = ThemeSetting.mode,
+                onThemeModeChange = { ThemeSetting.set(activity, it) },
                 onBack = { nav.popBackStack() },
                 onSignOut = vm::signOut,
                 backupMessage = backupMessage,
