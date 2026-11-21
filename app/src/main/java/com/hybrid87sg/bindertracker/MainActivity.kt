@@ -113,6 +113,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             ShelfScreen(
                 binders = binders,
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
+                onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
                 onOpenAccount = { nav.navigate("account") },
                 onSearch = { nav.navigate("search") },

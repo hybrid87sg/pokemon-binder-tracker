@@ -169,6 +169,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Repaints a binder's spine. [colorHex] is text like "#F2C230". */
+    fun setBinderColor(binder: Binder, colorHex: String) {
+        viewModelScope.launch { binderDao.updateColor(binder.id, colorHex) }
+    }
+
     fun deleteBinder(binder: Binder) {
         viewModelScope.launch {
             // Remove the binder's pages and their photos too.

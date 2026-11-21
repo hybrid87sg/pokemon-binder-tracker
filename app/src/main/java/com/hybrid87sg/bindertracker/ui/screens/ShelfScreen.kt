@@ -1,6 +1,7 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,12 +24,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.ui.components.ColorPickerSheet
 import com.hybrid87sg.bindertracker.ui.components.ShelfPlank
 import com.hybrid87sg.bindertracker.ui.components.SpineArt
 import com.hybrid87sg.bindertracker.ui.components.colorFromHex
@@ -56,6 +65,7 @@ private sealed interface ShelfItem {
 fun ShelfScreen(
     binders: List<Binder>,
     onOpenBinder: (Binder) -> Unit,
+    onChangeColor: (Binder, String) -> Unit,
     onAddBinder: () -> Unit,
     onOpenAccount: () -> Unit,
     onSearch: () -> Unit,
@@ -63,6 +73,10 @@ fun ShelfScreen(
     // All binders, then the "Add binder" slot, cut into rows of 4.
     val items: List<ShelfItem> = binders.map { ShelfItem.BinderItem(it) } + ShelfItem.AddItem
     val rows = items.chunked(SPINES_PER_ROW)
+    // The binder whose colour is being changed (after a tap and hold), or null.
+    // We remember only its ID, so the panel survives the phone rotating.
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val editing = binders.firstOrNull { it.id == editingId }
 
     Column(Modifier.fillMaxSize().background(AppColors.ShelfBackground).statusBarsPadding()) {
         Row(
@@ -74,8 +88,8 @@ fun ShelfScreen(
                 Text(
                     when (binders.size) {
                         0 -> "No binders yet · add your first one"
-                        1 -> "1 binder · tap a spine to open"
-                        else -> "${binders.size} binders · tap a spine to open"
+                        1 -> "1 binder · tap to open, hold to change colour"
+                        else -> "${binders.size} binders · tap to open, hold to change colour"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
@@ -123,7 +137,11 @@ fun ShelfScreen(
                     ) {
                         row.forEach { item ->
                             when (item) {
-                                is ShelfItem.BinderItem -> BinderSpine(item.binder) { onOpenBinder(item.binder) }
+                                is ShelfItem.BinderItem -> BinderSpine(
+                                    item.binder,
+                                    onClick = { onOpenBinder(item.binder) },
+                                    onLongClick = { editingId = item.binder.id },
+                                )
                                 ShelfItem.AddItem -> AddBinderSpine(onAddBinder)
                             }
                         }
@@ -133,24 +151,43 @@ fun ShelfScreen(
             }
         }
     }
+
+    editing?.let { binder ->
+        ColorPickerSheet(
+            binderName = binder.name,
+            sizeLabel = binder.sizeLabel,
+            initialHex = binder.colorHex,
+            onSave = { hex -> onChangeColor(binder, hex); editingId = null },
+            onDismiss = { editingId = null },
+        )
+    }
 }
 
 @Composable
-private fun BinderSpine(binder: Binder, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 3.dp, bottomEnd = 3.dp),
+private fun BinderSpine(binder: Binder, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    val shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
+    // "combinedClickable" listens for both a normal tap and a tap and hold.
+    // The little buzz on hold tells you the press was noticed.
+    SpineArt(
+        name = binder.name,
+        tag = binder.sizeLabel,
         color = colorFromHex(binder.colorHex),
-        modifier = Modifier.semantics { contentDescription = "Open binder ${binder.name}, ${binder.sizeLabel}" },
-    ) {
-        SpineArt(
-            name = binder.name,
-            tag = binder.sizeLabel,
-            color = colorFromHex(binder.colorHex),
-            width = 64.dp,
-            height = SpineHeight,
-        )
-    }
+        width = 64.dp,
+        height = SpineHeight,
+        modifier = Modifier
+            .clip(shape)
+            .combinedClickable(
+                onClickLabel = "Open",
+                onLongClickLabel = "Change colour",
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
+            )
+            .semantics { contentDescription = "Binder ${binder.name}, ${binder.sizeLabel}" },
+    )
 }
 
 @Composable
