@@ -69,13 +69,40 @@ fun NewBinderScreen(
     onCancel: () -> Unit,
     onCreate: (name: String, colorHex: String, size: BinderSize) -> Unit,
 ) {
+    BinderForm(
+        title = "New binder",
+        initialName = "",
+        initialColorHex = SpineColor.Red.hex,
+        initialSize = BinderSize.ThreeByThree,
+        saveText = "Add to shelf",
+        onCancel = onCancel,
+        onSave = onCreate,
+    )
+}
+
+/**
+ * The form shared by "New binder" and "Edit binder": a live spine preview,
+ * the name box, spine colour and binder size. [sizeNote] can show a line
+ * under the sizes (Edit binder uses it to warn about cards that won't fit).
+ */
+@Composable
+internal fun BinderForm(
+    title: String,
+    initialName: String,
+    initialColorHex: String,
+    initialSize: BinderSize,
+    saveText: String,
+    onCancel: () -> Unit,
+    onSave: (name: String, colorHex: String, size: BinderSize) -> Unit,
+    sizeNote: @Composable (BinderSize) -> Unit = {},
+) {
     // "rememberSaveable" keeps what you typed even if the phone rotates.
-    var name by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf(initialName) }
     // The spine colour as text like "#8C2F2F", so it can be any colour, not just the six.
-    var colorHex by rememberSaveable { mutableStateOf(SpineColor.Red.hex) }
+    var colorHex by rememberSaveable { mutableStateOf(initialColorHex) }
     var showPicker by rememberSaveable { mutableStateOf(false) }
-    var size by rememberSaveable { mutableStateOf(BinderSize.ThreeByThree) }
-    val canCreate = name.isNotBlank()
+    var size by rememberSaveable { mutableStateOf(initialSize) }
+    val canSave = name.isNotBlank()
 
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding().imePadding()) {
         Row(
@@ -84,7 +111,7 @@ fun NewBinderScreen(
         ) {
             BackButton("Cancel", onCancel)
             Spacer(Modifier.weight(1f))
-            Text("New binder", style = MaterialTheme.typography.titleLarge)
+            Text(title, style = MaterialTheme.typography.titleLarge)
         }
 
         Column(
@@ -145,14 +172,15 @@ fun NewBinderScreen(
                         SizeTile(option, selected = option == size, modifier = Modifier.weight(1f)) { size = option }
                     }
                 }
+                sizeNote(size)
             }
         }
 
         BottomBar {
             PrimaryButton(
-                text = if (canCreate) "Add to shelf" else "Name your binder to continue",
-                enabled = canCreate,
-                onClick = { onCreate(name, colorHex, size) },
+                text = if (canSave) saveText else "Name your binder to continue",
+                enabled = canSave,
+                onClick = { onSave(name, colorHex, size) },
             )
         }
     }

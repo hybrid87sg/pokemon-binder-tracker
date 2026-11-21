@@ -84,6 +84,26 @@ interface PageDao {
     @Query("DELETE FROM pockets WHERE pageId = :pageId")
     suspend fun deletePockets(pageId: String)
 
+    /** Removes the pockets numbered [from] and up (a binder made smaller). */
+    @Query("DELETE FROM pockets WHERE pageId = :pageId AND position >= :from")
+    suspend fun deletePocketsFrom(pageId: String, from: Int)
+
+    /** Adds pockets, skipping any that already exist (a binder made bigger). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPocketsIfMissing(pockets: List<Pocket>)
+
+    /**
+     * The pocket numbers that hold a card, across all of a binder's pages.
+     * Edit binder uses it to count how many cards a smaller size would move.
+     */
+    @Query(
+        """
+        SELECT pockets.position FROM pockets INNER JOIN pages ON pages.id = pockets.pageId
+        WHERE pages.binderId = :binderId AND pockets.cardId IS NOT NULL
+        """,
+    )
+    fun observeFilledPositions(binderId: String): Flow<List<Int>>
+
     @Query("DELETE FROM pages WHERE id = :pageId")
     suspend fun deletePageRow(pageId: String)
 

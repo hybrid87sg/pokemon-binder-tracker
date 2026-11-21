@@ -39,6 +39,12 @@ enum class BinderSize(val columns: Int, val rows: Int) {
 
     val label: String get() = "$columns × $rows"
     val pockets: Int get() = columns * rows
+
+    companion object {
+        /** The size matching a saved binder, or 3 × 3 if it's somehow none of these. */
+        fun of(columns: Int, rows: Int): BinderSize =
+            entries.firstOrNull { it.columns == columns && it.rows == rows } ?: ThreeByThree
+    }
 }
 
 /** Spine colours, the same six as the prototype. */

@@ -26,6 +26,7 @@ import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.ui.screens.PermissionsScreen
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -85,8 +86,20 @@ class ScreenshotTest {
         NewBinderScreen(onCancel = {}, onCreate = { _, _, _ -> })
     }
 
+    // 3 × 4 binder with 2 pages; cards in pockets 9, 10 and 11 of page 1 and 10 of page 2.
+    // Shown at its current size, so no warning yet.
+    @Test fun editBinder() = shoot("3b-edit-binder") {
+        EditBinderScreen(
+            binder = sample[0].copy(columns = 3, rows = 4),
+            pageCount = 2,
+            filledPositions = listOf(0, 1, 9, 10, 11, 3, 10),
+            onCancel = {},
+            onSave = { _, _, _ -> },
+        )
+    }
+
     @Test fun binder() = shoot("4-binder") {
-        BinderScreen(binder = sample[0], pages = emptyList(), onBack = {}, onDelete = {}, onAddPages = {}, onOpenPage = {})
+        BinderScreen(binder = sample[0], pages = emptyList(), onBack = {}, onDelete = {}, onAddPages = {}, onEdit = {}, onOpenPage = {})
     }
 
     @Test fun account() = shoot("5-account") {
@@ -140,7 +153,7 @@ class ScreenshotTest {
                 PageSummary("p1", "b", null, 1, identified = 9, empty = 0),
                 PageSummary("p2", "b", null, 2, identified = 5, empty = 1),
             ),
-            onBack = {}, onDelete = {}, onAddPages = {}, onOpenPage = {},
+            onBack = {}, onDelete = {}, onAddPages = {}, onEdit = {}, onOpenPage = {},
         )
     }
 
