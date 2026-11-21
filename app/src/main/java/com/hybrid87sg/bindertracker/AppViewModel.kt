@@ -14,6 +14,7 @@ import com.hybrid87sg.bindertracker.data.CardIndex
 import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
 import com.hybrid87sg.bindertracker.data.Pocket
+import com.hybrid87sg.bindertracker.data.SeriesOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
 import com.hybrid87sg.bindertracker.scan.GuessPicker
@@ -203,7 +204,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    suspend fun searchCards(query: String): List<Card> = cardIndex.search(query)
+    suspend fun searchCards(query: String, seriesId: String = ""): List<Card> = cardIndex.search(query, seriesId)
+
+    suspend fun seriesList(): List<SeriesOption> = cardIndex.series()
 
     suspend fun card(id: String): Card? = cardIndex.get(id)
 

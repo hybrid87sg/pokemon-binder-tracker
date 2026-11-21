@@ -155,6 +155,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 backLabel = "Shelf",
                 status = indexStatus(vm),
                 search = vm::searchCards,
+                loadSeries = vm::seriesList,
                 onBack = { nav.popBackStack() },
                 onCardClick = { nav.navigate("card/${Uri.encode(it.id)}") },
                 onRefreshIndex = { vm.refreshCardIndex(force = true) },
@@ -277,6 +278,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 backLabel = "Page",
                 status = indexStatus(vm),
                 search = vm::searchCards,
+                loadSeries = vm::seriesList,
                 onBack = { nav.popBackStack() },
                 onCardClick = { card ->
                     vm.setPocketCard(pageId, position, card.id)

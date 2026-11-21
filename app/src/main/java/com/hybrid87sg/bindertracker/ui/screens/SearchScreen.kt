@@ -45,6 +45,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.data.SeriesOption
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.formatDate
@@ -63,24 +69,30 @@ fun SearchRoute(
     title: String,
     backLabel: String,
     status: IndexStatus,
-    search: suspend (String) -> List<Card>,
+    search: suspend (query: String, seriesId: String) -> List<Card>,
     onBack: () -> Unit,
     onCardClick: (Card) -> Unit,
     onRefreshIndex: () -> Unit,
+    // Every series in the card list, for the series filter.
+    loadSeries: suspend () -> List<SeriesOption> = { emptyList() },
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    // "" = all series.
+    var seriesId by rememberSaveable { mutableStateOf("") }
+    var seriesOptions by remember { mutableStateOf<List<SeriesOption>>(emptyList()) }
+    LaunchedEffect(status.count) { seriesOptions = loadSeries() }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
 
     // Search shortly after typing stops, so we don't search on every letter.
-    LaunchedEffect(query, status.count) {
+    LaunchedEffect(query, seriesId, status.count) {
         if (query.isBlank()) {
             results = emptyList()
             return@LaunchedEffect
         }
         delay(200)
         searching = true
-        results = search(query)
+        results = search(query, seriesId)
         searching = false
     }
 
@@ -95,6 +107,9 @@ fun SearchRoute(
         onBack = onBack,
         onCardClick = onCardClick,
         onRefreshIndex = onRefreshIndex,
+        seriesOptions = seriesOptions,
+        selectedSeries = seriesId,
+        onSeriesChange = { seriesId = it },
     )
 }
 
@@ -111,6 +126,9 @@ fun SearchScreen(
     onCardClick: (Card) -> Unit,
     onRefreshIndex: () -> Unit,
     autoFocus: Boolean = true,
+    seriesOptions: List<SeriesOption> = emptyList(),
+    selectedSeries: String = "",
+    onSeriesChange: (String) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -137,6 +155,7 @@ fun SearchScreen(
                 } else null,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
+            if (seriesOptions.isNotEmpty()) SeriesFilter(seriesOptions, selectedSeries, onSeriesChange)
         }
 
         LazyColumn(
@@ -147,7 +166,10 @@ fun SearchScreen(
             when {
                 status.count == 0 -> item { IndexEmptyState(status, onRefreshIndex) }
                 query.isBlank() -> item {
-                    Text("Type part of a card name, or the number printed at the bottom of the card.", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+                    Text(
+                        if (selectedSeries.isEmpty()) "Type part of a card name, or the number printed at the bottom of the card."
+                        else "Type part of a card name, or the number printed at the bottom of the card. Only cards from the chosen series are shown.",
+                        style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
                 }
                 !searching && results.isEmpty() -> item {
                     Box(
@@ -155,7 +177,8 @@ fun SearchScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "No card matches \"${query.trim()}\". Check the spelling, or try fewer letters.",
+                            if (selectedSeries.isEmpty()) "No card matches \"${query.trim()}\". Check the spelling, or try fewer letters."
+                            else "No card in this series matches \"${query.trim()}\". Try another series, or All series.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                         )
@@ -176,6 +199,29 @@ fun SearchScreen(
         }
 
         if (status.count > 0) IndexFooter(status, onRefreshIndex)
+    }
+}
+
+/** "Series: All series ▾": a drop-down that limits results to one series. */
+@Composable
+private fun SeriesFilter(options: List<SeriesOption>, selected: String, onChange: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = options.firstOrNull { it.id == selected }?.name ?: "All series"
+    Box {
+        OutlinedButton(
+            onClick = { open = true },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Text("Series: $label", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("▾", color = AppColors.Ink)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 420.dp)) {
+            DropdownMenuItem(text = { Text("All series") }, onClick = { open = false; onChange("") })
+            options.forEach { option ->
+                DropdownMenuItem(text = { Text(option.name) }, onClick = { open = false; onChange(option.id) })
+            }
+        }
     }
 }
 
