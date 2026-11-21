@@ -33,6 +33,12 @@ class Palette(
     val onDisabled: Color,
     val danger: Color,
     val success: Color,
+    // The card-back picture shown in empty pockets (see CardBack.kt).
+    val cardBack: Color,        // top-left of the blue
+    val cardBackDeep: Color,    // bottom-right of the blue
+    val cardBackFrame: Color,   // thin frame line
+    val cardBackSwirl: Color,   // swirl rings
+    val cardBackSpark: Color,   // little star in the middle
 )
 
 val LightPalette = Palette(
@@ -51,6 +57,11 @@ val LightPalette = Palette(
     onDisabled = Color(0xFF3E3C38),
     danger = Color(0xFF9B2C2C),
     success = Color(0xFF2F6B3A),
+    cardBack = Color(0xFF23379A),
+    cardBackDeep = Color(0xFF1A2A78),
+    cardBackFrame = Color(0xFFC9D2F5),
+    cardBackSwirl = Color(0xFF8EA4FF),
+    cardBackSpark = Color(0xFFFFFFFF),
 )
 
 /** Warm charcoal rather than pure black, so it still feels like the paper look. */
@@ -70,6 +81,13 @@ val DarkPalette = Palette(
     onDisabled = Color(0xFFA8A49A),
     danger = Color(0xFFE58A8A),
     success = Color(0xFF3F8A4C),
+    // Darker blue so it isn't glaring at night, with a brighter frame so the
+    // card still stands out from the charcoal background.
+    cardBack = Color(0xFF1C2B6E),
+    cardBackDeep = Color(0xFF142057),
+    cardBackFrame = Color(0xFF6F84D8),
+    cardBackSwirl = Color(0xFF5F79E8),
+    cardBackSpark = Color(0xFFDDE4FF),
 )
 
 /**
@@ -99,6 +117,11 @@ object AppColors {
     val OnDisabled get() = palette.onDisabled
     val Danger get() = palette.danger
     val Success get() = palette.success
+    val CardBack get() = palette.cardBack
+    val CardBackDeep get() = palette.cardBackDeep
+    val CardBackFrame get() = palette.cardBackFrame
+    val CardBackSwirl get() = palette.cardBackSwirl
+    val CardBackSpark get() = palette.cardBackSpark
 
     /** Always white, in both modes: for text and icons on blue buttons and coloured spines. */
     val White = Color(0xFFFFFFFF)

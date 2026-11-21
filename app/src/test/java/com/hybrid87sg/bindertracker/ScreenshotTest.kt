@@ -217,6 +217,23 @@ class ScreenshotTest {
         )
     }
 
+    // Empty pockets (2 and 7) show the card-back picture; checks it in dark mode.
+    @Test fun pageDark() = shoot("10b-page-dark", dark = true) {
+        PageScreen(
+            binderName = "Vintage", pageNumber = 3, columns = 3, rows = 3,
+            pockets = List(9) { i ->
+                when (i) {
+                    0 -> PocketWithCard(i, false, "base1-58", "Pikachu", "58", "Base Set", null)
+                    2, 7 -> PocketWithCard(i, true, null, null, null, null, null)
+                    else -> PocketWithCard(i, false, null, null, null, null, null)
+                }
+            },
+            photo = null,
+            guide = GuideRect(0.1f, 0.1f, 0.9f, 0.9f),
+            onBack = {}, onChooseCard = {}, onViewCard = {}, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
+        )
+    }
+
     @Test fun permissions() = shoot("0-permissions") {
         PermissionsScreen(cameraGranted = true, installGranted = false, cameraBlocked = false, onAllowCamera = {}, onAllowInstall = {})
     }
