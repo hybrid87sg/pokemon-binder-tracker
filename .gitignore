@@ -1,0 +1,14 @@
+# Build output and local machine files (never commit these)
+.gradle/
+build/
+/app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Note: keystore/binder-debug.keystore and app/google-services.json are
+# committed on purpose (see README).

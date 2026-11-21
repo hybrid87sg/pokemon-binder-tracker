@@ -1,0 +1,6 @@
+<resources>
+    <!-- Only sets the window background while the app starts; Compose draws everything else. -->
+    <style name="Theme.BinderTracker" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+</resources>
