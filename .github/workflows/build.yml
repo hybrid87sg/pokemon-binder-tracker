@@ -1,11 +1,21 @@
-# Builds the debug app on GitHub's computers every time code is pushed.
-# Download the finished app from the run's "Artifacts" section.
+# Builds the debug app on GitHub's computers every time code is pushed,
+# then publishes it as a pre-release called "Latest debug build".
+# Download it from the repo's Releases page (right-hand side on GitHub).
 name: Build debug APK
 
-# Runs once per push (pushes to a pull request's branch are covered too).
 on:
   push:
   workflow_dispatch:
+
+# Allows this workflow to create releases in the repo.
+permissions:
+  contents: write
+
+# If two pushes happen close together, finish them one at a time so they
+# don't both try to replace the release at once.
+concurrency:
+  group: debug-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -23,12 +33,16 @@ jobs:
       - name: Build and test
         run: ./gradlew assembleDebug lintDebug testDebugUnitTest
 
-      # Uploads share the account's GitHub storage quota, so keep them for
-      # 7 days only, and don't mark the build as failed if the quota is full.
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: binder-tracker-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+      # Replace the previous "Latest debug build" pre-release with this one.
+      # Releases don't count toward the Actions storage quota.
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk binder-tracker-debug.apk
+          gh release delete debug-latest --cleanup-tag --yes || true
+          gh release create debug-latest binder-tracker-debug.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Latest debug build" \
+            --notes "Debug build from branch \`${GITHUB_REF_NAME}\`, commit ${GITHUB_SHA::7}. Install binder-tracker-debug.apk on your phone."

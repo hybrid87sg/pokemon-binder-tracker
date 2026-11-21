@@ -38,8 +38,9 @@ Needs JDK 17+ and the Android SDK.
 ./gradlew testDebugUnitTest    # saves screen pictures to app/build/outputs/roborazzi/
 ```
 
-GitHub Actions also builds the APK on every push. Open the repo's **Actions** tab,
-pick the latest run, and download **binder-tracker-debug-apk**.
+GitHub Actions builds the app on every push and publishes it as a pre-release called
+**Latest debug build** (tag `debug-latest`). On the repo's GitHub page, open **Releases**
+and download `binder-tracker-debug.apk` onto your phone. Each push replaces it.
 
 ## Fixed debug key
 
