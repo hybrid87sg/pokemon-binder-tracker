@@ -21,16 +21,6 @@ object PocketMatcher {
             ?: sameNumber.firstOrNull { sameApartFromSuffix(simplify(it.name), name) }
     }
 
-    /**
-     * The cards whose name matches what was read (exactly, or apart from an
-     * ending like "ex"). Used to shortlist pictures to compare when the
-     * number couldn't be read.
-     */
-    fun sameName(readName: String, candidates: List<Card>): List<Card> {
-        val name = simplify(readName).takeIf { it.length >= 3 } ?: return emptyList()
-        return candidates.filter { simplify(it.name).let { n -> n == name || sameApartFromSuffix(n, name) } }
-    }
-
     // Endings printed after a Pokémon's name, like "Charizard ex" or "Pikachu VMAX".
     // Only these count as "close", so "Mew" and "Mewtwo" never get mixed up.
     private val suffixes = setOf("ex", "gx", "v", "vmax", "vstar", "vunion", "break", "lvx", "prime", "star")

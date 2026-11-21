@@ -21,8 +21,10 @@ Each person signs in with Google and gets their own shelf of binders.
 - **Automatic card reading**: after a scan, the app reads each card's name and number from the
   photo (ML Kit, on the phone) and fills pockets it is sure about; each pocket shows the official
   card picture from the card index
-- **Match by picture**: when a card's number can't be read, the pocket's picture is compared with
-  the official pictures of the cards it could be (same name or number), using a picture fingerprint
+- **Recognise by picture**: a small AI picture model (MobileNet via MediaPipe, on the phone) compares
+  each card with every official card picture. The picture descriptions are prepared on GitHub by
+  `scripts/build_card_embeddings.py` (workflow "Build card pictures list", release `card-pictures`)
+  and downloaded once (~20 MB). Unsure pockets offer their 5 best guesses to tap
 - **Rescan a page** (page's Edit menu): take a new photo of a page you already scanned; pockets
   update to the cards it reads now
 - **Scan this card** (pocket menu): photograph one card on its own to fill that pocket

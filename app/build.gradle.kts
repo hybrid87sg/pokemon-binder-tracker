@@ -20,6 +20,10 @@ val versionBase = providers.gradleProperty("appVersionBase").get()
 val buildNumber = providers.gradleProperty("buildNumber").orNull?.toIntOrNull()
 
 android {
+    // The AI picture model is read straight from the app file, so it must not be compressed.
+    androidResources {
+        noCompress += "tflite"
+    }
     namespace = "com.hybrid87sg.bindertracker"
     // The Android version we build against (37.2 = Android 17, minor update 2).
     compileSdk {
@@ -120,6 +124,8 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     // ML Kit: reads each card's name and number from the page photo, offline.
     implementation(libs.mlkit.text.recognition)
+    // MediaPipe: runs the small AI picture model that recognises cards by their picture.
+    implementation(libs.mediapipe.tasks.vision)
 
     // Coil: loads card pictures from the internet.
     implementation(libs.coil.compose)

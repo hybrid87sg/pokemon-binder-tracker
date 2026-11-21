@@ -18,6 +18,7 @@ coroutines = "1.11.0"
 junit = "4.13.2"
 camerax = "1.7.0"
 mlkitText = "16.0.1"
+mediapipeTasks = "0.10.20"
 exifinterface = "1.4.2"
 coil = "3.6.3"
 robolectric = "4.18.1"
@@ -51,6 +52,7 @@ camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = 
 camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 # ML Kit: reads the text on cards (name and number) on the phone itself.
 mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitText" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipeTasks" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }

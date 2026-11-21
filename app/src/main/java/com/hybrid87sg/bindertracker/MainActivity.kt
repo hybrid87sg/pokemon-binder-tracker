@@ -192,6 +192,8 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 val number by produceState(0, p.id) { value = vm.pageNumber(p) }
                 val photo by rememberPagePhoto(p.photoPath)
                 val reading by vm.readingStatus.collectAsStateWithLifecycle()
+                val suggestions by remember(pageId) { vm.suggestions(pageId) }.collectAsStateWithLifecycle(initialValue = emptyMap())
+                val openPocket by vm.openPocket.collectAsStateWithLifecycle()
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
@@ -213,6 +215,10 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         },
                         onRescan = { nav.navigate("rescan/$pageId") },
                         onScanCard = { position -> nav.navigate("scancard/$pageId/$position") },
+                        suggestions = suggestions,
+                        onPickSuggestion = { position, cardId -> vm.setPocketCard(pageId, position, cardId) },
+                        openPosition = openPocket?.takeIf { it.first == pageId }?.second,
+                        onPocketOpened = vm::pocketOpened,
                     )
                 }
             }

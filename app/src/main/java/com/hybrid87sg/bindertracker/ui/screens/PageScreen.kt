@@ -2,6 +2,7 @@ package com.hybrid87sg.bindertracker.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.GuideRect
+import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
@@ -86,10 +89,22 @@ fun PageScreen(
     onRescan: () -> Unit = {},
     // Photograph just this pocket's card and fill the pocket with it.
     onScanCard: (position: Int) -> Unit = {},
+    // Best guesses for pockets the app wasn't sure about, by pocket position.
+    suggestions: Map<Int, List<Card>> = emptyMap(),
+    // Tapping a guess puts that card in the pocket.
+    onPickSuggestion: (position: Int, cardId: String) -> Unit = { _, _ -> },
+    // A pocket whose menu should open by itself, then [onPocketOpened] is called.
+    openPosition: Int? = null,
+    onPocketOpened: () -> Unit = {},
 ) {
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    LaunchedEffect(openPosition, pockets) {
+        val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
+        selected = pocket
+        onPocketOpened()
+    }
     val identified = pockets.count { it.cardId != null }
     val empty = pockets.count { it.isEmpty }
     val toDo = pockets.size - identified - empty
@@ -177,6 +192,23 @@ fun PageScreen(
                     pocket.cardName?.let { "Pocket ${pocket.position + 1}: $it" } ?: "Pocket ${pocket.position + 1}",
                     style = MaterialTheme.typography.titleLarge,
                 )
+                suggestions[pocket.position]?.takeIf { it.isNotEmpty() }?.let { guesses ->
+                    Text("Best guesses: tap the right card", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        guesses.take(5).forEach { card ->
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                                    .clickable { selected = null; onPickSuggestion(pocket.position, card.id) },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth())
+                                Text(card.setName, style = MaterialTheme.typography.labelSmall, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        repeat(5 - guesses.take(5).size) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
                 SheetButton("Scan this card") { selected = null; onScanCard(pocket.position) }
                 SheetButton(if (pocket.cardId == null) "Choose card from list" else "Change card") { selected = null; onChooseCard(pocket.position) }
                 pocket.cardId?.let { id -> SheetButton("View card and price") { selected = null; onViewCard(id) } }
