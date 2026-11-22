@@ -56,3 +56,17 @@ data class PocketWithCard(
     val setName: String?,
     val imageUrl: String?,
 )
+
+/** One pocket and its card, plus which page it is on (for the page picker). */
+data class PagePocket(
+    val pageId: String,
+    val position: Int,
+    val isEmpty: Boolean,
+    val cardId: String?,
+    val cardName: String?,
+    val cardNumber: String?,
+    val setName: String?,
+    val imageUrl: String?,
+) {
+    fun withoutPage() = PocketWithCard(position, isEmpty, cardId, cardName, cardNumber, setName, imageUrl)
+}
