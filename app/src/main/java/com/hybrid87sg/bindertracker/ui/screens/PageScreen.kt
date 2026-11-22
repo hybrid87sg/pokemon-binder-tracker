@@ -473,19 +473,30 @@ fun PageScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { which ->
-                when (which) {
-                    // Tap: a card opens straight away, an empty pocket goes straight to the camera.
-                    // Press and hold: the pocket's menu with every option.
-                    0 -> BinderSheet(
-                        shownPockets, columns, pageKey = pageId, live = true,
-                        onPocket = { gestures.tap(it.position) },
-                        onPocketHold = { if (canEdit) selected = it },
-                        drag = drag,
-                        gestures = gestures,
-                    )
-                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = prevPageId ?: "prev", live = false, onPocket = {}, onPocketHold = {})
-                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = nextPageId ?: "next", live = false, onPocket = {}, onPocketHold = {})
+                // Every sheet is drawn by this ONE BinderSheet call. (Separate calls
+                // for "this page" and "next page" would count as different things,
+                // so when a turn ended the page you turned to was thrown away and
+                // rebuilt, and its cards popped in all over again.)
+                val live = which == 0
+                val sheetPockets = when (which) {
+                    0 -> shownPockets
+                    -1 -> prevPockets.orEmpty()
+                    else -> nextPockets.orEmpty()
                 }
+                val sheetKey = when (which) {
+                    0 -> pageId
+                    -1 -> prevPageId ?: "prev"
+                    else -> nextPageId ?: "next"
+                }
+                // Tap: a card opens straight away, an empty pocket goes straight to the camera.
+                // Press and hold: the pocket's menu with every option.
+                BinderSheet(
+                    sheetPockets, columns, pageKey = sheetKey, live = live,
+                    onPocket = { if (live) gestures.tap(it.position) },
+                    onPocketHold = { if (live && canEdit) selected = it },
+                    drag = if (live) drag else null,
+                    gestures = if (live) gestures else null,
+                )
             }
             Text(
                 if (canEdit) {
