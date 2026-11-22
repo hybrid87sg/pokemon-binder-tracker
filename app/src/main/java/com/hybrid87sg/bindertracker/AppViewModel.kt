@@ -14,6 +14,9 @@ import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderResize
 import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.data.Checklist
+import com.hybrid87sg.bindertracker.data.ChecklistData
+import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.CardIndex
 import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
@@ -44,6 +47,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -333,6 +338,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Card details and market prices, fetched live from TCGdex. */
     suspend fun cardDetails(id: String): Result<CardDetails> = runCatching { Tcgdex.cardDetails(id) }
+
+    // ---- Missing cards (the checklist for binders that collect an expansion) ----
+
+    private val checklistDao = db.checklistDao()
+
+    /**
+     * How many cards each collecting binder is still missing, by binder ID,
+     * for the badges on the shelf. Binders that collect nothing aren't listed.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val missingCounts: StateFlow<Map<String, Int>> =
+        combine(binders, checklistDao.observeOwnedCards(), cardCount) { list, owned, _ -> list to owned }
+            .mapLatest { (list, owned) ->
+                val collecting = list.filter { it.followedSetIds.isNotEmpty() }
+                if (collecting.isEmpty()) return@mapLatest emptyMap()
+                val cards = checklistDao.cardsInSets(collecting.flatMap { it.followedSetIds }.distinct())
+                if (cards.isEmpty()) return@mapLatest emptyMap()
+                val ownedBy = owned.groupBy({ it.binderId }, { it.cardId }).mapValues { it.value.toSet() }
+                collecting.associate { b ->
+                    val entries = Checklist.entries(cards, b.followedSetIds, ownedBy[b.id].orEmpty(), b.countSecretRares)
+                    b.id to entries.count { !it.owned }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Everything the Missing cards page needs for one binder, kept up to date. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun checklist(binderId: String): Flow<ChecklistData?> =
+        combine(binderDao.observeBinder(binderId), checklistDao.observeBinderPockets(binderId), cardCount) { b, pockets, _ -> b to pockets }
+            .mapLatest { (b, pockets) ->
+                if (b == null) return@mapLatest null
+                val cards = if (b.followedSetIds.isEmpty()) emptyList() else checklistDao.cardsInSets(b.followedSetIds)
+                ChecklistData(b, cards, pockets, pockets.mapNotNull { it.cardId }.toSet())
+            }
+
+    /** The expansion most of a binder's cards come from, to suggest collecting it. */
+    suspend fun topExpansion(binderId: String): ExpansionCount? = checklistDao.topExpansion(binderId)
+
+    /** Saves which expansions a binder collects, and whether secret rares count. Owner only. */
+    fun setCollecting(binder: Binder, setIds: List<String>, countSecretRares: Boolean = binder.countSecretRares) {
+        if (!binder.isOwner) return
+        val updated = binder.copy(followedSets = Binder.joinSetIds(setIds), countSecretRares = countSecretRares)
+        if (updated == binder) return
+        viewModelScope.launch {
+            binderDao.update(updated)
+            cloud.binderSettingsChanged(updated)
+        }
+    }
 
     // ---- Binder pages and pockets (checklist #4, #36) ----
 

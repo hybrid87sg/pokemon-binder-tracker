@@ -55,7 +55,11 @@ class BinderBackup(
                     pockets = binderDao.pocketsOf(page.id).map { BackupFile.PocketData(it.position, it.cardId, it.isEmpty) },
                 )
             }
-            BackupFile.BinderData(binder.id, binder.name, binder.colorHex, binder.columns, binder.rows, binder.createdAt, pages)
+            BackupFile.BinderData(
+                binder.id, binder.name, binder.colorHex, binder.columns, binder.rows, binder.createdAt, pages,
+                followedSets = binder.followedSets,
+                countSecretRares = binder.countSecretRares,
+            )
         }
 
         ZipOutputStream(out.buffered()).use { zip ->
@@ -126,6 +130,8 @@ class BinderBackup(
                     columns = b.columns,
                     rows = b.rows,
                     createdAt = b.createdAt,
+                    followedSets = b.followedSets,
+                    countSecretRares = b.countSecretRares,
                 )
                 val pages = mutableListOf<Page>()
                 val pockets = mutableListOf<Pocket>()

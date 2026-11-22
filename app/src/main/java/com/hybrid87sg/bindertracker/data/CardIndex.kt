@@ -56,7 +56,8 @@ class CardIndex(context: Context, private val dao: CardDao) {
         private const val KEY_UPDATED = "updated_at"
         private const val KEY_FORMAT = "format"
         // 2 = cards include their series. 3 = expansions are in release order too.
-        private const val FORMAT = 3
+        // 4 = cards include their rarity and their set's size (Missing cards page).
+        private const val FORMAT = 4
         private const val REFRESH_AFTER_MS = 7L * 24 * 60 * 60 * 1000 // one week
 
         /** What the person typed, split into a name part and a card number. */
