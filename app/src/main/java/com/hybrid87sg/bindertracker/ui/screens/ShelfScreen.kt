@@ -24,6 +24,8 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -88,6 +90,9 @@ fun ShelfScreen(
     onSearch: () -> Unit,
     // How full each binder is, by binder ID (for the bars and totals).
     fill: Map<String, BinderFill> = emptyMap(),
+    // A short green note, e.g. "3 binders added to your account.", or null.
+    notice: String? = null,
+    onDismissNotice: () -> Unit = {},
 ) {
     // The slide-in plays once each time the app starts, not every time you come back.
     val playIntro = remember { !ShelfIntro.played }
@@ -139,6 +144,15 @@ fun ShelfScreen(
                     Icon(painterResource(R.drawable.ic_person), contentDescription = null, modifier = Modifier.size(22.dp))
                 }
             }
+        }
+
+        if (notice != null) {
+            // The note goes away by itself after 6 seconds, or when tapped.
+            LaunchedEffect(notice) {
+                delay(6_000)
+                onDismissNotice()
+            }
+            SuccessNotice(notice, onDismissNotice)
         }
 
         // Totals: cards in pockets, binders, and how full they are overall.
@@ -304,4 +318,31 @@ private fun Modifier.dashedBorder(): Modifier = drawBehind {
         cornerRadius = CornerRadius(6.dp.toPx()),
         style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))),
     )
+}
+
+/** A green "done" note with a tick, shown under the shelf's title. */
+@Composable
+private fun SuccessNotice(text: String, onDismiss: () -> Unit) {
+    Surface(
+        onClick = onDismiss,
+        shape = RoundedCornerShape(14.dp),
+        color = AppColors.Surface,
+        contentColor = AppColors.Ink,
+        border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Success),
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(24.dp).clip(CircleShape).background(AppColors.Success),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = AppColors.White, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(text, style = MaterialTheme.typography.titleSmall, color = AppColors.SuccessText)
+                Text("Everything you made on this phone is kept.", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            }
+        }
+    }
 }
