@@ -33,7 +33,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.prices.SgdRates
+import java.util.Locale
+import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.MarketPrice
 import com.hybrid87sg.bindertracker.ui.components.BackButton
@@ -48,6 +63,8 @@ fun CardRoute(
     card: Card,
     loadDetails: suspend (String) -> Result<CardDetails>,
     onBack: () -> Unit,
+    // Today's rates for showing prices in Singapore dollars (null = couldn't get them).
+    loadRates: suspend () -> SgdRates? = { null },
 ) {
     var details by remember { mutableStateOf<CardDetails?>(null) }
     var failed by remember { mutableStateOf(false) }
@@ -56,7 +73,13 @@ fun CardRoute(
         failed = false
         loadDetails(card.id).onSuccess { details = it }.onFailure { failed = true }
     }
-    CardScreen(card, details, failed, onRetry = { attempt++ }, onBack = onBack)
+    var rates by remember { mutableStateOf<SgdRates?>(null) }
+    var ratesLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        rates = runCatching { loadRates() }.getOrNull()
+        ratesLoaded = true
+    }
+    CardScreen(card, details, failed, onRetry = { attempt++ }, onBack = onBack, rates = rates, ratesLoaded = ratesLoaded)
 }
 
 @Composable
@@ -66,7 +89,11 @@ fun CardScreen(
     failed: Boolean,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    rates: SgdRates? = null,
+    // False while the rates are still being fetched.
+    ratesLoaded: Boolean = true,
 ) {
+    var fullScreen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Back", onBack) }
         Column(
@@ -76,7 +103,9 @@ fun CardScreen(
             CardImage(
                 card.largeImageUrl,
                 contentDescription = "${card.name} card",
-                modifier = Modifier.width(240.dp).align(Alignment.CenterHorizontally),
+                modifier = Modifier.width(240.dp).align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClickLabel = "Show the card full screen") { fullScreen = true },
                 corner = 10.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
@@ -108,19 +137,104 @@ fun CardScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
                 )
-                else -> PriceTable(details.prices)
+                else -> {
+                    PriceTable(details.prices, rates)
+                    if (ratesLoaded) RateNote(details.prices, rates)
+                }
             }
             Text(
-                "Market prices are what the card typically sells for on each marketplace, not a guaranteed sale. Prices in Singapore dollars come in a later update.",
+                "Market prices are what the card typically sells for on each marketplace, not a guaranteed sale.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
             )
         }
     }
+    if (fullScreen) FullScreenCard(card) { fullScreen = false }
+}
+
+/** "US$1 = S$1.294" for one currency. */
+private fun rateText(currency: String, sgd: Double): String {
+    val one = when (currency) {
+        "USD" -> "US$1"
+        "EUR" -> "€1"
+        else -> "1 $currency"
+    }
+    return one + " = S$" + "%.3f".format(Locale.UK, sgd)
+}
+
+/** Says which exchange rates the S$ prices use, or that we couldn't get any. */
+@Composable
+private fun RateNote(prices: List<MarketPrice>, rates: SgdRates?) {
+    val currencies = prices.map { it.currency }.distinct().filter { it != "SGD" }
+    if (currencies.isEmpty()) return
+    val known = currencies.mapNotNull { c -> rates?.toSgd?.get(c)?.let { rateText(c, it) } }
+    val text = if (rates == null || known.isEmpty()) {
+        "Couldn't get today's exchange rate, so prices are in their original currency. Connect to the internet to see them in Singapore dollars."
+    } else {
+        val day = formatDate(rates.date + "T12:00:00Z")?.let { " ($it)" }.orEmpty()
+        "Shown in Singapore dollars using the European Central Bank's rates" + day + ": " +
+            known.joinToString(", ") + ". The small number is the original price."
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = AppColors.Muted,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AppColors.Surface2).padding(12.dp),
+    )
+}
+
+/**
+ * The card on its own, as wide as the phone, on black. Tap anywhere, swipe
+ * down or press Back to close it.
+ */
+@Composable
+private fun FullScreenCard(card: Card, onClose: () -> Unit) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        val density = LocalDensity.current
+        val closeAfter = with(density) { 120.dp.toPx() }
+        var dragY by remember { mutableFloatStateOf(0f) }
+        Box(
+            Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = (1f - dragY / (closeAfter * 3)).coerceIn(0.4f, 1f)))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClickLabel = "Close",
+                    onClick = onClose,
+                )
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { if (dragY > closeAfter) onClose() else dragY = 0f },
+                        onDragCancel = { dragY = 0f },
+                    ) { _, amount -> dragY = (dragY + amount).coerceAtLeast(0f) }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            CardImage(
+                card.largeImageUrl,
+                contentDescription = "${card.name} card, full screen",
+                modifier = Modifier.offset { IntOffset(0, dragY.roundToInt()) }
+                    .fillMaxWidth().padding(horizontal = 8.dp),
+                corner = 14.dp,
+                backupUrl = card.largeBackupUrl,
+            )
+            Box(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                    .size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
+                    .clickable(onClickLabel = "Close", onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✕", color = Color.White, fontSize = 20.sp)
+            }
+        }
+    }
 }
 
 @Composable
-private fun PriceTable(prices: List<MarketPrice>) {
+private fun PriceTable(prices: List<MarketPrice>, rates: SgdRates?) {
     val shape = RoundedCornerShape(14.dp)
     Column(Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)) {
         prices.groupBy { it.source }.entries.forEachIndexed { index, (source, rows) ->
@@ -135,7 +249,16 @@ private fun PriceTable(prices: List<MarketPrice>) {
                 rows.forEach { price ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(price.variant, style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted, modifier = Modifier.weight(1f))
-                        Text(formatMoney(price.amount, price.currency), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        val sgd = rates?.convert(price.amount, price.currency)
+                        if (sgd == null || price.currency == "SGD") {
+                            Text(formatMoney(price.amount, price.currency), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            // S$ big, the original price small underneath.
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(formatMoney(sgd, "SGD"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text(formatMoney(price.amount, price.currency), style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+                            }
+                        }
                     }
                 }
             }

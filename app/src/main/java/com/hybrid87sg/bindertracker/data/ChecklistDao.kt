@@ -31,6 +31,23 @@ interface ChecklistDao {
     )
     fun observeOwnedCards(): Flow<List<OwnedCard>>
 
+    /**
+     * Where every card in every binder is: the binder's name and the page
+     * number (pages are numbered in the order they were added). For search,
+     * which lists your own cards first and says where they are.
+     */
+    @Query(
+        """
+        SELECT pockets.cardId AS cardId, binders.name AS binderName,
+          (SELECT COUNT(*) FROM pages p2 WHERE p2.binderId = pages.binderId AND p2.createdAt <= pages.createdAt) AS pageNumber
+        FROM pockets INNER JOIN pages ON pages.id = pockets.pageId
+        INNER JOIN binders ON binders.id = pages.binderId
+        WHERE pockets.cardId IS NOT NULL
+        ORDER BY binders.createdAt, pages.createdAt, pockets.position
+        """,
+    )
+    suspend fun cardPlaces(): List<CardPlace>
+
     /** Every card in these expansions (from the card index on the phone). */
     @Query("SELECT * FROM cards WHERE setId IN (:setIds)")
     suspend fun cardsInSets(setIds: List<String>): List<Card>
@@ -54,6 +71,9 @@ interface ChecklistDao {
 
 /** One pocket of a binder: which page, which spot on it, and the card in it (if any). */
 data class BinderPocket(val pageId: String, val pageCreatedAt: Long, val position: Int, val cardId: String?)
+
+/** "Card Y is on page 3 of the binder called X." */
+data class CardPlace(val cardId: String, val binderName: String, val pageNumber: Int)
 
 /** "Binder X holds card Y." */
 data class OwnedCard(val binderId: String, val cardId: String)

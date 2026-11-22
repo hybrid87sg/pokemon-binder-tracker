@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -381,6 +383,76 @@ internal fun PocketPicture(pocket: PocketWithCard, modifier: Modifier) {
                 Modifier.fillMaxSize().border(2.dp, AppColors.Check, RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center,
             ) { Text("?", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = AppColors.Check) }
+        }
+    }
+}
+
+/**
+ * "Go to page": every page of the binder as a tile showing how full it is.
+ * Tapping a tile goes straight to that page.
+ */
+@Composable
+internal fun PageJumpPicker(
+    pages: List<PickerPage>,
+    currentPageId: String,
+    columns: Int,
+    onPick: (pageId: String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Go to page", style = MaterialTheme.typography.titleLarge)
+        Column(
+            Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            pages.chunked(4).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { p ->
+                        val here = p.id == currentPageId
+                        val filled = p.pockets.count { it.cardId != null }
+                        Surface(
+                            onClick = { onPick(p.id) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (here) AppColors.Surface2 else AppColors.Surface,
+                            border = BorderStroke(if (here) 2.dp else 1.dp, if (here) AppColors.AccentText else AppColors.Border),
+                            modifier = Modifier.weight(1f).semantics {
+                                contentDescription = "Page ${p.number}, $filled of ${p.pockets.size} cards" + if (here) ", this page" else ""
+                            },
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                MiniGrid(p.pockets, columns)
+                                Text("${p.number}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppColors.Ink)
+                                Text("$filled/${p.pockets.size}", fontSize = 11.sp, color = AppColors.Muted, maxLines = 1)
+                            }
+                        }
+                    }
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        if (pages.size > 8) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                JumpButton("First page", Modifier.weight(1f)) { pages.firstOrNull()?.let { onPick(it.id) } }
+                JumpButton("Last page", Modifier.weight(1f)) { pages.lastOrNull()?.let { onPick(it.id) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JumpButton(text: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = AppColors.Surface,
+        border = BorderStroke(1.dp, AppColors.BorderStrong),
+        modifier = modifier,
+    ) {
+        Box(Modifier.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+            Text(text, fontWeight = FontWeight.SemiBold, color = AppColors.Ink)
         }
     }
 }
