@@ -39,6 +39,10 @@ data class Card(
     /** Big picture for the card screen. */
     val largeImageUrl: String? get() = imageUrl?.let { "$it/high.webp" }
 
+    /** Backup pictures from another site, for when TCGdex has none (see CardPictures). */
+    val thumbnailBackupUrl: String? get() = CardPictures.backupUrl(id, large = false)
+    val largeBackupUrl: String? get() = CardPictures.backupUrl(id, large = true)
+
     /** The card number for people to read (a few are stored web-encoded, like "%3F" for "?"). */
     val number: String get() = runCatching { URLDecoder.decode(localId, "UTF-8") }.getOrDefault(localId)
 }
