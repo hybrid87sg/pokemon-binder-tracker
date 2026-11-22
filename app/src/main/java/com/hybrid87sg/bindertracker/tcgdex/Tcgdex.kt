@@ -19,7 +19,8 @@ object Tcgdex {
 
     /** Downloads every English card (about 24,000) with its set and series names. */
     suspend fun downloadCardIndex(): List<Card> = withContext(Dispatchers.IO) {
-        val sets = parseSetNames(get("$BASE/sets"))
+        val setsJson = get("$BASE/sets")
+        val sets = parseSetNames(setsJson)
         // Which series each set belongs to: one small download per series (about 20).
         val seriesOfSet = mutableMapOf<String, SeriesInfo>()
         parseSeriesList(get("$BASE/series")).forEachIndexed { seriesIndex, (id, name) ->
@@ -27,7 +28,44 @@ object Tcgdex {
                 .getOrDefault(emptyList())
                 .forEachIndexed { setIndex, setId -> seriesOfSet[setId] = SeriesInfo(id, name, releaseOrder(seriesIndex, setIndex)) }
         }
-        parseCardList(get("$BASE/cards"), sets, seriesOfSet)
+        val official = runCatching { parseSetOfficialCounts(setsJson) }.getOrDefault(emptyMap())
+        // Rarity isn't in the card list, so ask for each rarity's cards (about 40 small lists).
+        // If this fails the cards still work; the Missing cards page just can't group by rarity.
+        val rarityOf = mutableMapOf<String, String>()
+        runCatching { parseRarityNames(get("$BASE/rarities")) }.getOrDefault(emptyList()).forEach { rarity ->
+            runCatching { parseRarityCards(get("$BASE/rarities/${encodePath(rarity)}")) }
+                .getOrDefault(emptyList())
+                .forEach { id -> rarityOf[id] = rarity }
+        }
+        parseCardList(get("$BASE/cards"), sets, seriesOfSet).map { card ->
+            card.copy(rarity = rarityOf[card.id].orEmpty(), setOfficial = official[card.setId] ?: 0)
+        }
+    }
+
+    /** Spaces as %20 (not "+"), because this goes in the address itself, e.g. "Rare%20Holo". */
+    private fun encodePath(text: String): String = URLEncoder.encode(text, "UTF-8").replace("+", "%20")
+
+    /** [{"id":"base1",...,"cardCount":{"total":102,"official":102}}] -> {"base1": 102} */
+    fun parseSetOfficialCounts(json: String): Map<String, Int> {
+        val array = JSONArray(json)
+        return (0 until array.length()).mapNotNull { i ->
+            val set = array.getJSONObject(i)
+            val official = set.optJSONObject("cardCount")?.optInt("official", 0) ?: 0
+            if (official > 0) set.getString("id") to official else null
+        }.toMap()
+    }
+
+    /** ["Common","Uncommon","Rare Holo",...] -> the same list. */
+    fun parseRarityNames(json: String): List<String> {
+        val array = JSONArray(json)
+        return (0 until array.length()).mapNotNull { array.optString(it).ifEmpty { null } }
+    }
+
+    /** {"name":"Rare","cards":[{"id":"base1-17",...}]} (or just the list) -> card ids. */
+    fun parseRarityCards(json: String): List<String> {
+        val trimmed = json.trimStart()
+        val cards = if (trimmed.startsWith("[")) JSONArray(trimmed) else JSONObject(trimmed).optJSONArray("cards") ?: JSONArray()
+        return (0 until cards.length()).mapNotNull { cards.optJSONObject(it)?.optString("id")?.ifEmpty { null } }
     }
 
     /** A series, e.g. "swsh" / "Sword & Shield"; [order] counts up from the oldest (see [releaseOrder]). */

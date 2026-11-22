@@ -35,6 +35,13 @@ data class Binder(
     val ownerName: String? = null,
     // How many people use this binder, you included (1 = not shared).
     @ColumnInfo(defaultValue = "1") val memberCount: Int = 1,
+    // The expansions this binder collects, as TCGdex set IDs separated by
+    // commas, e.g. "base1,sv03.5". Empty = not collecting one. The Missing
+    // cards page lists the cards from these that aren't in the binder yet.
+    @ColumnInfo(defaultValue = "") val followedSets: String = "",
+    // True = "master set": secret rares (numbered past the set size, like
+    // 180/165) count too. False = "main set" (the default).
+    @ColumnInfo(defaultValue = "0") val countSecretRares: Boolean = false,
 ) {
     val pocketsPerPage: Int get() = columns * rows
     val sizeLabel: String get() = "$columns × $rows"
@@ -43,10 +50,19 @@ data class Binder(
     val canEdit: Boolean get() = role == ROLE_OWNER || role == ROLE_EDITOR
     val isShared: Boolean get() = memberCount > 1 || !isOwner
 
+    /** [followedSets] as a list, e.g. ["base1", "sv03.5"]. */
+    val followedSetIds: List<String> get() = splitSetIds(followedSets)
+
     companion object {
         const val ROLE_OWNER = "owner"
         const val ROLE_EDITOR = "editor"
         const val ROLE_VIEWER = "viewer"
+
+        /** "base1,sv03.5" -> ["base1", "sv03.5"]; blank -> []. */
+        fun splitSetIds(text: String): List<String> = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+        /** ["base1", "sv03.5"] -> "base1,sv03.5" (the form [followedSets] is saved in). */
+        fun joinSetIds(ids: List<String>): String = ids.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(",")
     }
 }
 

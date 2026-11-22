@@ -27,6 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import com.hybrid87sg.bindertracker.data.ExpansionCount
+import com.hybrid87sg.bindertracker.data.ExpansionOption
+import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
 import com.hybrid87sg.bindertracker.ui.screens.CardRoute
@@ -183,6 +186,8 @@ private fun App(
         }
     }
     val syncActive by vm.syncActive.collectAsStateWithLifecycle()
+    // How many cards the card list has (changes when it's downloaded), so expansion lists reload.
+    val cardCount by vm.cardCount.collectAsStateWithLifecycle()
     val syncProblem by vm.syncProblem.collectAsStateWithLifecycle()
     // Screens slide in from the right and back out to the right, with a fade.
     val slide = tween<IntOffset>(Motion.Medium, easing = Motion.Ease)
@@ -199,7 +204,9 @@ private fun App(
             val binders by vm.binders.collectAsStateWithLifecycle()
             val fill by vm.binderFill.collectAsStateWithLifecycle()
             val movedNotice by vm.movedBindersNotice.collectAsStateWithLifecycle()
+            val missing by vm.missingCounts.collectAsStateWithLifecycle()
             ShelfScreen(
+                missing = missing,
                 binders = binders,
                 fill = fill,
                 notice = movedNotice,
@@ -225,10 +232,15 @@ private fun App(
             val id = entry.arguments?.getString("id").orEmpty()
             val binder by remember(id) { vm.binder(id) }.collectAsStateWithLifecycle(initialValue = null)
             val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            val missing by vm.missingCounts.collectAsStateWithLifecycle()
+            val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
             binder?.let { b ->
                 BinderScreen(
                     binder = b,
                     pages = pages,
+                    progress = missing[b.id],
+                    collectingLabel = b.followedSetIds.joinToString(" + ") { sid -> expansions.firstOrNull { it.id == sid }?.name ?: sid },
+                    onOpenMissing = { nav.navigate("missing/${b.id}") },
                     onBack = { nav.popBackStack() },
                     onDelete = {
                         vm.deleteBinder(b)
@@ -276,16 +288,38 @@ private fun App(
             val binder by remember(id) { vm.binder(id) }.collectAsStateWithLifecycle(initialValue = null)
             val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
             val filled by remember(id) { vm.filledPositions(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
             binder?.let { b ->
                 EditBinderScreen(
                     binder = b,
                     pageCount = pages.size,
                     filledPositions = filled,
                     onCancel = { nav.popBackStack() },
-                    onSave = { name, colorHex, size ->
-                        vm.updateBinder(b, name, colorHex, size)
+                    expansions = expansions,
+                    onSave = { name, colorHex, size, collecting, secret ->
+                        vm.updateBinder(b, name, colorHex, size, collecting, secret)
                         nav.popBackStack()
                     },
+                )
+            }
+        }
+        // Missing cards: the checklist for a binder that collects an expansion.
+        composable("missing/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val data by remember(id) { vm.checklist(id) }.collectAsStateWithLifecycle(initialValue = null)
+            val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
+            val suggestion by produceState<ExpansionCount?>(null, id, cardCount) { value = vm.topExpansion(id) }
+            data?.let { d ->
+                MissingCardsScreen(
+                    data = d,
+                    expansions = expansions,
+                    suggestion = suggestion,
+                    cardListMissing = cardCount == 0,
+                    onBack = { nav.popBackStack() },
+                    onSetCollecting = { sets, secret -> vm.setCollecting(d.binder, sets, secret) },
+                    onPutIn = { pageId, position, cardId -> vm.setPocketCard(pageId, position, cardId) },
+                    onScanInto = { pageId, position -> nav.navigate("scancard/$pageId/$position") },
+                    onViewCard = { cardId -> nav.navigate("card/${Uri.encode(cardId)}") },
                 )
             }
         }

@@ -29,6 +29,11 @@ import com.hybrid87sg.bindertracker.ui.screens.PermissionsScreen
 import com.hybrid87sg.bindertracker.update.UpdateInfo
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
+import com.hybrid87sg.bindertracker.data.BinderPocket
+import com.hybrid87sg.bindertracker.data.ChecklistData
+import com.hybrid87sg.bindertracker.data.ChecklistProgress
+import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -101,7 +106,60 @@ class ScreenshotTest {
             pageCount = 2,
             filledPositions = listOf(0, 1, 9, 10, 11, 3, 10),
             onCancel = {},
-            onSave = { _, _, _ -> },
+            onSave = { _, _, _, _, _ -> },
+        )
+    }
+
+    // ---- Missing cards ----
+
+    private val kanto = Binder(id = "k", ownerId = "t", name = "Kanto", colorHex = SpineColor.Navy.hex, columns = 3, rows = 3, followedSets = "base1,sv151")
+
+    private fun checklistSample(): ChecklistData {
+        val names = listOf("Alakazam", "Blastoise", "Chansey", "Charizard", "Clefairy", "Gyarados", "Hitmonchan", "Machamp", "Magneton", "Mewtwo", "Nidoking", "Ninetales")
+        val base = names.mapIndexed { i, n ->
+            Card(id = "base1-${i + 1}", localId = "${i + 1}", name = n, setId = "base1", setName = "Base Set", imageUrl = null, rarity = if (i < 6) "Rare Holo" else "Rare", setOfficial = 102)
+        }
+        val sv = (1..10).map {
+            Card(id = "sv151-$it", localId = "$it", name = "Card $it", setId = "sv151", setName = "151", imageUrl = null, rarity = if (it < 6) "Common" else "Double rare", setOfficial = 8)
+        }
+        val owned = setOf("base1-1", "base1-2", "base1-3", "base1-5", "base1-6", "base1-7", "sv151-1", "sv151-3")
+        val pockets = owned.mapIndexed { i, id -> BinderPocket("p${i / 9}", i / 9L, i % 9, id) } + BinderPocket("p0", 0, 8, null)
+        return ChecklistData(kanto, base + sv, pockets, owned)
+    }
+
+    @Test fun missingCards() = shoot("11-missing-cards") {
+        MissingCardsScreen(
+            data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+        )
+    }
+
+    @Test fun missingCardsDark() = shoot("11b-missing-cards-dark", dark = true) {
+        MissingCardsScreen(
+            data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+        )
+    }
+
+    @Test fun missingCardsNotCollecting() = shoot("11c-missing-cards-none") {
+        MissingCardsScreen(
+            data = ChecklistData(sample[0], emptyList(), emptyList(), emptySet()), expansions = emptyList(),
+            suggestion = ExpansionCount("base1", "Base Set", 12), cardListMissing = false,
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+        )
+    }
+
+    @Test fun shelfWithMissingBadges() = shoot("2e-shelf-missing-badges") {
+        ShelfScreen(
+            binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {},
+            missing = mapOf(sample[0].id to ChecklistProgress(38, 102), sample[1].id to ChecklistProgress(0, 165)),
+        )
+    }
+
+    @Test fun binderWithMissingStrip() = shoot("4c-binder-missing") {
+        BinderScreen(
+            binder = kanto, pages = emptyList(), onBack = {}, onDelete = {}, onAddPages = {}, onEdit = {}, onOpenPage = {},
+            progress = ChecklistProgress(95, 267), collectingLabel = "Base Set + 151",
         )
     }
 

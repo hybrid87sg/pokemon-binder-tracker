@@ -28,6 +28,9 @@ object BackupFile {
         val rows: Int,
         val createdAt: Long,
         val pages: List<PageData>,
+        // Added with the Missing cards page; older backups don't have them, so they default to "collects nothing".
+        val followedSets: String = "",
+        val countSecretRares: Boolean = false,
     )
 
     data class PageData(
@@ -77,6 +80,8 @@ object BackupFile {
         .put("rows", rows)
         .put("createdAt", createdAt)
         .put("pages", JSONArray(pages.map { it.toJson() }))
+        .put("followedSets", followedSets)
+        .put("countSecretRares", countSecretRares)
 
     private fun PageData.toJson() = JSONObject()
         .put("id", id)
@@ -103,6 +108,8 @@ object BackupFile {
             rows = o.optInt("rows", 3).coerceIn(1, 10),
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
             pages = (0 until pages.length()).map { pageFromJson(pages.getJSONObject(it)) },
+            followedSets = o.optString("followedSets", ""),
+            countSecretRares = o.optBoolean("countSecretRares", false),
         )
     }
 

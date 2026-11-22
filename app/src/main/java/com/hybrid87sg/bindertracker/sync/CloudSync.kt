@@ -494,6 +494,9 @@ class CloudSync(
         "colorHex" to b.colorHex,
         "columns" to b.columns,
         "rows" to b.rows,
+        // Missing cards: which expansions the binder collects, and main or master set.
+        "followedSets" to b.followedSets,
+        "countSecretRares" to b.countSecretRares,
     )
 
     private fun pageDoc(createdAt: Long, pockets: List<Pocket>): Map<String, Any> = mapOf(
@@ -544,6 +547,8 @@ class CloudSync(
         val roles: Map<String, String>,
         val names: Map<String, String>,
         val invites: Map<String, InviteCode>,
+        val followedSets: String,
+        val countSecretRares: Boolean,
     ) {
         val sharing: SharingInfo
             get() = SharingInfo(
@@ -564,6 +569,8 @@ class CloudSync(
             role = if (ownerId == uid) Binder.ROLE_OWNER else roles[uid] ?: Binder.ROLE_VIEWER,
             ownerName = if (ownerId == uid) null else names[ownerId],
             memberCount = memberIds.size.coerceAtLeast(1),
+            followedSets = followedSets,
+            countSecretRares = countSecretRares,
         )
 
         companion object {
@@ -587,6 +594,8 @@ class CloudSync(
                     roles = stringMap(doc.get(ROLES)),
                     names = stringMap(doc.get(MEMBER_NAMES)),
                     invites = invites,
+                    followedSets = doc.getString("followedSets").orEmpty(),
+                    countSecretRares = doc.getBoolean("countSecretRares") ?: false,
                 )
             }
 
