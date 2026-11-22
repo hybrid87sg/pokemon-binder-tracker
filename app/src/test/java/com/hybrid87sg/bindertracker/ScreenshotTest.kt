@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.data.ExpansionOption
+import com.hybrid87sg.bindertracker.ui.screens.ExpansionPicker
 import com.hybrid87sg.bindertracker.data.PageSummary
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
@@ -155,6 +157,30 @@ class ScreenshotTest {
             results = sampleCards, searching = false, status = status,
             onBack = {}, onCardClick = {}, onRefreshIndex = {}, autoFocus = false,
         )
+    }
+
+    private val sampleExpansions = listOf(
+        ExpansionOption("me02", "Phantasmal Flames", "me", "Mega Evolution"),
+        ExpansionOption("me01", "Mega Evolution", "me", "Mega Evolution"),
+        ExpansionOption("sv08", "Surging Sparks", "sv", "Scarlet & Violet"),
+        ExpansionOption("sv03.5", "151", "sv", "Scarlet & Violet"),
+        ExpansionOption("sv02", "Paldea Evolved", "sv", "Scarlet & Violet"),
+        ExpansionOption("swsh4", "Vivid Voltage", "swsh", "Sword & Shield"),
+    )
+
+    @Test fun searchWithExpansion() = shoot("7c-search-expansion") {
+        SearchScreen(
+            title = "Search cards", backLabel = "Shelf", query = "pikachu", onQueryChange = {},
+            results = sampleCards.filter { it.setId == "sv03.5" }, searching = false, status = status,
+            onBack = {}, onCardClick = {}, onRefreshIndex = {}, autoFocus = false,
+            expansions = sampleExpansions, selectedSet = "sv03.5",
+        )
+    }
+
+    @Test fun expansionPicker() = shoot("7d-expansion-picker") {
+        Box(Modifier.background(AppColors.Surface)) {
+            ExpansionPicker(sampleExpansions, selectedSeries = "sv", selectedSet = "", onPick = { _, _ -> })
+        }
     }
 
     @Test fun searchDownloading() = shoot("7b-search-downloading") {
