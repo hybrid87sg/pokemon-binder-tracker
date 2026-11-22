@@ -22,17 +22,23 @@ object Tcgdex {
         val sets = parseSetNames(get("$BASE/sets"))
         // Which series each set belongs to: one small download per series (about 20).
         val seriesOfSet = mutableMapOf<String, SeriesInfo>()
-        parseSeriesList(get("$BASE/series")).forEachIndexed { order, (id, name) ->
-            val info = SeriesInfo(id, name, order)
+        parseSeriesList(get("$BASE/series")).forEachIndexed { seriesIndex, (id, name) ->
             runCatching { parseSeriesSets(get("$BASE/series/${URLEncoder.encode(id, "UTF-8")}")) }
                 .getOrDefault(emptyList())
-                .forEach { setId -> seriesOfSet[setId] = info }
+                .forEachIndexed { setIndex, setId -> seriesOfSet[setId] = SeriesInfo(id, name, releaseOrder(seriesIndex, setIndex)) }
         }
         parseCardList(get("$BASE/cards"), sets, seriesOfSet)
     }
 
-    /** A series, e.g. "swsh" / "Sword & Shield"; [order] counts up from the oldest. */
+    /** A series, e.g. "swsh" / "Sword & Shield"; [order] counts up from the oldest (see [releaseOrder]). */
     data class SeriesInfo(val id: String, val name: String, val order: Int)
+
+    /**
+     * One number that sorts both series and the expansions inside them by release:
+     * series 3, expansion 7 -> 3007. TCGdex lists both oldest first, so a bigger
+     * number is newer. A series never has anywhere near 1,000 expansions.
+     */
+    fun releaseOrder(seriesIndex: Int, setIndex: Int): Int = seriesIndex * 1000 + setIndex
 
     /** [{"id":"base","name":"Base"},...] -> [("base", "Base"), ...] in TCGdex's order (oldest first). */
     fun parseSeriesList(json: String): List<Pair<String, String>> {

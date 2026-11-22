@@ -21,7 +21,7 @@ class CardIndex(context: Context, private val dao: CardDao) {
 
     suspend fun needsRefresh(): Boolean =
         dao.count() == 0 || System.currentTimeMillis() - lastUpdated > REFRESH_AFTER_MS ||
-            // Downloaded before series were stored: get it again so the series filter works.
+            // Downloaded in an older format: get it again so the filters work.
             prefs.getInt(KEY_FORMAT, 1) < FORMAT
 
     /** Downloads the latest list and replaces the old one. */
@@ -35,25 +35,28 @@ class CardIndex(context: Context, private val dao: CardDao) {
      * Finds cards by name, number, or both. Examples:
      * "pikachu", "025/165", "#25", "charizard 4".
      */
-    suspend fun search(query: String, seriesId: String = ""): List<Card> {
+    suspend fun search(query: String, seriesId: String = "", setId: String = ""): List<Card> {
         val parsed = parseQuery(query) ?: return emptyList()
         return if (parsed.number != null) {
-            dao.searchByNumber(parsed.number, parsed.name, seriesId = seriesId)
+            dao.searchByNumber(parsed.number, parsed.name, seriesId = seriesId, setId = setId)
         } else {
-            dao.searchByName(parsed.name, seriesId = seriesId)
+            dao.searchByName(parsed.name, seriesId = seriesId, setId = setId)
         }
     }
 
     /** Every series, newest first, for the series filter. */
     suspend fun series(): List<SeriesOption> = dao.series()
 
+    /** Every expansion, newest first, grouped by series, for the expansion filter. */
+    suspend fun expansions(): List<ExpansionOption> = dao.expansions()
+
     suspend fun get(id: String): Card? = dao.get(id)
 
     companion object {
         private const val KEY_UPDATED = "updated_at"
         private const val KEY_FORMAT = "format"
-        // 2 = cards include their series.
-        private const val FORMAT = 2
+        // 2 = cards include their series. 3 = expansions are in release order too.
+        private const val FORMAT = 3
         private const val REFRESH_AFTER_MS = 7L * 24 * 60 * 60 * 1000 // one week
 
         /** What the person typed, split into a name part and a card number. */

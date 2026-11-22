@@ -113,4 +113,29 @@ class CardIndexTest {
         assertTrue(index.search("charizard", seriesId = "base").any { it.id == "base1-4" })
         assertTrue(index.search("charizard 4", seriesId = "swsh").none { it.id == "base1-4" })
     }
+
+    @Test
+    fun filtersByExpansion() = runTest {
+        // Base series (oldest) has Base Set; Sword & Shield has Darkness Ablaze then Vivid Voltage.
+        val seriesOfSet = mapOf(
+            "base1" to Tcgdex.SeriesInfo("base", "Base", Tcgdex.releaseOrder(0, 0)),
+            "swsh3" to Tcgdex.SeriesInfo("swsh", "Sword & Shield", Tcgdex.releaseOrder(1, 2)),
+            "swsh4" to Tcgdex.SeriesInfo("swsh", "Sword & Shield", Tcgdex.releaseOrder(1, 3)),
+        )
+        val cards = Tcgdex.parseCardList(resource("cards-sample.json"), Tcgdex.parseSetNames(resource("sets.json")), seriesOfSet)
+        db.cardDao().replaceAll(cards)
+
+        // Newest expansion first, each series' expansions together.
+        val withSeries = index.expansions().filter { it.seriesId.isNotEmpty() }.map { it.id }
+        assertEquals(listOf("swsh4", "swsh3", "base1").filter { id -> cards.any { it.setId == id } }, withSeries)
+        // Cards with no series still show up, at the end.
+        assertTrue(index.expansions().takeLastWhile { it.seriesId.isEmpty() }.isNotEmpty())
+        // Newest series still first in the series list.
+        assertEquals("swsh", index.series().first().id)
+
+        // Only Base Set cards when Base Set is chosen.
+        assertTrue(index.search("charizard", setId = "base1").any { it.id == "base1-4" })
+        assertTrue(index.search("pikachu", setId = "base1").all { it.setId == "base1" })
+        assertTrue(index.search("charizard 4", setId = "swsh4").none { it.id == "base1-4" })
+    }
 }

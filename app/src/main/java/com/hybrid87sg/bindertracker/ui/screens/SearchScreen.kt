@@ -45,11 +45,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.data.Card
-import com.hybrid87sg.bindertracker.data.SeriesOption
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.DropdownMenu
+import com.hybrid87sg.bindertracker.data.ExpansionOption
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.height
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.CardImage
@@ -69,30 +73,31 @@ fun SearchRoute(
     title: String,
     backLabel: String,
     status: IndexStatus,
-    search: suspend (query: String, seriesId: String) -> List<Card>,
+    search: suspend (query: String, seriesId: String, setId: String) -> List<Card>,
     onBack: () -> Unit,
     onCardClick: (Card) -> Unit,
     onRefreshIndex: () -> Unit,
-    // Every series in the card list, for the series filter.
-    loadSeries: suspend () -> List<SeriesOption> = { emptyList() },
+    // Every expansion in the card list, for the expansion filter.
+    loadExpansions: suspend () -> List<ExpansionOption> = { emptyList() },
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    // "" = all series.
+    // The filter: one whole series, or one expansion, or neither ("" = all cards).
     var seriesId by rememberSaveable { mutableStateOf("") }
-    var seriesOptions by remember { mutableStateOf<List<SeriesOption>>(emptyList()) }
-    LaunchedEffect(status.count) { seriesOptions = loadSeries() }
+    var setId by rememberSaveable { mutableStateOf("") }
+    var expansions by remember { mutableStateOf<List<ExpansionOption>>(emptyList()) }
+    LaunchedEffect(status.count) { expansions = loadExpansions() }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
 
     // Search shortly after typing stops, so we don't search on every letter.
-    LaunchedEffect(query, seriesId, status.count) {
+    LaunchedEffect(query, seriesId, setId, status.count) {
         if (query.isBlank()) {
             results = emptyList()
             return@LaunchedEffect
         }
         delay(200)
         searching = true
-        results = search(query, seriesId)
+        results = search(query, seriesId, setId)
         searching = false
     }
 
@@ -107,9 +112,10 @@ fun SearchRoute(
         onBack = onBack,
         onCardClick = onCardClick,
         onRefreshIndex = onRefreshIndex,
-        seriesOptions = seriesOptions,
+        expansions = expansions,
         selectedSeries = seriesId,
-        onSeriesChange = { seriesId = it },
+        selectedSet = setId,
+        onFilterChange = { series, set -> seriesId = series; setId = set },
     )
 }
 
@@ -126,10 +132,13 @@ fun SearchScreen(
     onCardClick: (Card) -> Unit,
     onRefreshIndex: () -> Unit,
     autoFocus: Boolean = true,
-    seriesOptions: List<SeriesOption> = emptyList(),
+    expansions: List<ExpansionOption> = emptyList(),
     selectedSeries: String = "",
-    onSeriesChange: (String) -> Unit = {},
+    selectedSet: String = "",
+    // (seriesId, setId): one of them is filled in, or both are "" for all cards.
+    onFilterChange: (String, String) -> Unit = { _, _ -> },
 ) {
+    val filtered = selectedSeries.isNotEmpty() || selectedSet.isNotEmpty()
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
@@ -155,7 +164,7 @@ fun SearchScreen(
                 } else null,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
-            if (seriesOptions.isNotEmpty()) SeriesFilter(seriesOptions, selectedSeries, onSeriesChange)
+            if (expansions.isNotEmpty()) ExpansionFilter(expansions, selectedSeries, selectedSet, onFilterChange)
         }
 
         LazyColumn(
@@ -167,8 +176,8 @@ fun SearchScreen(
                 status.count == 0 -> item { IndexEmptyState(status, onRefreshIndex) }
                 query.isBlank() -> item {
                     Text(
-                        if (selectedSeries.isEmpty()) "Type part of a card name, or the number printed at the bottom of the card."
-                        else "Type part of a card name, or the number printed at the bottom of the card. Only cards from the chosen series are shown.",
+                        if (!filtered) "Type part of a card name, or the number printed at the bottom of the card."
+                        else "Type part of a card name, or the number printed at the bottom of the card. Only cards from ${filterName(expansions, selectedSeries, selectedSet)} are shown.",
                         style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
                 }
                 !searching && results.isEmpty() -> item {
@@ -177,8 +186,8 @@ fun SearchScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            if (selectedSeries.isEmpty()) "No card matches \"${query.trim()}\". Check the spelling, or try fewer letters."
-                            else "No card in this series matches \"${query.trim()}\". Try another series, or All series.",
+                            if (!filtered) "No card matches \"${query.trim()}\". Check the spelling, or try fewer letters."
+                            else "No card in ${filterName(expansions, selectedSeries, selectedSet)} matches \"${query.trim()}\". Try another expansion, or All expansions.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                         )
@@ -202,25 +211,204 @@ fun SearchScreen(
     }
 }
 
-/** "Series: All series ▾": a drop-down that limits results to one series. */
+/** What the filter is set to, in words: "Paldea Evolved", or "all of Scarlet & Violet". */
+private fun filterName(expansions: List<ExpansionOption>, seriesId: String, setId: String): String = when {
+    setId.isNotEmpty() -> expansions.firstOrNull { it.id == setId }?.name ?: setId
+    seriesId.isNotEmpty() -> "all of " + (expansions.firstOrNull { it.seriesId == seriesId }?.seriesName ?: seriesId)
+    else -> "all expansions"
+}
+
+/**
+ * "Expansion: All expansions ▾". Tapping it opens a panel listing every expansion,
+ * newest first, under its series. Tapping a series heading picks the whole series.
+ * While a filter is on, the button is violet and an ✕ next to it clears it.
+ */
 @Composable
-private fun SeriesFilter(options: List<SeriesOption>, selected: String, onChange: (String) -> Unit) {
+private fun ExpansionFilter(
+    expansions: List<ExpansionOption>,
+    selectedSeries: String,
+    selectedSet: String,
+    onChange: (String, String) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
-    val label = options.firstOrNull { it.id == selected }?.name ?: "All series"
-    Box {
-        OutlinedButton(
+    val filtered = selectedSeries.isNotEmpty() || selectedSet.isNotEmpty()
+    val label = when {
+        selectedSet.isNotEmpty() -> filterName(expansions, "", selectedSet)
+        selectedSeries.isNotEmpty() -> "All " + filterName(expansions, selectedSeries, "").removePrefix("all of ")
+        else -> "All expansions"
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
             onClick = { open = true },
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            color = if (filtered) AppColors.Surface2 else AppColors.Surface,
+            border = BorderStroke(if (filtered) 1.5.dp else 1.dp, if (filtered) AppColors.AccentText else AppColors.BorderStrong),
+            modifier = Modifier.weight(1f).height(48.dp),
         ) {
-            Text("Series: $label", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("▾", color = AppColors.Ink)
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 420.dp)) {
-            DropdownMenuItem(text = { Text("All series") }, onClick = { open = false; onChange("") })
-            options.forEach { option ->
-                DropdownMenuItem(text = { Text(option.name) }, onClick = { open = false; onChange(option.id) })
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Expansion: $label",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (filtered) FontWeight.SemiBold else null,
+                    color = if (filtered) AppColors.AccentText else AppColors.Ink,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text("▾", color = if (filtered) AppColors.AccentText else AppColors.Ink)
             }
+        }
+        if (filtered) {
+            Surface(
+                onClick = { onChange("", "") },
+                shape = RoundedCornerShape(12.dp),
+                color = AppColors.Surface,
+                border = BorderStroke(1.dp, AppColors.BorderStrong),
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "Clear expansion filter" },
+            ) {
+                Box(contentAlignment = Alignment.Center) { Text("✕", color = AppColors.Ink) }
+            }
+        }
+    }
+    if (open) {
+        ExpansionSheet(expansions, selectedSeries, selectedSet, onDismiss = { open = false }) { series, set ->
+            open = false
+            onChange(series, set)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpansionSheet(
+    expansions: List<ExpansionOption>,
+    selectedSeries: String,
+    selectedSet: String,
+    onDismiss: () -> Unit,
+    onPick: (String, String) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = AppColors.Surface) {
+        ExpansionPicker(expansions, selectedSeries, selectedSet, onPick)
+    }
+}
+
+/** What's inside the panel. Kept separate so it can be drawn in tests. */
+@Composable
+fun ExpansionPicker(
+    expansions: List<ExpansionOption>,
+    selectedSeries: String,
+    selectedSet: String,
+    onPick: (String, String) -> Unit,
+) {
+    var find by rememberSaveable { mutableStateOf("") }
+    val text = find.trim()
+    // Keep an expansion if its name, or its series' name, has the typed letters.
+    val shown = if (text.isEmpty()) expansions else expansions.filter {
+        it.name.contains(text, ignoreCase = true) || it.seriesName.contains(text, ignoreCase = true)
+    }
+    // The list is already newest first with each series together, so this keeps that order.
+    val groups = shown.groupBy { it.seriesId }
+
+    Column(Modifier.fillMaxHeight(0.9f).navigationBarsPadding()) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Choose an expansion", style = MaterialTheme.typography.titleLarge, color = AppColors.Ink)
+            OutlinedTextField(
+                value = find,
+                onValueChange = { find = it },
+                label = { Text("Find an expansion") },
+                placeholder = { Text("e.g. Paldea") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = AppColors.Surface,
+                    focusedContainerColor = AppColors.Surface,
+                    unfocusedBorderColor = AppColors.BorderStrong,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp),
+        ) {
+            if (text.isEmpty()) {
+                item(key = "all") {
+                    PickerRow("All expansions", selectedSeries.isEmpty() && selectedSet.isEmpty(), bold = true) { onPick("", "") }
+                }
+            }
+            if (groups.isEmpty()) {
+                item(key = "none") {
+                    Text(
+                        "No expansion matches \"$text\". Try fewer letters.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppColors.Muted,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
+            groups.forEach { (seriesId, sets) ->
+                item(key = "series-$seriesId") {
+                    SeriesHeading(
+                        name = sets.first().seriesName.ifEmpty { "Other" },
+                        selected = seriesId.isNotEmpty() && selectedSeries == seriesId,
+                        // Cards with no series can't be picked as a group.
+                        onClick = if (seriesId.isEmpty()) null else ({ onPick(seriesId, "") }),
+                    )
+                }
+                items(sets, key = { "set-${it.id}" }) { set ->
+                    PickerRow(set.name, selectedSet == set.id) { onPick("", set.id) }
+                }
+            }
+        }
+    }
+}
+
+/** A series name in capitals. Tapping it picks every expansion in the series. */
+@Composable
+private fun SeriesHeading(name: String, selected: Boolean, onClick: (() -> Unit)?) {
+    val content = @Composable {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 12.dp).padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                name.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (selected) AppColors.AccentText else AppColors.Muted,
+                modifier = Modifier.weight(1f),
+            )
+            if (onClick != null) {
+                Text(
+                    if (selected) "All cards ✓" else "All cards",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppColors.AccentText,
+                )
+            }
+        }
+    }
+    if (onClick == null) content()
+    else Surface(onClick = onClick, color = AppColors.Surface, shape = RoundedCornerShape(10.dp)) { content() }
+}
+
+@Composable
+private fun PickerRow(name: String, selected: Boolean, bold: Boolean = false, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) AppColors.Surface2 else AppColors.Surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected || bold) FontWeight.SemiBold else null,
+                color = if (selected) AppColors.AccentText else AppColors.Ink,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) Text("✓", color = AppColors.AccentText)
         }
     }
 }

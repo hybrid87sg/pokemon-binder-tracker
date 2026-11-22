@@ -24,7 +24,8 @@ data class Card(
     // Empty for lists downloaded before series were added (they're re-downloaded).
     @ColumnInfo(defaultValue = "") val seriesId: String = "",
     @ColumnInfo(defaultValue = "") val seriesName: String = "",
-    // Bigger = newer series, so the newest can be listed first.
+    // Bigger = newer, so the newest can be listed first. It sorts series and
+    // the expansions inside each series (see Tcgdex.releaseOrder).
     @ColumnInfo(defaultValue = "0") val seriesOrder: Int = 0,
 ) {
     /** Small picture for lists. */
@@ -39,3 +40,9 @@ data class Card(
 
 /** One choice in the series filter, e.g. id "swsh", name "Sword & Shield". */
 data class SeriesOption(val id: String, val name: String)
+
+/**
+ * One choice in the expansion filter, e.g. id "sv02", name "Paldea Evolved",
+ * in series "sv" / "Scarlet & Violet". TCGdex calls an expansion a "set".
+ */
+data class ExpansionOption(val id: String, val name: String, val seriesId: String, val seriesName: String)
