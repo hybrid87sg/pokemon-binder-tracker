@@ -18,7 +18,10 @@ coroutines = "1.11.0"
 junit = "4.13.2"
 camerax = "1.7.0"
 mlkitText = "16.0.1"
-mediapipeTasks = "0.10.20"
+# MediaPipe 1.x is built for phones with 16 KB memory pages (Android 15+).
+# Keep it the same as the mediapipe version in .github/workflows/card-pictures.yml
+# and recognition-bench.yml, so the phone and the card pictures list agree.
+mediapipeTasks = "1.2.3"
 opencv = "4.14.0"
 exifinterface = "1.4.2"
 coil = "3.6.3"
