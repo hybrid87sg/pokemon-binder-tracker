@@ -28,6 +28,10 @@ import com.hybrid87sg.bindertracker.scan.GuessPicker
 import com.hybrid87sg.bindertracker.scan.PageReader
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
 import com.hybrid87sg.bindertracker.scan.ReadCard
+import com.hybrid87sg.bindertracker.sync.CloudSync
+import com.hybrid87sg.bindertracker.sync.InviteCodes
+import com.hybrid87sg.bindertracker.sync.InvitePreview
+import com.hybrid87sg.bindertracker.sync.SharingInfo
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.Tcgdex
 import androidx.room.withTransaction
@@ -85,11 +89,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _movedBindersNotice.value = null
     }
 
+    /** Keeps binders in the Google account and handles sharing (see CloudSync). */
+    private val cloud = CloudSync(app, db, viewModelScope)
+
+    /** Who each binder is shared with, by binder ID. */
+    val sharing: StateFlow<Map<String, SharingInfo>> = cloud.sharing
+
+    /** Why online saving isn't working right now, or null. */
+    val syncProblem: StateFlow<String?> = cloud.problem
+
+    /** True while binders are kept online (signed in with Google and Firebase set up). */
+    val syncActive: StateFlow<Boolean> = cloud.active
+
     init {
         // Whenever someone is signed in with Google, bring over any binders
         // made before signing in ("phone only" mode), so that work is never
         // hidden. This also rescues binders from before this update, for
         // people who already signed in and lost sight of them.
+        // Then start keeping their binders online.
         viewModelScope.launch {
             user.collect { u ->
                 if (u != null && !u.isLocalOnly) {
@@ -98,6 +115,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         _movedBindersNotice.value =
                             if (moved == 1) "1 binder added to your account." else "$moved binders added to your account."
                     }
+                    cloud.start(u)
+                    if (moved > 0) cloud.uploadMissing()
+                } else {
+                    cloud.stop()
                 }
             }
         }
@@ -190,22 +211,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun createBinder(name: String, colorHex: String, size: BinderSize) {
         val owner = user.value ?: return
+        val binder = Binder(
+            ownerId = owner.uid,
+            name = name.trim(),
+            colorHex = colorHex,
+            columns = size.columns,
+            rows = size.rows,
+        )
         viewModelScope.launch {
-            binderDao.insert(
-                Binder(
-                    ownerId = owner.uid,
-                    name = name.trim(),
-                    colorHex = colorHex,
-                    columns = size.columns,
-                    rows = size.rows,
-                ),
-            )
+            binderDao.insert(binder)
+            cloud.binderCreated(binder)
         }
     }
 
     /** Repaints a binder's spine. [colorHex] is text like "#F2C230". */
     fun setBinderColor(binder: Binder, colorHex: String) {
-        viewModelScope.launch { binderDao.updateColor(binder.id, colorHex) }
+        if (!binder.isOwner) return
+        viewModelScope.launch {
+            binderDao.updateColor(binder.id, colorHex)
+            cloud.binderSettingsChanged(binder.copy(colorHex = colorHex))
+        }
     }
 
     /** Pocket numbers holding a card in this binder (for the Edit binder warning). */
@@ -222,6 +247,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * at all, so a crash halfway can never lose a card.
      */
     fun updateBinder(binder: Binder, name: String, colorHex: String, size: BinderSize) {
+        if (!binder.isOwner) return
         viewModelScope.launch {
             db.withTransaction {
                 val oldCount = binder.pocketsPerPage
@@ -248,13 +274,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     binder.copy(name = name.trim(), colorHex = colorHex, columns = size.columns, rows = size.rows),
                 )
             }
+            // Send the new settings; a new size changes pockets on every page, so send those too.
+            val updated = binder.copy(name = name.trim(), colorHex = colorHex, columns = size.columns, rows = size.rows)
+            if (size.pockets != binder.pocketsPerPage) cloud.binderResized(binder.id) else cloud.binderSettingsChanged(updated)
         }
     }
 
+    /**
+     * Your own binder: deletes it (for everyone it was shared with too).
+     * A binder shared with you: takes it off your shelf, and you leave it.
+     */
     fun deleteBinder(binder: Binder) {
         viewModelScope.launch {
+            val pages = pageDao.pagesOf(binder.id)
+            cloud.binderRemoved(binder, pages.map { it.id })
             // Remove the binder's pages and their photos too.
-            pageDao.pagesOf(binder.id).forEach { page ->
+            pages.forEach { page ->
                 page.photoPath?.let { File(it).delete() }
                 pageDao.deletePage(page.id)
             }
@@ -322,7 +357,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             // A millisecond apart, so the pages keep their order.
-            repeat(count) { i -> pageDao.createPage(Page(binderId = binder.id, photoPath = null, createdAt = now + i), binder.pocketsPerPage) }
+            val pages = List(count) { i -> Page(binderId = binder.id, photoPath = null, createdAt = now + i) }
+            pages.forEach { pageDao.createPage(it, binder.pocketsPerPage) }
+            cloud.pagesAdded(binder.id, pages)
         }
     }
 
@@ -460,7 +497,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 when {
                     match != null -> {
                         setSuggestions(pageId, position, emptyList())
-                        pageDao.upsertPocket(Pocket(pageId, position, cardId = match.id))
+                        savePocket(Pocket(pageId, position, cardId = match.id))
                         recordCard(pageId, match)
                         "Pocket ${position + 1}: ${match.name} (${match.setName} ${match.number})."
                     }
@@ -482,17 +519,89 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPocketCard(pageId: String, position: Int, cardId: String) {
         setSuggestions(pageId, position, emptyList())
         viewModelScope.launch {
-            pageDao.upsertPocket(Pocket(pageId, position, cardId = cardId))
+            savePocket(Pocket(pageId, position, cardId = cardId))
             cardIndex.get(cardId)?.let { recordCard(pageId, it) }
         }
     }
 
     fun setPocketEmpty(pageId: String, position: Int) {
-        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position, isEmpty = true)) }
+        viewModelScope.launch { savePocket(Pocket(pageId, position, isEmpty = true)) }
     }
 
     fun clearPocket(pageId: String, position: Int) {
-        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position)) }
+        viewModelScope.launch { savePocket(Pocket(pageId, position)) }
+    }
+
+    /** Saves one pocket on the phone, and online so everyone sharing the binder sees it. */
+    private suspend fun savePocket(pocket: Pocket) {
+        pageDao.upsertPocket(pocket)
+        pageDao.getPage(pocket.pageId)?.let { cloud.pocketChanged(it.binderId, pocket) }
+    }
+
+    // ---- Sharing ----
+
+    /** Makes a share code for a binder you own; [role] is editor or viewer. */
+    fun createInvite(binderId: String, role: String) {
+        viewModelScope.launch { cloud.createInvite(binderId, role) }
+    }
+
+    fun setMemberRole(binderId: String, uid: String, role: String) = cloud.setRole(binderId, uid, role)
+
+    fun removeMember(binderId: String, uid: String) = cloud.removeMember(binderId, uid)
+
+    fun stopSharing(binderId: String) = cloud.stopSharing(binderId)
+
+    /** The Join screen: looking up a code, then joining. */
+    sealed interface JoinState {
+        data object Idle : JoinState
+        data object Busy : JoinState
+        data class Found(val invite: InvitePreview) : JoinState
+        data class Failed(val message: String) : JoinState
+        data class Joined(val binderName: String) : JoinState
+    }
+
+    private val _join = MutableStateFlow<JoinState>(JoinState.Idle)
+    val joinState: StateFlow<JoinState> = _join.asStateFlow()
+
+    fun resetJoin() {
+        _join.value = JoinState.Idle
+    }
+
+    /** Finds which binder a scanned or typed code belongs to. */
+    fun lookUpInvite(text: String) {
+        val code = InviteCodes.parse(text)
+        if (code == null) {
+            _join.value = JoinState.Failed("That isn't a binder code. Codes have 8 letters and numbers, like 7Q4K-M2PX.")
+            return
+        }
+        if (!cloud.active.value) {
+            _join.value = JoinState.Failed("Sign in with Google to join shared binders.")
+            return
+        }
+        _join.value = JoinState.Busy
+        viewModelScope.launch {
+            _join.value = runCatching { cloud.lookupInvite(code) }.fold(
+                onSuccess = { invite ->
+                    when {
+                        invite == null -> JoinState.Failed("No binder uses that code. Check it, or ask for a new one.")
+                        invite.expired -> JoinState.Failed("That code has run out. Ask your friend for a new one.")
+                        binderDao.get(invite.binderId) != null -> JoinState.Failed("“${invite.binderName}” is already on your shelf.")
+                        else -> JoinState.Found(invite)
+                    }
+                },
+                onFailure = { JoinState.Failed("Couldn't look up the code. Check your internet connection and try again.") },
+            )
+        }
+    }
+
+    fun joinBinder(invite: InvitePreview) {
+        _join.value = JoinState.Busy
+        viewModelScope.launch {
+            _join.value = runCatching { cloud.join(invite) }.fold(
+                onSuccess = { JoinState.Joined(invite.binderName) },
+                onFailure = { JoinState.Failed("Couldn't join the binder. Check your internet connection, or ask for a new code.") },
+            )
+        }
     }
 
     // ---- Backups ----
@@ -535,6 +644,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val input = getApplication<Application>().contentResolver.openInputStream(uri)
                     ?: error("Couldn't open the file")
                 val result = input.use { backup.restore(owner.uid, it) }
+                cloud.uploadMissing()
                 when {
                     result.binders == 0 && result.skipped > 0 -> "Everything in this backup is already on your shelf."
                     result.binders == 0 -> "This backup has no binders in it."
@@ -554,6 +664,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             page.photoPath?.let { File(it).delete() }
             pageDao.deletePage(page.id)
+            cloud.pageDeleted(page.binderId, page.id)
         }
     }
 }

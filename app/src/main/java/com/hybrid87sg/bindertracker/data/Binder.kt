@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.UUID
@@ -16,8 +17,9 @@ data class Binder(
     // so that binders made on two different phones never clash when we
     // later sync them online with Firebase.
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    // Which signed-in person owns this binder (their Firebase user ID),
-    // or "local" when the app is used without signing in.
+    // Whose shelf this binder is on (their Firebase user ID), or "local"
+    // when the app is used without signing in. For a binder a friend shared
+    // with you, this is you; the friend's name is in [ownerName].
     val ownerId: String,
     val name: String,
     // Spine colour stored as text, for example "#8C2F2F".
@@ -26,9 +28,26 @@ data class Binder(
     val columns: Int,
     val rows: Int,
     val createdAt: Long = System.currentTimeMillis(),
+    // What you can do with this binder: "owner" (it's yours), "editor"
+    // (shared with you, you can change cards) or "viewer" (look only).
+    @ColumnInfo(defaultValue = ROLE_OWNER) val role: String = ROLE_OWNER,
+    // For a shared binder: the name of the person who owns it.
+    val ownerName: String? = null,
+    // How many people use this binder, you included (1 = not shared).
+    @ColumnInfo(defaultValue = "1") val memberCount: Int = 1,
 ) {
     val pocketsPerPage: Int get() = columns * rows
     val sizeLabel: String get() = "$columns × $rows"
+    val isOwner: Boolean get() = role == ROLE_OWNER
+    // Owners and editors can add pages and change cards; viewers can't.
+    val canEdit: Boolean get() = role == ROLE_OWNER || role == ROLE_EDITOR
+    val isShared: Boolean get() = memberCount > 1 || !isOwner
+
+    companion object {
+        const val ROLE_OWNER = "owner"
+        const val ROLE_EDITOR = "editor"
+        const val ROLE_VIEWER = "viewer"
+    }
 }
 
 /** The three binder sizes the app offers (checklist item #35). */

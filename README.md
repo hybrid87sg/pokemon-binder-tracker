@@ -26,6 +26,11 @@ Each person signs in with Google and gets their own shelf of binders.
   and downloaded once (~20 MB). Unsure pockets offer their 5 best guesses to tap
 - **Scan this card** (pocket menu): photograph one card on its own to fill that pocket. The card is
   straightened, then matched by artwork details against the official pictures
+- **Online saving**: when signed in with Google, binders are also kept in Cloud Firestore, so they
+  come back on any phone you sign in on (page photos stay on the phone that took them)
+- **Shared binders**: the owner taps Share on a binder and shows a QR code (or sends the code).
+  A friend taps the QR button on their shelf to scan it. The owner picks **Editor** (can add, move
+  and remove cards) or **Viewer** (look only) and can change or remove people later
 
 Coming next: prices in SGD (#10–#12),
 and page value totals (#38).
@@ -38,6 +43,7 @@ app/src/main/java/com/hybrid87sg/bindertracker/
   MainActivity.kt      app start-up and the list of screens (navigation)
   AppViewModel.kt      holds the data; screens ask it to do things
   auth/AuthManager.kt  Google + Firebase sign-in
+  sync/                online saving and sharing (Cloud Firestore)
   data/                database tables and queries (Room): binders, cards, pages, pockets
   tcgdex/              downloads cards and prices from TCGdex
   update/              checks GitHub for new versions and installs them
@@ -102,4 +108,23 @@ Binder Tracker**:
 - **Authentication → Sign-in method → Google** is enabled
 
 If you change any of these, download `google-services.json` again and replace the one in `app/`.
-Firestore (for syncing binders between phones) is not used yet.
+## Shared binders (Cloud Firestore)
+
+Online saving and sharing use **Cloud Firestore** in the same Firebase project. It needs
+switching on once in the [Firebase console](https://console.firebase.google.com/):
+
+1. Open the project, then **Build → Firestore Database → Create database**.
+2. Pick a location close to you (for Singapore: `asia-southeast1`), and **Start in production mode**.
+3. Open the **Rules** tab, replace everything there with the contents of `firestore.rules`
+   from this repo, and press **Publish**.
+
+The free (Spark) plan is enough. Until Firestore is switched on, the app works as before and the
+Account screen says online saving isn't on yet.
+
+What is stored online:
+
+- `binders/{id}`: name, colour, size, the owner, and who else can use it (`memberIds`, `roles`)
+- `binders/{id}/pages/{pageId}`: which card is in each pocket
+- `invites/{code}`: share codes (which binder, Editor or Viewer, expires after 7 days)
+
+Page photos are not uploaded (that needs Firebase Storage, which is on the paid plan).

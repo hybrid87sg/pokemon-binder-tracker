@@ -50,6 +50,10 @@ import androidx.navigation.compose.rememberNavController
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.ui.screens.BinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.EditBinderScreen
+import com.hybrid87sg.bindertracker.ui.screens.JoinScreen
+import com.hybrid87sg.bindertracker.ui.screens.ShareScreen
+import com.hybrid87sg.bindertracker.sync.InviteCodes
+import android.content.Intent
 import com.hybrid87sg.bindertracker.ui.screens.NewBinderScreen
 import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
@@ -61,8 +65,25 @@ import com.hybrid87sg.bindertracker.ui.theme.ThemeSetting
 
 /** The app's single Activity (window). Every screen is drawn inside it. */
 class MainActivity : ComponentActivity() {
+    // A share code from a QR code scanned with the phone's own camera app
+    // ("bindertracker://join/7Q4KM2PX"), waiting to open the Join screen.
+    private var joinCode by mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readJoinLink(intent)
+    }
+
+    private fun readJoinLink(intent: Intent?) {
+        val link = intent?.data ?: return
+        if (link.scheme == "bindertracker" && link.host == "join") {
+            InviteCodes.parse(link.toString())?.let { joinCode = it }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) readJoinLink(intent)
         // Light or dark: read the saved choice and pick the colours before
         // anything is drawn, so the first frame already has the right ones.
         ThemeSetting.load(this)
@@ -73,7 +94,9 @@ class MainActivity : ComponentActivity() {
             val dark = ThemeSetting.isDark(ThemeSetting.mode, isSystemInDarkTheme())
             // When the mode changes, flip the clock and battery icons too.
             LaunchedEffect(dark) { drawBehindSystemBars(dark) }
-            BinderTrackerTheme(dark = dark) { App(activity = this) }
+            BinderTrackerTheme(dark = dark) {
+                App(activity = this, joinCode = joinCode, onJoinCodeUsed = { joinCode = null })
+            }
         }
     }
 
@@ -89,7 +112,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
+private fun App(
+    activity: ComponentActivity,
+    joinCode: String? = null,
+    onJoinCodeUsed: () -> Unit = {},
+    vm: AppViewModel = viewModel(),
+) {
     val user by vm.user.collectAsStateWithLifecycle()
     val signInError by vm.signInError.collectAsStateWithLifecycle()
     val signingIn by vm.signingIn.collectAsStateWithLifecycle()
@@ -147,6 +175,15 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
 
     // Signed in: the NavHost swaps between screens. Each "route" is a screen's address.
     val nav = rememberNavController()
+    // Opened from a binder's QR code: go to the Join screen with that code.
+    LaunchedEffect(joinCode) {
+        joinCode?.let {
+            onJoinCodeUsed()
+            nav.navigate("join/$it")
+        }
+    }
+    val syncActive by vm.syncActive.collectAsStateWithLifecycle()
+    val syncProblem by vm.syncProblem.collectAsStateWithLifecycle()
     // Screens slide in from the right and back out to the right, with a fade.
     val slide = tween<IntOffset>(Motion.Medium, easing = Motion.Ease)
     val fade = tween<Float>(Motion.Medium, easing = Motion.Ease)
@@ -172,6 +209,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 onAddBinder = { nav.navigate("new") },
                 onOpenAccount = { nav.navigate("account") },
                 onSearch = { nav.navigate("search") },
+                onJoin = if (current.isLocalOnly || !vm.auth.isFirebaseConfigured) null else { { nav.navigate("join") } },
             )
         }
         composable("new") {
@@ -199,8 +237,36 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                     onAddPages = { count -> vm.addPages(b, count) },
                     onEdit = { nav.navigate("edit/${b.id}") },
                     onOpenPage = { nav.navigate("page/${it.id}") },
+                    onShare = { nav.navigate("share/${b.id}") },
                 )
             }
+        }
+
+        // ---- Sharing ----
+        composable("share/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val binder by remember(id) { vm.binder(id) }.collectAsStateWithLifecycle(initialValue = null)
+            val sharing by vm.sharing.collectAsStateWithLifecycle()
+            binder?.let { b ->
+                ShareScreen(
+                    binder = b,
+                    sharing = sharing[b.id],
+                    online = syncActive,
+                    problem = syncProblem,
+                    onBack = { nav.popBackStack() },
+                    onCreateInvite = { role -> vm.createInvite(b.id, role) },
+                    onSetRole = { uid, role -> vm.setMemberRole(b.id, uid, role) },
+                    onRemove = { uid -> vm.removeMember(b.id, uid) },
+                    onStopSharing = {
+                        vm.stopSharing(b.id)
+                        nav.popBackStack()
+                    },
+                )
+            }
+        }
+        composable("join") { JoinRoute(vm, startCode = null, onDone = { nav.popBackStack() }) }
+        composable("join/{code}") { entry ->
+            JoinRoute(vm, startCode = entry.arguments?.getString("code"), onDone = { nav.popBackStack() })
         }
 
         // ---- Card index ----
@@ -304,6 +370,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         prevPockets = prevId?.let { pocketsById[it] },
                         nextPockets = nextId?.let { pocketsById[it] },
                         onTurn = { dir -> (if (dir > 0) nextId else prevId)?.let { pageId = it } },
+                        canEdit = b.canEdit,
                     )
                 }
             }
@@ -377,9 +444,29 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 backupBusy = backupBusy,
                 onBackUp = vm::backUpTo,
                 onRestore = vm::restoreFrom,
+                syncActive = syncActive,
+                syncProblem = syncProblem,
             )
         }
     }
+}
+
+/** The Join screen, joined up to the app's data. */
+@Composable
+private fun JoinRoute(vm: AppViewModel, startCode: String?, onDone: () -> Unit) {
+    val state by vm.joinState.collectAsStateWithLifecycle()
+    JoinScreen(
+        state = state,
+        startCode = startCode,
+        onBack = onDone,
+        onLookUp = vm::lookUpInvite,
+        onJoin = vm::joinBinder,
+        onReset = vm::resetJoin,
+        onJoined = {
+            vm.resetJoin()
+            onDone()
+        },
+    )
 }
 
 /** The card list's status, for the search screen. */

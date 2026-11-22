@@ -146,6 +146,13 @@ dependencies {
     // Firebase sign-in with a Google account.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    // Firestore: the online database that keeps binders in your Google
+    // account and lets you share them with friends.
+    implementation(libs.firebase.firestore)
+    // ZXing draws the QR code for sharing a binder.
+    implementation(libs.zxing.core)
+    // Google's ready-made QR code scanner (no camera code of our own needed).
+    implementation(libs.code.scanner)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
