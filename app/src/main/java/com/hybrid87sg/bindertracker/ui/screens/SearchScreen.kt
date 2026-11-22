@@ -447,7 +447,7 @@ private fun CardRow(card: Card, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            CardImage(card.thumbnailUrl, contentDescription = null, modifier = Modifier.width(44.dp), corner = 4.dp, backupUrl = card.thumbnailBackupUrl)
+            CardImage(card.thumbnailUrl, contentDescription = null, modifier = Modifier.width(44.dp), corner = 4.dp, backupUrl = card.thumbnailBackupUrl, cardId = card.id)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(card.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
