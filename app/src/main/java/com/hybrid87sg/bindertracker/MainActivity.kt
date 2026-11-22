@@ -338,6 +338,9 @@ private fun App(
                 val openPocket by vm.openPocket.collectAsStateWithLifecycle()
                 val scanPictures by remember(pageId) { vm.scanPictures(pageId).map { m -> m.mapValues { it.value.asImageBitmap() } } }
                     .collectAsStateWithLifecycle(initialValue = emptyMap())
+                // Every page's pockets, for the "Move to another page" picker.
+                val allPockets by remember(p.binderId) { vm.binderPockets(p.binderId) }
+                    .collectAsStateWithLifecycle(initialValue = emptyMap())
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
@@ -371,6 +374,11 @@ private fun App(
                         nextPockets = nextId?.let { pocketsById[it] },
                         onTurn = { dir -> (if (dir > 0) nextId else prevId)?.let { pageId = it } },
                         canEdit = b.canEdit,
+                        pageIds = siblings.map { it.id },
+                        pageCards = allPockets,
+                        onSwap = vm::swapPockets,
+                        onMoveToNewPage = { position, onCreated -> vm.moveToNewPage(b, pageId, position, onCreated) },
+                        onGoToPage = { pageId = it },
                     )
                 }
             }

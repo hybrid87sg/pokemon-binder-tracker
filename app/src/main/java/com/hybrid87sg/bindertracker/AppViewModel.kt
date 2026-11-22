@@ -532,6 +532,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { savePocket(Pocket(pageId, position)) }
     }
 
+    /** Every pocket of a binder, grouped by page (pages in order). */
+    fun binderPockets(binderId: String): Flow<Map<String, List<PocketWithCard>>> =
+        pageDao.observeBinderPockets(binderId).map { list ->
+            list.groupBy { it.pageId }.mapValues { (_, pockets) -> pockets.map { it.withoutPage() } }
+        }
+
+    /**
+     * Swaps what two pockets hold: dragging a card onto another pocket, or
+     * "Move to another page". Doing it again puts things back (that's Undo).
+     * The best guesses and camera pictures of each pocket move with it.
+     */
+    fun swapPockets(pageA: String, positionA: Int, pageB: String, positionB: Int) {
+        swapExtras(pageA, positionA, pageB, positionB)
+        viewModelScope.launch { swapAndSync(pageA, positionA, pageB, positionB) }
+    }
+
+    /**
+     * Adds a new empty page at the end of the binder and moves the card in
+     * [position] of [pageId] into its first pocket. [onCreated] gets the new page's ID.
+     */
+    fun moveToNewPage(binder: Binder, pageId: String, position: Int, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            val last = pageDao.pagesOf(binder.id).maxOfOrNull { it.createdAt } ?: 0L
+            val page = Page(binderId = binder.id, photoPath = null, createdAt = maxOf(System.currentTimeMillis(), last + 1))
+            pageDao.createPage(page, binder.pocketsPerPage)
+            cloud.pagesAdded(binder.id, listOf(page))
+            swapExtras(pageId, position, page.id, 0)
+            swapAndSync(pageId, position, page.id, 0)
+            onCreated(page.id)
+        }
+    }
+
+    private suspend fun swapAndSync(pageA: String, positionA: Int, pageB: String, positionB: Int) {
+        val changed = pageDao.swapPockets(pageA, positionA, pageB, positionB)
+        changed.forEach { pocket -> pageDao.getPage(pocket.pageId)?.let { cloud.pocketChanged(it.binderId, pocket) } }
+    }
+
+    private fun swapExtras(pageA: String, positionA: Int, pageB: String, positionB: Int) {
+        _suggestions.value = swapEntries(_suggestions.value, pageA, positionA, pageB, positionB)
+        _scanPictures.value = swapEntries(_scanPictures.value, pageA, positionA, pageB, positionB)
+    }
+
+    private fun <T> swapEntries(all: Map<String, Map<Int, T>>, pageA: String, positionA: Int, pageB: String, positionB: Int): Map<String, Map<Int, T>> {
+        val a = all[pageA]?.get(positionA)
+        val b = all[pageB]?.get(positionB)
+        var result = all
+        fun put(page: String, position: Int, value: T?) {
+            val m = result[page].orEmpty()
+            result = result + (page to if (value == null) m - position else m + (position to value))
+        }
+        put(pageA, positionA, b)
+        put(pageB, positionB, a)
+        return result
+    }
+
     /** Saves one pocket on the phone, and online so everyone sharing the binder sees it. */
     private suspend fun savePocket(pocket: Pocket) {
         pageDao.upsertPocket(pocket)
