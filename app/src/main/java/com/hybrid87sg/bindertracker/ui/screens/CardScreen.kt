@@ -35,21 +35,37 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.prices.SgdRates
 import java.util.Locale
-import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.MarketPrice
 import com.hybrid87sg.bindertracker.ui.components.BackButton
@@ -185,40 +201,127 @@ private fun RateNote(prices: List<MarketPrice>, rates: SgdRates?) {
 }
 
 /**
- * The card on its own, as wide as the phone, on black. Tap anywhere, swipe
- * down or press Back to close it.
+ * The card on its own, as wide as the phone, on black.
+ *
+ * Not zoomed: tap anywhere, swipe down, press Back or ✕ to close.
+ * Zoom: pinch (up to 5×) or double-tap (2.5× where you tapped, again to zoom out).
+ * While zoomed: drag moves around the card, a single tap does nothing,
+ * Back zooms out first, and ✕ always closes.
  */
 @Composable
 private fun FullScreenCard(card: Card, onClose: () -> Unit) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    val scope = rememberCoroutineScope()
+    var anim by remember { mutableStateOf<Job?>(null) }
+
+    // Keeps the card from being dragged off screen: you can only move as far as the zoomed card reaches.
+    fun clamped(s: Float, p: Offset): Offset {
+        val maxX = max(0f, (cardSize.width * s - boxSize.width) / 2f)
+        val maxY = max(0f, (cardSize.height * s - boxSize.height) / 2f)
+        return Offset(p.x.coerceIn(-maxX, maxX), p.y.coerceIn(-maxY, maxY))
+    }
+    // The zoom and position that keep the spot under your finger (point) in place.
+    fun zoomedAt(newScale: Float, point: Offset, s: Float = scale, p: Offset = pan): Pair<Float, Offset> {
+        val target = newScale.coerceIn(1f, MAX_ZOOM)
+        val fromCentre = point - Offset(boxSize.width / 2f, boxSize.height / 2f)
+        return target to clamped(target, fromCentre - (fromCentre - p) * (target / s))
+    }
+    fun animateTo(targetScale: Float, targetPan: Offset, targetDragY: Float = 0f) {
+        anim?.cancel()
+        val s0 = scale; val p0 = pan; val d0 = dragY
+        anim = scope.launch {
+            animate(0f, 1f, animationSpec = tween(260, easing = FastOutSlowInEasing)) { t, _ ->
+                scale = s0 + (targetScale - s0) * t
+                pan = p0 + (targetPan - p0) * t
+                dragY = d0 + (targetDragY - d0) * t
+            }
+        }
+    }
+
     Dialog(
-        onDismissRequest = onClose,
+        // Back: zoom out first, close when not zoomed.
+        onDismissRequest = { if (scale > 1.01f) animateTo(1f, Offset.Zero) else onClose() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         val density = LocalDensity.current
         val closeAfter = with(density) { 120.dp.toPx() }
-        var dragY by remember { mutableFloatStateOf(0f) }
         Box(
             Modifier.fillMaxSize()
+                .onSizeChanged { boxSize = it }
                 .background(Color.Black.copy(alpha = (1f - dragY / (closeAfter * 3)).coerceIn(0.4f, 1f)))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClickLabel = "Close",
-                    onClick = onClose,
-                )
+                .semantics { onClick(label = "Close") { onClose(); true } }
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { if (dragY > closeAfter) onClose() else dragY = 0f },
-                        onDragCancel = { dragY = 0f },
-                    ) { _, amount -> dragY = (dragY + amount).coerceAtLeast(0f) }
+                    detectTapGestures(
+                        onTap = { if (scale <= 1.01f) onClose() },
+                        onDoubleTap = { point ->
+                            if (scale > 1.01f) animateTo(1f, Offset.Zero)
+                            else zoomedAt(DOUBLE_TAP_ZOOM, point).let { (s, p) -> animateTo(s, p) }
+                        },
+                    )
+                }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        anim?.cancel()
+                        // What this gesture turned out to be: 0 = not decided / ignored, 1 = zoom or move, 2 = swipe down to close.
+                        var mode = 0
+                        var pastSlop = false
+                        var moved = Offset.Zero
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val fingers = event.changes.count { it.pressed }
+                            if (fingers == 0) break
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            if (!pastSlop) {
+                                moved += panChange
+                                if (fingers >= 2 || moved.getDistance() > viewConfiguration.touchSlop) {
+                                    pastSlop = true
+                                    mode = when {
+                                        fingers >= 2 || scale > 1.01f -> 1
+                                        moved.y > abs(moved.x) -> 2
+                                        else -> 0
+                                    }
+                                }
+                            }
+                            if (fingers >= 2) mode = 1
+                            if (!pastSlop) continue
+                            when (mode) {
+                                1 -> {
+                                    val centroid = event.calculateCentroid(useCurrent = true)
+                                    val (s, p) = zoomedAt(scale * zoomChange, centroid, scale, pan + panChange)
+                                    scale = s; pan = p
+                                }
+                                2 -> dragY = (dragY + panChange.y).coerceAtLeast(0f)
+                            }
+                            // Moving cancels the tap detector, so a drag never counts as a tap.
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                        when {
+                            mode == 2 && dragY > closeAfter -> onClose()
+                            mode == 2 -> animateTo(scale, pan, 0f)
+                            mode == 1 && scale <= 1.01f -> animateTo(1f, Offset.Zero)
+                        }
+                    }
                 },
             contentAlignment = Alignment.Center,
         ) {
             CardImage(
                 card.largeImageUrl,
                 contentDescription = "${card.name} card, full screen",
-                modifier = Modifier.offset { IntOffset(0, dragY.roundToInt()) }
-                    .fillMaxWidth().padding(horizontal = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth().padding(horizontal = 8.dp)
+                    .onSizeChanged { cardSize = it }
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = pan.x
+                        translationY = pan.y + dragY
+                    },
                 corner = 14.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
@@ -234,6 +337,9 @@ private fun FullScreenCard(card: Card, onClose: () -> Unit) {
         }
     }
 }
+
+private const val MAX_ZOOM = 5f
+private const val DOUBLE_TAP_ZOOM = 2.5f
 
 @Composable
 private fun PriceTable(prices: List<MarketPrice>, rates: SgdRates?) {
