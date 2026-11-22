@@ -34,9 +34,10 @@ class BinderBackup(
     /** How a backup went, for the message on screen. */
     data class Result(val binders: Int, val pages: Int, val skipped: Int = 0)
 
-    /** Writes all of [ownerId]'s binders, pages and photos as a zip into [out]. */
+    /** Writes all of [ownerId]'s own binders, pages and photos as a zip into [out]. */
     suspend fun write(ownerId: String, out: OutputStream): Result = withContext(Dispatchers.IO) {
-        val binders = binderDao.bindersOf(ownerId)
+        // Only your own binders. Ones friends shared with you live in their account.
+        val binders = binderDao.bindersOf(ownerId).filter { it.isOwner }
         val photos = mutableMapOf<String, File>() // zip name -> photo on the phone
         val data = binders.map { binder ->
             val pages = pageDao.pagesOf(binder.id).sortedBy { it.createdAt }.map { page ->

@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -79,4 +80,13 @@ interface BinderDao {
     // Saves every column of an existing binder (Edit binder: name, colour, size).
     @Update
     suspend fun update(binder: Binder)
+
+    // ---- Online sync ----
+
+    @Query("SELECT * FROM binders WHERE id = :id")
+    suspend fun get(id: String): Binder?
+
+    // Adds the binder, or overwrites it if it's already on this phone.
+    @Upsert
+    suspend fun upsert(binder: Binder)
 }

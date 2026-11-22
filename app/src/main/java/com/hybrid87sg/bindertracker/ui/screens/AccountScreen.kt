@@ -79,6 +79,9 @@ fun AccountScreen(
     onRestore: (Uri) -> Unit = {},
     // Totals for the stat tiles; null hides them.
     stats: CollectionStats? = null,
+    // True while binders are kept in the Google account; [syncProblem] says why not, if something's wrong.
+    syncActive: Boolean = false,
+    syncProblem: String? = null,
 ) {
     // Android's own "Save to" and "Open" screens. The person picks where the
     // file goes (Google Drive, Downloads, ...); we get back a link to it.
@@ -137,11 +140,17 @@ fun AccountScreen(
             }
 
             Text(
-                if (user.isLocalOnly) "Your binders are saved on this phone only. Sign in with Google to keep them on every phone you use."
-                else "Your binders are saved to this account on this phone. Syncing them to your other phones comes in a later update.",
+                when {
+                    user.isLocalOnly -> "Your binders are saved on this phone only. Sign in with Google to keep them on every phone you use, and to share them."
+                    syncActive -> "Your binders are saved online in your Google account, so they come back on any phone you sign in on."
+                    else -> "Your binders are saved to this account on this phone."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppColors.Muted,
             )
+            if (!user.isLocalOnly && syncProblem != null) {
+                Text(syncProblem, style = MaterialTheme.typography.bodyMedium, color = AppColors.Danger)
+            }
 
             val signOutPress = remember { MutableInteractionSource() }
             OutlinedButton(

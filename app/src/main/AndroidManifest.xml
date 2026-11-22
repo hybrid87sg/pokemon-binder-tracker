@@ -27,7 +27,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Opens the Join screen when a binder's QR code is scanned with
+                 the phone's own camera app ("bindertracker://join/CODE"). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bindertracker" android:host="join" />
+            </intent-filter>
         </activity>
+
+        <!-- Downloads Google's QR code scanner when the app is installed,
+             so "Scan QR code" opens straight away the first time. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
 
         <!-- Shares downloaded updates with Android's installer. -->
         <provider

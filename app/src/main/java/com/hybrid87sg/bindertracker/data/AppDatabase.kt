@@ -15,12 +15,13 @@ import androidx.room.RoomDatabase
  * 1: binders
  * 2: + cards (card index), pages, pockets
  * 3: + cards.seriesId / seriesName / seriesOrder (series filter)
+ * 4: + binders.role / ownerName / memberCount (shared binders)
  */
 @Database(
     entities = [Binder::class, Card::class, Page::class, Pocket::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun binderDao(): BinderDao

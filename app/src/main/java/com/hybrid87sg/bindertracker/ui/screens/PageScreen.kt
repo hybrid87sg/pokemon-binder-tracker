@@ -145,6 +145,8 @@ fun PageScreen(
     nextPageId: String? = null,
     // Called once a page turn finishes: 1 = went to the next page, -1 = back a page.
     onTurn: (Int) -> Unit = {},
+    // False in a binder shared with you as "View only": tapping a card just shows it.
+    canEdit: Boolean = true,
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -164,7 +166,7 @@ fun PageScreen(
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
             // Deleting the page lives behind Edit, with a Done button to leave.
-            if (!editing) {
+            if (!editing && canEdit) {
                 TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
                     Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
                 }
@@ -211,15 +213,21 @@ fun PageScreen(
                     // Press and hold: the pocket's menu with every option.
                     0 -> BinderSheet(
                         pockets, columns, pageKey = pageId, live = true,
-                        onPocket = { pocket -> pocket.cardId?.let(onViewCard) ?: onScanCard(pocket.position) },
-                        onPocketHold = { selected = it },
+                        onPocket = { pocket ->
+                            pocket.cardId?.let(onViewCard) ?: run { if (canEdit) onScanCard(pocket.position) }
+                        },
+                        onPocketHold = { if (canEdit) selected = it },
                     )
                     -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = prevPageId ?: "prev", live = false, onPocket = {}, onPocketHold = {})
                     else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = nextPageId ?: "next", live = false, onPocket = {}, onPocketHold = {})
                 }
             }
             Text(
-                "Tap a card to see it and its price, or tap an empty pocket to scan a card into it. Press and hold a pocket for more options.",
+                if (canEdit) {
+                    "Tap a card to see it and its price, or tap an empty pocket to scan a card into it. Press and hold a pocket for more options."
+                } else {
+                    "Tap a card to see it and its price. This binder is view only."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),

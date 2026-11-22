@@ -93,6 +93,8 @@ fun ShelfScreen(
     // A short green note, e.g. "3 binders added to your account.", or null.
     notice: String? = null,
     onDismissNotice: () -> Unit = {},
+    // Opens the Join screen (a binder a friend shared). Null hides the button.
+    onJoin: (() -> Unit)? = null,
 ) {
     // The slide-in plays once each time the app starts, not every time you come back.
     val playIntro = remember { !ShelfIntro.played }
@@ -115,6 +117,23 @@ fun ShelfScreen(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Eyebrow("Your collection")
                 Text("My binders", style = MaterialTheme.typography.headlineLarge)
+            }
+            if (onJoin != null) {
+                val joinPress = remember { MutableInteractionSource() }
+                Surface(
+                    onClick = onJoin,
+                    interactionSource = joinPress,
+                    shape = RoundedCornerShape(14.dp),
+                    color = AppColors.Surface,
+                    contentColor = AppColors.Ink,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
+                    modifier = Modifier.size(48.dp).pressSquish(joinPress).semantics { contentDescription = "Join a shared binder" },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(painterResource(R.drawable.ic_qr), contentDescription = null, modifier = Modifier.size(22.dp))
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
             }
             val searchPress = remember { MutableInteractionSource() }
             Surface(
@@ -201,7 +220,8 @@ fun ShelfScreen(
                                     fill = fill[item.binder.id]?.fraction ?: 0f,
                                     grow = inT,
                                     onClick = { onOpenBinder(item.binder) },
-                                    onLongClick = { editingId = item.binder.id },
+                                    // Only the owner can change a binder's colour.
+                                    onLongClick = { if (item.binder.isOwner) editingId = item.binder.id },
                                     modifier = slide,
                                 )
                                 ShelfItem.AddItem -> AddBinderSpine(onAddBinder, slide)
@@ -244,7 +264,8 @@ private fun BinderSpine(
     // The little buzz on hold tells you the press was noticed.
     SpineArt(
         name = binder.name,
-        tag = binder.sizeLabel,
+        // Shared binders say so at the bottom of the spine (the full story is inside the binder).
+        tag = if (binder.isShared) "Shared" else binder.sizeLabel,
         color = colorFromHex(binder.colorHex),
         width = 64.dp,
         height = SpineHeight,
@@ -269,7 +290,10 @@ private fun BinderSpine(
                     onLongClick()
                 },
             )
-            .semantics { contentDescription = "Binder ${binder.name}, ${binder.sizeLabel}" },
+            .semantics {
+                contentDescription = "Binder ${binder.name}, ${binder.sizeLabel}" +
+                    if (binder.isOwner) { if (binder.isShared) ", shared" else "" } else ", shared by ${binder.ownerName ?: "a friend"}"
+            },
     )
 }
 

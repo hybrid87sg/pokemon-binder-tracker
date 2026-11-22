@@ -43,6 +43,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,8 @@ fun BinderScreen(
     onAddPages: (count: Int) -> Unit,
     onEdit: () -> Unit,
     onOpenPage: (PageSummary) -> Unit,
+    // Opens the Share screen (your own binders only).
+    onShare: () -> Unit = {},
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     var addingPages by remember { mutableStateOf(false) }
@@ -81,14 +84,27 @@ fun BinderScreen(
         ) {
             BackButton("Shelf", onBack)
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit binder ${binder.name}", tint = AppColors.Ink)
+            // Only the owner can share, rename, resize or delete a binder.
+            // Editors can add pages; viewers can only look.
+            if (binder.isOwner) {
+                IconButton(onClick = onShare, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.ic_share), contentDescription = "Share binder ${binder.name}", tint = AppColors.Ink)
+                }
+                IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit binder ${binder.name}", tint = AppColors.Ink)
+                }
             }
-            IconButton(onClick = { addingPages = true }, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_plus), contentDescription = "Add pages", tint = AppColors.Ink)
+            if (binder.canEdit) {
+                IconButton(onClick = { addingPages = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.ic_plus), contentDescription = "Add pages", tint = AppColors.Ink)
+                }
             }
             IconButton(onClick = { confirmDelete = true }, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_trash), contentDescription = "Delete binder ${binder.name}", tint = AppColors.Ink)
+                Icon(
+                    painterResource(R.drawable.ic_trash),
+                    contentDescription = if (binder.isOwner) "Delete binder ${binder.name}" else "Leave binder ${binder.name}",
+                    tint = AppColors.Ink,
+                )
             }
         }
 
@@ -109,6 +125,9 @@ fun BinderScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
                 )
+                sharedLabel(binder)?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
 
@@ -126,7 +145,11 @@ fun BinderScreen(
                     ) {
                         Text("No pages yet", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Tap + at the top to add pages. Each page has ${binder.pocketsPerPage} pockets; tap a pocket to scan its card.",
+                            if (binder.canEdit) {
+                                "Tap + at the top to add pages. Each page has ${binder.pocketsPerPage} pockets; tap a pocket to scan its card."
+                            } else {
+                                "Pages appear here when ${binder.ownerName ?: "the owner"} adds them."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                             textAlign = TextAlign.Center,
@@ -172,7 +195,7 @@ fun BinderScreen(
             }
         }
 
-        if (pages.isEmpty()) {
+        if (pages.isEmpty() && binder.canEdit) {
             BottomBar {
                 PrimaryButton(text = "Add pages", onClick = { addingPages = true }, icon = R.drawable.ic_plus)
             }
@@ -192,13 +215,21 @@ fun BinderScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete “${binder.name}”?") },
-            text = { Text("This removes the binder from your shelf. You can't undo this.") },
+            title = { Text(if (binder.isOwner) "Delete “${binder.name}”?" else "Leave “${binder.name}”?") },
+            text = {
+                Text(
+                    when {
+                        !binder.isOwner -> "This takes the binder off your shelf. It stays on ${binder.ownerName ?: "the owner"}'s shelf, and they can invite you again."
+                        binder.memberCount > 1 -> "This removes the binder from your shelf, and from the shelf of everyone you shared it with. You can't undo this."
+                        else -> "This removes the binder from your shelf. You can't undo this."
+                    },
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = { confirmDelete = false; onDelete() },
                     colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Danger),
-                ) { Text("Delete binder") }
+                ) { Text(if (binder.isOwner) "Delete binder" else "Leave binder") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) { Text("Keep binder") }
@@ -244,6 +275,14 @@ private fun AddPagesDialog(onDismiss: () -> Unit, onAdd: (Int) -> Unit) {
 }
 
 private const val MAX_NEW_PAGES = 50
+
+/** "Shared by Alex · You can edit", "Shared with 2 people", or null when not shared. */
+private fun sharedLabel(binder: Binder): String? = when {
+    binder.role == Binder.ROLE_EDITOR -> "Shared by ${binder.ownerName ?: "a friend"} · You can edit"
+    binder.role == Binder.ROLE_VIEWER -> "Shared by ${binder.ownerName ?: "a friend"} · View only"
+    binder.memberCount > 1 -> "Shared with ${binder.memberCount - 1} ${if (binder.memberCount == 2) "person" else "people"}"
+    else -> null
+}
 
 private fun Modifier.dashedOutline(): Modifier = drawBehind {
     val stroke = 2.dp.toPx()

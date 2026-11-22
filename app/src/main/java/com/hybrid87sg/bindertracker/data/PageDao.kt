@@ -120,6 +120,11 @@ interface PageDao {
     @Query("DELETE FROM pages WHERE id = :pageId")
     suspend fun deletePageRow(pageId: String)
 
+    // ---- Online sync ----
+
+    @Query("SELECT * FROM pages WHERE id = :id")
+    suspend fun getPage(id: String): Page?
+
     @Transaction
     suspend fun deletePage(pageId: String) {
         deletePockets(pageId)
