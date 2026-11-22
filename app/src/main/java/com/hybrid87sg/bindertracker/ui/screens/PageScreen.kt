@@ -1,5 +1,16 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.components.rememberPhoneTilt
+import com.hybrid87sg.bindertracker.ui.components.pocketSleeve
+import com.hybrid87sg.bindertracker.ui.components.pageExpansion
+import com.hybrid87sg.bindertracker.ui.components.isShinyRarity
+import com.hybrid87sg.bindertracker.ui.components.holoTilt
+import com.hybrid87sg.bindertracker.ui.components.expansionPattern
+import com.hybrid87sg.bindertracker.ui.components.accentFor
+import com.hybrid87sg.bindertracker.ui.components.ExpansionBadge
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.State
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -406,7 +417,7 @@ fun PageScreen(
     val empty = shownPockets.count { it.isEmpty }
     val toDo = shownPockets.size - identified - empty
 
-    Box(Modifier.fillMaxSize().background(AppColors.Paper).onGloballyPositioned { drag.screen = it }) {
+    Box(Modifier.fillMaxSize().appBackground().onGloballyPositioned { drag.screen = it }) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
@@ -419,7 +430,15 @@ fun PageScreen(
             }
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Page $pageNumber", style = MaterialTheme.typography.headlineMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Page $pageNumber", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                // The expansion most of this page's cards come from.
+                pageExpansion(shownPockets)?.let { exp ->
+                    accentFor(exp.seriesId)?.let { accent ->
+                        if (exp.setName.isNotBlank()) ExpansionBadge(exp.setName, accent, Modifier.padding(start = 8.dp).widthIn(max = 180.dp))
+                    }
+                }
+            }
             Text(
                 buildList {
                     add("$identified of ${pockets.size} filled")
@@ -683,6 +702,10 @@ private fun BinderSheet(
     gestures: PocketGestures? = null,
 ) {
     val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
+    // A faint pattern from the page's expansion behind the pockets.
+    val accent = accentFor(pageExpansion(pockets)?.seriesId)
+    // Shiny cards tilt with the phone, so listen to its motion only when there are some.
+    val tilt = rememberPhoneTilt(enabled = live && pockets.any { it.cardId != null && isShinyRarity(it.rarity) })
     Column(
         Modifier.fillMaxWidth()
             .then(
@@ -691,6 +714,7 @@ private fun BinderSheet(
                 } else Modifier,
             )
             .clip(shape).background(AppColors.Surface)
+            .expansionPattern(accent)
             .border(1.dp, AppColors.Border, shape)
             .drawBehind {
                 // Punched holes for the rings.
@@ -721,6 +745,7 @@ private fun BinderSheet(
                             pocket = pocket,
                             pageKey = pageKey,
                             live = live,
+                            tilt = tilt,
                             order = rowIndex * columns + i,
                             onTapped = { onPocket(pocket) },
                             onHeld = { onPocketHold(pocket) },
@@ -836,6 +861,8 @@ private fun PocketTile(
     live: Boolean,
     order: Int,
     onTapped: () -> Unit,
+    // The phone's tilt, for the shine on shiny cards.
+    tilt: State<Offset>? = null,
     onHeld: () -> Unit,
     modifier: Modifier,
     // A finger is resting on it (the glow builds up).
@@ -937,10 +964,12 @@ private fun PocketTile(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val shape = RoundedCornerShape(6.dp)
+            val cardShadow = AppColors.Shadow
             val outline = AppColors.BorderStrong
             val holeFill = AppColors.Surface2
             Box(
-                Modifier.drawBehind {
+                // The clear plastic sleeve the card sits in.
+                Modifier.pocketSleeve().padding(3.dp).drawBehind {
                     // An outline where a dragged card used to be.
                     if (hole) {
                         val r = CornerRadius(6.dp.toPx())
@@ -966,10 +995,20 @@ private fun PocketTile(
                             rotationY = (1f - flip.value) * 90f
                             cameraDistance = 12f * density
                             alpha = if (hole || hidden) 0f else 1f
-                            shadowElevation = lift * 14.dp.toPx()
+                            // A soft shadow lifts every card off the page (more while it's held up).
+                            val resting = if ((pocket.cardId != null || pocket.isEmpty) && !hole && !hidden) 3.dp.toPx() else 0f
+                            shadowElevation = resting + lift * 14.dp.toPx()
+                            ambientShadowColor = cardShadow
+                            spotShadowColor = cardShadow
                             this.shape = shape
                         }
-                        .then(if (pocket.cardId != null && live) Modifier.holoTouch() else Modifier)
+                        .then(
+                            when {
+                                pocket.cardId != null && live && tilt != null && isShinyRarity(pocket.rarity) -> Modifier.holoTilt(tilt)
+                                pocket.cardId != null && live -> Modifier.holoTouch()
+                                else -> Modifier
+                            },
+                        )
                         .then(if (holdGlow > 0f) Modifier.border(3.dp, AppColors.AccentText.copy(alpha = holdGlow), shape) else Modifier)
                         .clip(shape)
                         .then(

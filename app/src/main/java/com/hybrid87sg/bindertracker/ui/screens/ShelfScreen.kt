@@ -1,5 +1,9 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -116,7 +120,7 @@ fun ShelfScreen(
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     val editing = binders.firstOrNull { it.id == editingId }
 
-    Column(Modifier.fillMaxSize().background(AppColors.ShelfBackground).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Top,
@@ -207,9 +211,20 @@ fun ShelfScreen(
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             itemsIndexed(rows) { rowIndex, row ->
-                Column {
+                // Each shelf is a soft box the gradient shows through, shaded at the top like a real shelf.
+                Column(
+                    Modifier.padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(AppColors.ShelfBackground.copy(alpha = 0.7f))
+                        .drawBehind {
+                            drawRect(
+                                Brush.verticalGradient(listOf(AppColors.Shadow.copy(alpha = AppColors.Shadow.alpha * 0.6f), Color.Transparent), endY = 18.dp.toPx()),
+                            )
+                        }
+                        .padding(top = 16.dp),
+                ) {
                     Row(
-                        Modifier.fillMaxWidth().height(SpineHeight).padding(horizontal = 24.dp),
+                        Modifier.fillMaxWidth().height(SpineHeight).padding(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.Bottom,
                     ) {
@@ -239,7 +254,7 @@ fun ShelfScreen(
                             }
                         }
                     }
-                    ShelfPlank()
+                    ShelfPlank(sideMargin = 0.dp)
                 }
             }
         }
@@ -317,7 +332,8 @@ private fun BinderSpine(
                 scaleY = 1f + lift * 0.05f
                 transformOrigin = TransformOrigin(0.5f, 1f)
             }
-            .clip(shape)
+            // The binder's shadow on the shelf (the cover is clipped to its shape inside it).
+            .shadow(6.dp, shape, clip = true, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
             .combinedClickable(
                 interactionSource = press,
                 indication = LocalIndication.current,

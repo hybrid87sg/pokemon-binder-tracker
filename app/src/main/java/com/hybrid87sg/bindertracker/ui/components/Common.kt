@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -48,6 +49,7 @@ import androidx.compose.runtime.remember
 
 /** The cream paper label on every spine, the same in light and dark mode. */
 private val SpineLabel = Color(0xFFF6F4EF)
+private val SpineShape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
 
 /** Turns "#8C2F2F" into a colour Compose can draw. */
 fun colorFromHex(hex: String): Color =
@@ -92,8 +94,12 @@ fun SpineArt(
         modifier = modifier
             .width(width)
             .height(height)
-            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
-            .background(color),
+            // A soft shadow, so the binder stands out from the shelf.
+            .shadow(6.dp, SpineShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+            .clip(SpineShape)
+            .background(color)
+            // Leatherette grain, a padded sheen and stitching (see Textures.kt).
+            .leatherCover(pale),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -101,6 +107,7 @@ fun SpineArt(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(start = 9.dp, end = 9.dp, top = 14.dp, bottom = 8.dp)
+                .shadow(1.5.dp, RoundedCornerShape(4.dp))
                 .clip(RoundedCornerShape(4.dp))
                 // The paper label stays pale in dark mode too, like a real binder.
                 .background(SpineLabel)
@@ -146,13 +153,17 @@ fun SpineArt(
 /** The wooden plank under a row of binders. */
 @Composable
 fun ShelfPlank(modifier: Modifier = Modifier, sideMargin: Dp = 8.dp) {
-    Column(modifier.fillMaxWidth().padding(horizontal = sideMargin)) {
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = sideMargin)
+            .shadow(5.dp, RoundedCornerShape(3.dp), ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow),
+    ) {
         Box(
             Modifier.fillMaxWidth().height(14.dp)
                 .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                .background(AppColors.Wood),
+                .background(AppColors.Wood)
+                .woodGrain(),
         )
-        Box(Modifier.fillMaxWidth().height(8.dp).background(AppColors.WoodDark))
+        Box(Modifier.fillMaxWidth().height(8.dp).background(AppColors.WoodDark).woodGrain())
     }
 }
 
@@ -206,7 +217,7 @@ fun PrimaryButton(
 /** A strip pinned to the bottom of the screen that holds the main button. */
 @Composable
 fun BottomBar(content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(AppColors.Paper)) {
+    Column(Modifier.fillMaxWidth().background(AppColors.Surface)) {
         HorizontalDivider(color = AppColors.Border)
         Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp),

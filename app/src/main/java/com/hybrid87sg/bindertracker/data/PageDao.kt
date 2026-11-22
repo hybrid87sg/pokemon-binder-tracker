@@ -45,7 +45,8 @@ interface PageDao {
     @Query(
         """
         SELECT pockets.position, pockets.isEmpty, pockets.cardId,
-          cards.name AS cardName, cards.localId AS cardNumber, cards.setName, cards.imageUrl
+          cards.name AS cardName, cards.localId AS cardNumber, cards.setName, cards.imageUrl,
+          cards.rarity, cards.setId, cards.seriesId
         FROM pockets LEFT JOIN cards ON cards.id = pockets.cardId
         WHERE pockets.pageId = :pageId ORDER BY pockets.position
         """,
@@ -59,7 +60,8 @@ interface PageDao {
     @Query(
         """
         SELECT pockets.pageId, pockets.position, pockets.isEmpty, pockets.cardId,
-          cards.name AS cardName, cards.localId AS cardNumber, cards.setName, cards.imageUrl
+          cards.name AS cardName, cards.localId AS cardNumber, cards.setName, cards.imageUrl,
+          cards.rarity, cards.setId, cards.seriesId
         FROM pockets INNER JOIN pages ON pages.id = pockets.pageId
         LEFT JOIN cards ON cards.id = pockets.cardId
         WHERE pages.binderId = :binderId ORDER BY pages.createdAt, pockets.position

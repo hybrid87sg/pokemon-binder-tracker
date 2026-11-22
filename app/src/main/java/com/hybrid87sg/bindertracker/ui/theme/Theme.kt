@@ -161,6 +161,22 @@ object AppColors {
     val CardBackSwirl get() = palette.cardBackSwirl
     val CardBackSpark get() = palette.cardBackSpark
 
+    // ---- Textures and depth (see Backdrop.kt) ----
+    /** Soft shadow under cards and binders. */
+    val Shadow get() = if (isDark) Color(0x99000000) else Color(0x471E1446)
+    /** The clear plastic edge of a pocket sleeve. */
+    val SleeveEdge get() = if (isDark) Color(0x2EC8BEFF) else Color(0x59786EAA)
+    /** The shine on a pocket sleeve's plastic. */
+    val SleeveShine get() = if (isDark) Color(0x12FFFFFF) else Color(0x8CFFFFFF)
+    /** Inside an empty-looking sleeve: the background with a little violet-grey. */
+    val PocketFill get() = androidx.compose.ui.graphics.lerp(palette.paper, Color(0xFF8A82B8), 0.15f)
+    /** The app's background gradient, top-left to bottom-right. */
+    val BackgroundStops: List<Color>
+        get() = if (isDark) listOf(Color(0xFF1C1834), Color(0xFF14112A), Color(0xFF0C1024))
+        else listOf(Color(0xFFF8F6FE), Color(0xFFECE6FB), Color(0xFFDFE6FA))
+    /** The soft glow in the background's top-right corner. */
+    val BackgroundGlow get() = if (isDark) Color(0x477850C8) else Color(0x59FFC496)
+
     /** Always white, in both modes: for text and icons on blue buttons and coloured spines. */
     val White = Color(0xFFFFFFFF)
 

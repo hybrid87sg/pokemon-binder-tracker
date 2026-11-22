@@ -23,6 +23,10 @@ import com.hybrid87sg.bindertracker.ui.screens.CardScreen
 import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
 import com.hybrid87sg.bindertracker.ui.screens.PageScreen
 import com.hybrid87sg.bindertracker.ui.screens.ScanScreen
+import com.hybrid87sg.bindertracker.ui.screens.LiveScanScreen
+import com.hybrid87sg.bindertracker.ui.screens.Ladder
+import com.hybrid87sg.bindertracker.ui.screens.StepRow
+import com.hybrid87sg.bindertracker.ui.screens.StepState
 import com.hybrid87sg.bindertracker.ui.screens.SearchScreen
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
 import com.hybrid87sg.bindertracker.ui.screens.PermissionsScreen
@@ -277,6 +281,23 @@ class ScreenshotTest {
         )
     }
 
+    @Test fun liveScan() = shoot("9b-live-scan") {
+        LiveScanScreen(
+            position = 4,
+            ladder = Ladder(
+                number = StepRow(StepState.NotFound, "can't read"),
+                name = StepRow(StepState.Found, "Charizard ex · 6 cards"),
+                moves = StepRow(StepState.Found, "6 → 3 cards"),
+                artwork = StepRow(StepState.Checking, ""),
+            ),
+            status = "Comparing the artwork…", locked = false, added = null,
+            autoNext = true, onAutoNextChange = {}, capturing = false,
+            onBack = {}, onChooseFromList = {}, onTakePhoto = {},
+            onPreviewPositioned = {}, onGuidePositioned = {},
+            cameraPreview = { m -> Box(m.background(Color(0xFF3A3A38))) },
+        )
+    }
+
     @Test fun page() = shoot("10-page") {
         // A pretend photo: a grey table with a 3 x 3 grid of coloured "cards".
         val photo = ImageBitmap(900, 1200).also { img ->
@@ -293,8 +314,8 @@ class ScreenshotTest {
             binderName = "Vintage", pageNumber = 2, columns = 3, rows = 3,
             pockets = List(9) { i ->
                 when (i) {
-                    0 -> PocketWithCard(i, false, "base1-58", "Pikachu", "58", "Base Set", null)
-                    1 -> PocketWithCard(i, false, "base1-4", "Charizard", "4", "Base Set", null)
+                    0 -> PocketWithCard(i, false, "base1-58", "Pikachu", "58", "Base Set", null, "Common", "base1", "base")
+                    1 -> PocketWithCard(i, false, "base1-4", "Charizard", "4", "Base Set", null, "Rare Holo", "base1", "base")
                     7 -> PocketWithCard(i, true, null, null, null, null, null)
                     else -> PocketWithCard(i, false, null, null, null, null, null)
                 }

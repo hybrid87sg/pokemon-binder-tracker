@@ -162,8 +162,19 @@ object Tcgdex {
             setName = c.optJSONObject("set")?.optString("name"),
             illustrator = c.optString("illustrator").ifEmpty { null },
             prices = prices,
+            moves = parseMoves(c),
         )
     }
+
+    /**
+     * The names of a card's moves: its attacks and abilities, e.g.
+     * ["Static", "Thunder Shock"]. Trainer and energy cards have none.
+     */
+    fun parseMoves(card: JSONObject): List<String> =
+        listOf("abilities", "attacks").flatMap { key ->
+            val list = card.optJSONArray(key) ?: return@flatMap emptyList()
+            (0 until list.length()).mapNotNull { list.optJSONObject(it)?.optString("name")?.trim()?.ifEmpty { null } }
+        }
 
     // TCGdex's names for print variants, and how we show them.
     private val VARIANT_NAMES = listOf(
@@ -197,6 +208,8 @@ data class CardDetails(
     val setName: String?,
     val illustrator: String?,
     val prices: List<MarketPrice>,
+    // The names of its attacks and abilities (see [Tcgdex.parseMoves]).
+    val moves: List<String> = emptyList(),
 )
 
 /**

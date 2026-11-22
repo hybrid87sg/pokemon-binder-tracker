@@ -30,7 +30,11 @@ import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.data.OwnPhotos
+import com.hybrid87sg.bindertracker.scan.CardMoves
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
+import com.hybrid87sg.bindertracker.scan.LiveCheck
+import com.hybrid87sg.bindertracker.scan.LiveStep
+import com.hybrid87sg.bindertracker.scan.MoveMatcher
 import com.hybrid87sg.bindertracker.scan.DetailMatcher
 import com.hybrid87sg.bindertracker.scan.ExpansionStreak
 import com.hybrid87sg.bindertracker.scan.GuessPicker
@@ -617,6 +621,105 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Live scanning (the camera reads the card a few times a second) ----
+
+    private val cardMoves = CardMoves.get(app)
+    private val scanPrefs = app.getSharedPreferences("scan", Context.MODE_PRIVATE)
+
+    /** After a card is added, go straight on to the next empty pocket. */
+    private val _autoNextPocket = MutableStateFlow(scanPrefs.getBoolean("auto_next", true))
+    val autoNextPocket: StateFlow<Boolean> = _autoNextPocket.asStateFlow()
+
+    fun setAutoNextPocket(on: Boolean) {
+        _autoNextPocket.value = on
+        scanPrefs.edit().putBoolean("auto_next", on).apply()
+    }
+
+    /** True once the card pictures list (for the artwork step) is on the phone. */
+    val picturesListReady: Boolean get() = recognizer.isDownloaded
+
+    /**
+     * The quick checks, run on every look: card number and set, then name,
+     * then moves. Only reads the phone's card list (and TCGdex for moves the
+     * first time a name is seen), so it's fast enough to run live.
+     */
+    suspend fun liveCheck(read: ReadCard): LiveCheck {
+        if (read.name == null && read.number == null) return LiveCheck.NoCard
+        val dao = db.cardDao()
+        // 1. Card number, with the set size after the slash ("025/198") to pick the set.
+        var numberFound = false
+        read.number?.let { number ->
+            val withNumber = dao.allWithNumber(number)
+            numberFound = withNumber.isNotEmpty()
+            val inSet = read.setTotal?.let { total -> withNumber.filter { it.setOfficial == total } }.orEmpty()
+            PocketMatcher.pick(read, inSet.ifEmpty { withNumber })?.let { return LiveCheck.Sure(it, LiveStep.Number) }
+            // The name wasn't readable but only one set has this number and size.
+            if (read.name == null && inSet.size == 1) return LiveCheck.Sure(inSet.first(), LiveStep.Number)
+        }
+        val name = read.name ?: return LiveCheck.Unsure(null, emptyList(), 0, false, numberFound)
+        // 2. The name: which cards are called this.
+        val named = PocketMatcher.sameName(name, dao.searchByName(name, limit = 400))
+        if (named.isEmpty()) return LiveCheck.Unsure(name, emptyList(), 0, false, numberFound)
+        if (named.size == 1) return LiveCheck.Sure(named.first(), LiveStep.Name, 1)
+        // If the set size was read, cards from sets of that size come first.
+        val sameName = read.setTotal?.let { total -> named.filter { it.setOfficial == total } }?.ifEmpty { null } ?: named
+        if (sameName.size == 1) return LiveCheck.Sure(sameName.first(), LiveStep.Name, named.size)
+        // 3. The moves: tell apart cards with the same name.
+        if (sameName.size <= MAX_MOVE_LOOKUPS) {
+            val moves = runCatching { cardMoves.movesOf(sameName) }.getOrDefault(emptyMap())
+            val ids = MoveMatcher.narrow(read.text, moves)
+            val narrowed = sameName.filter { it.id in ids }
+            if (narrowed.size == 1) return LiveCheck.Sure(narrowed.first(), LiveStep.Moves, named.size)
+            if (narrowed.isNotEmpty()) return LiveCheck.Unsure(name, narrowed, named.size, narrowed.size < sameName.size, numberFound)
+        }
+        return LiveCheck.Unsure(name, sameName, named.size, false, numberFound)
+    }
+
+    /**
+     * 4. The artwork: compares the picture with the cards still in the
+     * running (all cards if [shortlist] is empty). Slower, so it runs once
+     * per card, not on every look. Null when it isn't sure.
+     */
+    suspend fun liveArtwork(read: ReadCard, picture: Bitmap, shortlist: List<Card>): Card? = runCatching {
+        if (!recognizer.isDownloaded) recognizer.download()
+        if (shortlist.isEmpty()) {
+            val found = recognise(read, picture)
+            return@runCatching found.card
+        }
+        val flat = withContext(Dispatchers.Default) { DetailMatcher.straighten(picture) } ?: picture
+        val candidates = if (shortlist.size > SHORTLIST) {
+            val described = recognizer.describe(flat)
+            if (described == null) shortlist.take(SHORTLIST) else {
+                val (index, numbers) = described
+                index.rank(numbers, shortlist.map { it.id }).take(SHORTLIST).mapNotNull { g -> shortlist.firstOrNull { it.id == g.cardId } }
+            }
+        } else shortlist
+        val byDetails = DetailMatcher.pickByDetails(flat, candidates.mapNotNull { c -> c.imageUrl?.let { c.id to it } })
+        DetailMatcher.confident(byDetails)?.let { id -> candidates.firstOrNull { it.id == id } }
+    }.getOrNull()
+
+    /** Live scanning found the card: put it in the pocket. */
+    fun livePlace(pageId: String, position: Int, card: Card, picture: Bitmap?) {
+        setSuggestions(pageId, position, emptyList())
+        setScanPicture(pageId, position, picture)
+        viewModelScope.launch {
+            savePocket(Pocket(pageId, position, cardId = card.id))
+            keepOwnPhoto(pageId, position, card.id)
+            recordCard(pageId, card)
+            setReadingStatus(pageId, "Pocket ${position + 1}: ${card.name} (${card.setName} ${card.number}).")
+        }
+    }
+
+    /**
+     * Live scanning wasn't sure: keep the picture and best guesses for the
+     * pocket, so the card picked in search keeps this scan as its picture
+     * if no website has one (see [setPocketCard]).
+     */
+    fun liveUnsure(pageId: String, position: Int, picture: Bitmap?, guesses: List<Card>) {
+        setScanPicture(pageId, position, picture)
+        setSuggestions(pageId, position, guesses.take(5))
+    }
+
     fun setPocketCard(pageId: String, position: Int, cardId: String) {
         // Guesses waiting here mean the pocket was just scanned and the app
         // wasn't sure, so the scan shows this card. Otherwise any scan kept
@@ -835,3 +938,6 @@ data class GuideRect(val left: Float, val top: Float, val right: Float, val bott
 
 // How many look-alikes the picture model hands to detail matching.
 private const val SHORTLIST = 20
+
+// Live scanning looks up moves only when this few cards share the name read.
+private const val MAX_MOVE_LOOKUPS = 40

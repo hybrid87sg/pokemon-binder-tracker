@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +85,7 @@ fun BinderScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var addingPages by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Row(
             Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.animation.AnimatedVisibility
@@ -189,7 +190,7 @@ fun MissingCardsScreen(
         toast = "Copied $missing ${if (missing == 1) "card" else "cards"}. Paste them into a message."
     }
 
-    Box(Modifier.fillMaxSize().background(AppColors.Paper)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 BackButton(binder.name, onBack, modifier = Modifier.weight(1f, fill = false))
