@@ -71,6 +71,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { u -> if (u == null) flowOf(emptyList()) else binderDao.observeBinders(u.uid) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * "3 binders added to your account." Shown on the shelf after signing in
+     * if binders made in "phone only" mode were moved to the account.
+     * Null when there is nothing to show.
+     */
+    private val _movedBindersNotice = MutableStateFlow<String?>(null)
+    val movedBindersNotice: StateFlow<String?> = _movedBindersNotice.asStateFlow()
+
+    fun dismissMovedBindersNotice() {
+        _movedBindersNotice.value = null
+    }
+
+    init {
+        // Whenever someone is signed in with Google, bring over any binders
+        // made before signing in ("phone only" mode), so that work is never
+        // hidden. This also rescues binders from before this update, for
+        // people who already signed in and lost sight of them.
+        viewModelScope.launch {
+            user.collect { u ->
+                if (u != null && !u.isLocalOnly) {
+                    val moved = binderDao.moveBinders(fromOwner = AuthManager.LOCAL_USER.uid, toOwner = u.uid)
+                    if (moved > 0) {
+                        _movedBindersNotice.value =
+                            if (moved == 1) "1 binder added to your account." else "$moved binders added to your account."
+                    }
+                }
+            }
+        }
+    }
+
     // ---- App updates ----
 
     private val updater = Updater(app)

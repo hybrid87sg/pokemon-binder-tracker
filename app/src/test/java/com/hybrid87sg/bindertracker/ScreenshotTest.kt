@@ -140,6 +140,10 @@ class ScreenshotTest {
         ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
     }
 
+    @Test fun shelfMovedBinders() = shoot("2d-shelf-moved-binders") {
+        ShelfScreen(binders = sample, notice = "3 binders added to your account.", onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
+    }
+
     @Test fun shelfWithSearch() = shoot("2-shelf") {
         ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = {}, onSearch = {})
     }

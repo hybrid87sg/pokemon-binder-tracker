@@ -35,6 +35,16 @@ interface BinderDao {
     @Query("UPDATE binders SET colorHex = :colorHex WHERE id = :id")
     suspend fun updateColor(id: String, colorHex: String)
 
+    /**
+     * Gives every binder owned by [fromOwner] to [toOwner] instead, and
+     * returns how many moved. Used when someone who made binders with
+     * "Use on this phone only" signs in with Google later: their "local"
+     * binders become their account's binders. Pages and cards belong to a
+     * binder (not to a person), so they come along automatically.
+     */
+    @Query("UPDATE binders SET ownerId = :toOwner WHERE ownerId = :fromOwner")
+    suspend fun moveBinders(fromOwner: String, toOwner: String): Int
+
     // ---- Backups ----
 
     @Query("SELECT * FROM binders WHERE ownerId = :ownerId ORDER BY createdAt")

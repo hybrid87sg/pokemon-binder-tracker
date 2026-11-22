@@ -160,9 +160,12 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
             val fill by vm.binderFill.collectAsStateWithLifecycle()
+            val movedNotice by vm.movedBindersNotice.collectAsStateWithLifecycle()
             ShelfScreen(
                 binders = binders,
                 fill = fill,
+                notice = movedNotice,
+                onDismissNotice = vm::dismissMovedBindersNotice,
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
