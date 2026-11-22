@@ -104,7 +104,7 @@ fun JoinScreen(
 
     Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) {
-            BackButton("Shelf") { if (state is JoinState.Found) onReset() else onBack() }
+            BackButton("Shelf", onClick = { if (state is JoinState.Found) onReset() else onBack() })
         }
 
         val found = (state as? JoinState.Found)?.invite
