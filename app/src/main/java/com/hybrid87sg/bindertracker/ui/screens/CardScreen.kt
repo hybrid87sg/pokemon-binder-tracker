@@ -78,6 +78,7 @@ fun CardScreen(
                 contentDescription = "${card.name} card",
                 modifier = Modifier.width(240.dp).align(Alignment.CenterHorizontally),
                 corner = 10.dp,
+                backupUrl = card.largeBackupUrl,
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(card.name, style = MaterialTheme.typography.headlineMedium)

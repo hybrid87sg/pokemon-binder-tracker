@@ -541,7 +541,7 @@ private fun Tile(e: Checklist.Entry, onClick: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         if (e.owned) {
-            CardImage(e.card.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxWidth())
+            CardImage(e.card.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxWidth(), backupUrl = e.card.thumbnailBackupUrl)
         } else {
             MissingOutline(e.card, Modifier.fillMaxWidth())
         }
@@ -614,7 +614,7 @@ private fun CardSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(84.dp)) {
                     // A card you don't have yet is shown faded.
-                    CardImage(card.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().alpha(if (entry.owned) 1f else 0.55f))
+                    CardImage(card.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().alpha(if (entry.owned) 1f else 0.55f), backupUrl = card.thumbnailBackupUrl)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Eyebrow("$setName · #${card.number}${card.setOfficial.takeIf { it > 0 }?.let { "/$it" }.orEmpty()}")

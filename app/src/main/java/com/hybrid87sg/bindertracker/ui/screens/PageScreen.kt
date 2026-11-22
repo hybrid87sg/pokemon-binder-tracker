@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.GuideRect
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.data.CardPictures
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.BottomBar
 import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
@@ -598,7 +599,7 @@ fun PageScreen(
                                     .clickable { selected = null; onPickSuggestion(pocket.position, card.id) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth())
+                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth(), backupUrl = card.thumbnailBackupUrl)
                                 Text(card.setName, style = MaterialTheme.typography.labelSmall, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -955,7 +956,7 @@ private fun PocketTile(
                         // Our own card-back picture, so an empty pocket looks like a card turned over.
                         pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
                         // Identified: the official card picture from TCGdex, not the photo.
-                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
+                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false))
                         else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
                     }
                 }

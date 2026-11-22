@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -26,19 +30,27 @@ import java.util.Locale
 /** Pokémon cards are 63 × 88 mm, so every card picture uses this shape. */
 const val CARD_ASPECT = 63f / 88f
 
-/** A card picture loaded from the internet, with a plain placeholder while it loads. */
+/**
+ * A card picture loaded from the internet, with a plain placeholder while it loads.
+ * [backupUrl] is tried when [url] is missing or fails to load (some cards have
+ * no picture on TCGdex, so the app asks another site, see CardPictures).
+ */
 @Composable
-fun CardImage(url: String?, contentDescription: String?, modifier: Modifier = Modifier, corner: Dp = 6.dp) {
+fun CardImage(url: String?, contentDescription: String?, modifier: Modifier = Modifier, corner: Dp = 6.dp, backupUrl: String? = null) {
     val shape = RoundedCornerShape(corner)
+    // Start with the main picture, and switch to the backup if it isn't there.
+    var useBackup by remember(url, backupUrl) { mutableStateOf(url == null) }
+    val shown = if (useBackup) backupUrl else url
     Box(modifier.aspectRatio(CARD_ASPECT).clip(shape).background(CardPlaceholder).border(1.dp, CardPlaceholderBorder, shape)) {
-        if (url != null) {
+        if (shown != null) {
             SubcomposeAsyncImage(
-                model = url,
+                model = shown,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 loading = { BlankCard() },
                 error = { BlankCard() },
+                onError = { if (!useBackup && backupUrl != null) useBackup = true },
             )
         } else {
             BlankCard()
