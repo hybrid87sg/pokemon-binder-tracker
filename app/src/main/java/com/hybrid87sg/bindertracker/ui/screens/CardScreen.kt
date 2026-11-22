@@ -220,6 +220,7 @@ private fun FullScreenCard(card: Card, onClose: () -> Unit) {
                     .fillMaxWidth().padding(horizontal = 8.dp),
                 corner = 14.dp,
                 backupUrl = card.largeBackupUrl,
+                cardId = card.id,
             )
             Box(
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
