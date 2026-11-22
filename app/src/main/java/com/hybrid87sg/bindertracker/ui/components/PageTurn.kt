@@ -126,6 +126,9 @@ fun PageTurnStage(
     canNext: Boolean,
     onTurned: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    // A name for each sheet (e.g. its page ID), so a sheet is never rebuilt
+    // just because it moved from "next page" to "this page".
+    keyOf: (which: Int) -> Any = { it },
     sheet: @Composable (which: Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -219,18 +222,24 @@ fun PageTurnStage(
     ) {
         val d = state.direction
         // Underneath: the page that is revealed (or simply this page when still).
-        val under = when {
-            d > 0 -> 1
-            else -> 0
+        // On top, hidden: the sheet that curls. It is drawn into a layer, and we
+        // draw that ourselves, bent. Both go through one keyed loop, so when a
+        // turn ends the page you turned to carries on as it is: no rebuild,
+        // no cards popping in again, no pictures reloading.
+        val sheets = when {
+            d > 0 -> listOf(1 to false, 0 to true)
+            d < 0 -> listOf(0 to false, -1 to true)
+            else -> listOf(0 to false)
         }
-        key(under) { sheet(under) }
+        sheets.forEach { (which, curls) ->
+            key(keyOf(which)) {
+                Box(if (curls) Modifier.drawWithContent { layer.record { this@drawWithContent.drawContent() } } else Modifier) {
+                    sheet(which)
+                }
+            }
+        }
 
         if (d != 0) {
-            val curling = if (d > 0) 0 else -1
-            // The sheet that curls is drawn into a hidden layer; we draw it ourselves, bent.
-            Box(Modifier.drawWithContent { layer.record { this@drawWithContent.drawContent() } }) {
-                key(curling) { sheet(curling) }
-            }
             val sheetColor = AppColors.Surface
             val backPocket = AppColors.CardBack
             val holeColor = AppColors.Paper

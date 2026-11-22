@@ -137,6 +137,8 @@ fun PageScreen(
     // The pockets of the pages before and after, shown while a page is turning. Null = none.
     prevPockets: List<PocketWithCard>? = null,
     nextPockets: List<PocketWithCard>? = null,
+    prevPageId: String? = null,
+    nextPageId: String? = null,
     // Called once a page turn finishes: 1 = went to the next page, -1 = back a page.
     onTurn: (Int) -> Unit = {},
 ) {
@@ -189,12 +191,21 @@ fun PageScreen(
                 canPrev = prevPockets != null,
                 canNext = nextPockets != null,
                 onTurned = onTurn,
+                // Each sheet is known by its page, so the page you turn to keeps
+                // its cards exactly as they were drawn during the turn.
+                keyOf = { which ->
+                    when (which) {
+                        0 -> pageId
+                        -1 -> prevPageId ?: "prev"
+                        else -> nextPageId ?: "next"
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) { which ->
                 when (which) {
                     0 -> BinderSheet(pockets, columns, pageKey = pageId, live = true, onPocket = { selected = it })
-                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = "$pageId-prev", live = false, onPocket = {})
-                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = "$pageId-next", live = false, onPocket = {})
+                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = prevPageId ?: "prev", live = false, onPocket = {})
+                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = nextPageId ?: "next", live = false, onPocket = {})
                 }
             }
             Text(
