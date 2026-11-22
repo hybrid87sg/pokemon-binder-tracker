@@ -30,6 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.graphicsLayer
+import com.hybrid87sg.bindertracker.ui.components.HoloBar
+import com.hybrid87sg.bindertracker.ui.components.arrive
+import com.hybrid87sg.bindertracker.ui.components.pressSquish
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -130,12 +135,23 @@ fun BinderScreen(
                 }
             }
             itemsIndexed(pages, key = { _, p -> p.id }) { index, page ->
+                // The pages pop in one after another when the binder opens.
+                val inT = arrive(play = index < 12, delayMillis = 60 + index * 45, durationMillis = 340)
+                val press = remember { MutableInteractionSource() }
                 Surface(
                     onClick = { onOpenPage(page) },
-                    shape = RoundedCornerShape(12.dp),
+                    interactionSource = press,
+                    shape = RoundedCornerShape(14.dp),
                     color = AppColors.Surface,
                     border = BorderStroke(1.dp, AppColors.Border),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = inT
+                            translationY = (1f - inT) * 14.dp.toPx()
+                            val s = 0.94f + 0.06f * inT
+                            scaleX = s; scaleY = s
+                        }
+                        .pressSquish(press, 0.97f),
                 ) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Page ${index + 1}", style = MaterialTheme.typography.titleMedium)
@@ -149,6 +165,8 @@ fun BinderScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                         )
+                        Spacer(Modifier.height(6.dp))
+                        HoloBar(page.identified.toFloat() / binder.pocketsPerPage.coerceAtLeast(1))
                     }
                 }
             }

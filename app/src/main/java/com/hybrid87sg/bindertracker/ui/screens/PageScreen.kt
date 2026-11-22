@@ -36,6 +36,44 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.hybrid87sg.bindertracker.R
+import com.hybrid87sg.bindertracker.ui.components.HoloBar
+import com.hybrid87sg.bindertracker.ui.components.Motion
+import com.hybrid87sg.bindertracker.ui.components.PageTurnStage
+import com.hybrid87sg.bindertracker.ui.components.RingSpots
+import com.hybrid87sg.bindertracker.ui.components.arrive
+import com.hybrid87sg.bindertracker.ui.components.holoBrush
+import com.hybrid87sg.bindertracker.ui.components.pressSquish
+import com.hybrid87sg.bindertracker.ui.components.rememberPageTurnState
+import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -53,11 +91,12 @@ import com.hybrid87sg.bindertracker.ui.components.CardBack
 import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
-import com.hybrid87sg.bindertracker.ui.theme.LightPalette
 import java.net.URLDecoder
 
-private val CheckBorder = Color(0xFFB7791F)
-private val CheckFill = Color(0xFFFBE3A6)
+// The "?" on a pocket still to identify, and its pale label. Deeper amber in
+// light mode and brighter in dark, so it reads clearly on both.
+private val CheckBorder get() = AppColors.Check
+private val CheckFill get() = AppColors.CheckFill
 
 /**
  * One binder page, shown as its pockets. Tap a pocket to say which
@@ -92,7 +131,16 @@ fun PageScreen(
     onPocketOpened: () -> Unit = {},
     // The bit of the photo the app looked at for each pocket, if scanned just now.
     scanPictures: Map<Int, ImageBitmap> = emptyMap(),
+    // Which page this is (keeps each page's animations apart), and how many the binder has.
+    pageId: String = "",
+    pageCount: Int = 0,
+    // The pockets of the pages before and after, shown while a page is turning. Null = none.
+    prevPockets: List<PocketWithCard>? = null,
+    nextPockets: List<PocketWithCard>? = null,
+    // Called once a page turn finishes: 1 = went to the next page, -1 = back a page.
+    onTurn: (Int) -> Unit = {},
 ) {
+    val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -120,37 +168,33 @@ fun PageScreen(
             Text("Page $pageNumber", style = MaterialTheme.typography.headlineMedium)
             Text(
                 buildList {
-                    add("$identified of ${pockets.size} identified")
+                    add("$identified of ${pockets.size} filled")
                     if (empty > 0) add("$empty empty")
-                    if (toDo > 0) add("$toDo to check")
+                    if (toDo > 0) add("$toDo to identify")
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppColors.Muted,
             )
+            HoloBar(if (pockets.isEmpty()) 0f else identified.toFloat() / pockets.size, Modifier.padding(top = 4.dp))
             // Automatic card reading: "Reading the cards…", then what it found.
             readingStatus?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
             }
         }
 
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Surface)
-                    .border(1.dp, AppColors.Border, RoundedCornerShape(16.dp)).padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                pockets.chunked(columns).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { pocket ->
-                            PocketTile(
-                                pocket = pocket,
-                                onClick = { selected = pocket },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        // Keep tiles the same width on a short last row.
-                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 14.dp)) {
+            // Drag the sheet sideways to turn it like a real binder page.
+            PageTurnStage(
+                state = turnState,
+                canPrev = prevPockets != null,
+                canNext = nextPockets != null,
+                onTurned = onTurn,
+                modifier = Modifier.fillMaxWidth(),
+            ) { which ->
+                when (which) {
+                    0 -> BinderSheet(pockets, columns, pageKey = pageId, live = true, onPocket = { selected = it })
+                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = "$pageId-prev", live = false, onPocket = {})
+                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = "$pageId-next", live = false, onPocket = {})
                 }
             }
             Text(
@@ -168,6 +212,15 @@ fun PageScreen(
                     PrimaryButton(text = "Done", onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
                 }
             }
+        } else if (pageCount > 1) {
+            PageArrows(
+                pageNumber = pageNumber,
+                pageCount = pageCount,
+                canPrev = prevPockets != null,
+                canNext = nextPockets != null,
+                onPrev = { turnState.turn(-1) },
+                onNext = { turnState.turn(1) },
+            )
         } else {
             // Keep the pockets clear of the phone's own navigation bar.
             Spacer(Modifier.navigationBarsPadding())
@@ -247,9 +300,100 @@ private fun SheetButton(label: String, color: Color = AppColors.Ink, onClick: ()
     }
 }
 
+/**
+ * One binder sheet: a plastic page with ring holes down its left edge and
+ * the pockets laid out in rows. [live] is false for the neighbour pages that
+ * only show while a page is turning.
+ */
+@Composable
+private fun BinderSheet(
+    pockets: List<PocketWithCard>,
+    columns: Int,
+    pageKey: String,
+    live: Boolean,
+    onPocket: (PocketWithCard) -> Unit,
+) {
+    val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface)
+            .border(1.dp, AppColors.Border, shape)
+            .drawBehind {
+                // Punched holes for the rings.
+                RingSpots.forEach { f -> drawCircle(AppColors.Paper, radius = 4.5.dp.toPx(), center = Offset(12.dp.toPx(), size.height * f)) }
+            }
+            .padding(start = 26.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        key(pageKey) {
+            pockets.chunked(columns.coerceAtLeast(1)).forEachIndexed { rowIndex, row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEachIndexed { i, pocket ->
+                        PocketTile(
+                            pocket = pocket,
+                            pageKey = pageKey,
+                            live = live,
+                            order = rowIndex * columns + i,
+                            onClick = { onPocket(pocket) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    // Keep tiles the same width on a short last row.
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/** "‹  Page 2 of 6  ›" with a dot for each page (when there aren't too many). */
+@Composable
+private fun PageArrows(pageNumber: Int, pageCount: Int, canPrev: Boolean, canNext: Boolean, onPrev: () -> Unit, onNext: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ArrowButton(R.drawable.ic_chevron_left, "Previous page", canPrev, onPrev)
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Page $pageNumber of $pageCount", style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
+            if (pageCount <= 12) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(pageCount) { i ->
+                        val on = i == pageNumber - 1
+                        val w by animateDpAsState(if (on) 18.dp else 6.dp, tween(Motion.Short, easing = Motion.Ease), label = "dot")
+                        Box(Modifier.width(w).height(6.dp).clip(RoundedCornerShape(3.dp)).background(if (on) AppColors.AccentText else AppColors.BorderStrong))
+                    }
+                }
+            }
+        }
+        ArrowButton(R.drawable.ic_chevron_right, "Next page", canNext, onNext)
+    }
+}
+
+@Composable
+private fun ArrowButton(icon: Int, label: String, enabled: Boolean, onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = press,
+        shape = CircleShape,
+        color = AppColors.Surface,
+        contentColor = if (enabled) AppColors.Ink else AppColors.BorderStrong,
+        border = BorderStroke(1.dp, AppColors.BorderStrong),
+        modifier = Modifier.size(48.dp).pressSquish(press).semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
 @Composable
 private fun PocketTile(
     pocket: PocketWithCard,
+    pageKey: String,
+    live: Boolean,
+    order: Int,
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
@@ -258,31 +402,67 @@ private fun PocketTile(
         pocket.isEmpty -> "Empty pocket"
         else -> "Tap to identify"
     }
+    // Cards pop into their pockets one after another when the page opens.
+    val popIn = arrive(play = live, delayMillis = 80 + order * 45, durationMillis = 340)
+
+    // When a card gets identified while you watch (or while you were on the
+    // camera screen), it flips over into place with a little sparkle.
+    var seenCard by rememberSaveable(pageKey, pocket.position) { mutableStateOf(pocket.cardId) }
+    val flip = remember { Animatable(1f) }
+    val sparkle = remember { Animatable(1f) }
+    LaunchedEffect(pocket.cardId) {
+        if (live && seenCard == null && pocket.cardId != null) {
+            flip.snapTo(0f)
+            sparkle.snapTo(0f)
+            launch { flip.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow)) }
+            sparkle.animateTo(1f, tween(750, easing = Motion.Ease))
+        }
+        seenCard = pocket.cardId
+    }
+
+    val press = remember { MutableInteractionSource() }
     Surface(
         onClick = onClick,
+        interactionSource = press,
         color = Color.Transparent,
-        modifier = modifier,
+        modifier = modifier
+            .graphicsLayer {
+                alpha = popIn
+                val s = 0.82f + 0.18f * popIn
+                scaleX = s; scaleY = s
+                translationY = (1f - popIn) * 10.dp.toPx()
+            }
+            .pressSquish(press, 0.96f),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val shape = RoundedCornerShape(6.dp)
-            Box(
-                Modifier.fillMaxWidth().aspectRatio(CARD_ASPECT).clip(shape)
-                    .then(
-                        when {
-                            pocket.isEmpty -> Modifier
-                            pocket.cardId == null -> Modifier.border(2.dp, CheckBorder, shape)
-                            else -> Modifier.border(1.dp, AppColors.Border, shape)
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                when {
-                    // Our own card-back picture, so an empty pocket looks like a card turned over.
-                    pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
-                    // Identified: the official card picture from TCGdex, not the photo.
-                    pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
-                    else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxWidth().aspectRatio(CARD_ASPECT)
+                        .graphicsLayer {
+                            rotationY = (1f - flip.value) * 90f
+                            cameraDistance = 12f * density
+                        }
+                        .then(if (pocket.cardId != null && live) Modifier.holoTouch() else Modifier)
+                        .clip(shape)
+                        .then(
+                            when {
+                                pocket.isEmpty -> Modifier
+                                pocket.cardId == null -> Modifier.border(2.dp, CheckBorder, shape)
+                                else -> Modifier.border(1.dp, AppColors.Border, shape)
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when {
+                        // Our own card-back picture, so an empty pocket looks like a card turned over.
+                        pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
+                        // Identified: the official card picture from TCGdex, not the photo.
+                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize())
+                        else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
+                    }
                 }
+                if (sparkle.value < 1f) Sparkles(sparkle.value, Modifier.matchParentSize())
             }
             Text(
                 label,
@@ -290,7 +470,7 @@ private fun PocketTile(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (pocket.cardId == null && !pocket.isEmpty) LightPalette.ink else AppColors.Ink,
+                color = if (pocket.cardId == null && !pocket.isEmpty) AppColors.Black else AppColors.Ink,
                 modifier = if (pocket.cardId == null && !pocket.isEmpty) {
                     Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 6.dp, vertical = 2.dp)
                 } else Modifier,
@@ -301,4 +481,63 @@ private fun PocketTile(
             }
         }
     }
+}
+
+/** Eight little gold stars bursting out from the middle of a card. [t] goes 0 to 1. */
+@Composable
+private fun Sparkles(t: Float, modifier: Modifier) {
+    Canvas(modifier) {
+        val c = center
+        val reach = size.minDimension * 0.75f
+        val star = 5.dp.toPx() * (1f - t * 0.4f)
+        val gold = Color(0xFFFFD36E).copy(alpha = (1f - t).coerceIn(0f, 1f))
+        repeat(8) { k ->
+            val a = k / 8f * 2f * PI.toFloat()
+            val p = Offset(c.x + cos(a) * reach * t, c.y + sin(a) * reach * t)
+            val path = Path().apply {
+                moveTo(p.x, p.y - star); lineTo(p.x + star * 0.3f, p.y - star * 0.3f)
+                lineTo(p.x + star, p.y); lineTo(p.x + star * 0.3f, p.y + star * 0.3f)
+                lineTo(p.x, p.y + star); lineTo(p.x - star * 0.3f, p.y + star * 0.3f)
+                lineTo(p.x - star, p.y); lineTo(p.x - star * 0.3f, p.y - star * 0.3f); close()
+            }
+            drawPath(path, gold)
+        }
+    }
+}
+
+/**
+ * Holo shine: a soft rainbow sheen over a card, which brightens and tilts
+ * towards your finger while you touch it, like tilting a holo under a light.
+ */
+@Composable
+private fun Modifier.holoTouch(): Modifier {
+    var touch by remember { mutableStateOf<Offset?>(null) }
+    val tx by animateFloatAsState(touch?.x?.minus(0.5f) ?: 0f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "tiltX")
+    val ty by animateFloatAsState(touch?.y?.minus(0.5f) ?: 0f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "tiltY")
+    val glow by animateFloatAsState(if (touch != null) 1f else 0f, tween(Motion.Medium), label = "glow")
+    return this
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    // Only watch the finger; don't take the tap away from the pocket.
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull() ?: continue
+                    touch = if (change.pressed && size.width > 0 && size.height > 0) {
+                        Offset(
+                            (change.position.x / size.width).coerceIn(0f, 1f),
+                            (change.position.y / size.height).coerceIn(0f, 1f),
+                        )
+                    } else null
+                }
+            }
+        }
+        .graphicsLayer {
+            rotationY = tx * 18f
+            rotationX = -ty * 14f
+            cameraDistance = 12f * density
+        }
+        .drawWithContent {
+            drawContent()
+            drawRect(holoBrush(size.width, shift = tx + 0.5f), alpha = 0.16f + 0.3f * glow, blendMode = BlendMode.Overlay)
+        }
 }

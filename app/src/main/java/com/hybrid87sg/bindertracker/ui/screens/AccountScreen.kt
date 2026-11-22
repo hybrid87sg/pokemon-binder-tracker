@@ -42,6 +42,15 @@ import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.ui.components.BackButton
+import com.hybrid87sg.bindertracker.ui.components.Eyebrow
+import com.hybrid87sg.bindertracker.ui.components.StatTile
+import com.hybrid87sg.bindertracker.ui.components.countUp
+import com.hybrid87sg.bindertracker.ui.components.holoBrush
+import com.hybrid87sg.bindertracker.ui.components.pressSquish
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.time.LocalDate
 import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
@@ -50,6 +59,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+
+/** Totals shown on the Account screen. */
+data class CollectionStats(val cards: Int, val pages: Int, val binders: Int)
 
 @Composable
 fun AccountScreen(
@@ -65,6 +77,8 @@ fun AccountScreen(
     backupBusy: Boolean = false,
     onBackUp: (Uri) -> Unit = {},
     onRestore: (Uri) -> Unit = {},
+    // Totals for the stat tiles; null hides them.
+    stats: CollectionStats? = null,
 ) {
     // Android's own "Save to" and "Open" screens. The person picks where the
     // file goes (Google Drive, Downloads, ...); we get back a link to it.
@@ -81,21 +95,26 @@ fun AccountScreen(
         Column(
             Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text("Account", style = MaterialTheme.typography.headlineMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Eyebrow("Trainer profile")
+                Text("Account", style = MaterialTheme.typography.headlineMedium)
+            }
 
             Row(
                 Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(AppColors.Surface)
-                    .border(1.dp, AppColors.Border, RoundedCornerShape(14.dp))
+                    .border(1.dp, AppColors.Border, RoundedCornerShape(16.dp))
+                    // A strip of foil down the left edge.
+                    .drawBehind { drawRect(holoBrush(size.height), size = Size(4.dp.toPx(), size.height)) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(AppColors.Accent),
+                    Modifier.size(52.dp).clip(CircleShape).drawBehind { drawRect(holoBrush(size.width)) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(painterResource(R.drawable.ic_person), contentDescription = null, tint = AppColors.White, modifier = Modifier.size(26.dp))
+                    Icon(painterResource(R.drawable.ic_person), contentDescription = null, tint = AppColors.Black, modifier = Modifier.size(26.dp))
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -109,6 +128,14 @@ fun AccountScreen(
                 }
             }
 
+            stats?.let { st ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile("${countUp(st.cards, 200)}", if (st.cards == 1) "card" else "cards", Modifier.weight(1f), foil = true)
+                    StatTile("${countUp(st.pages, 200)}", if (st.pages == 1) "page" else "pages", Modifier.weight(1f))
+                    StatTile("${countUp(st.binders, 200)}", if (st.binders == 1) "binder" else "binders", Modifier.weight(1f))
+                }
+            }
+
             Text(
                 if (user.isLocalOnly) "Your binders are saved on this phone only. Sign in with Google to keep them on every phone you use."
                 else "Your binders are saved to this account on this phone. Syncing them to your other phones comes in a later update.",
@@ -116,9 +143,11 @@ fun AccountScreen(
                 color = AppColors.Muted,
             )
 
+            val signOutPress = remember { MutableInteractionSource() }
             OutlinedButton(
                 onClick = onSignOut,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                interactionSource = signOutPress,
+                modifier = Modifier.fillMaxWidth().height(56.dp).pressSquish(signOutPress),
                 shape = RoundedCornerShape(14.dp),
                 border = BorderStroke(2.dp, AppColors.Ink),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
@@ -148,20 +177,24 @@ fun AccountScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
                 )
+                val backUpPress = remember { MutableInteractionSource() }
                 OutlinedButton(
                     onClick = { saveBackup.launch("binder-backup-${LocalDate.now()}.zip") },
                     enabled = !backupBusy,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    interactionSource = backUpPress,
+                    modifier = Modifier.fillMaxWidth().height(56.dp).pressSquish(backUpPress),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(2.dp, AppColors.Ink),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                 ) { Text("Back up binders", style = MaterialTheme.typography.labelLarge) }
+                val restorePress = remember { MutableInteractionSource() }
                 OutlinedButton(
                     // Some file apps don't label zip files properly, so allow any file;
                     // the app checks it really is a backup before using it.
                     onClick = { openBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
                     enabled = !backupBusy,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    interactionSource = restorePress,
+                    modifier = Modifier.fillMaxWidth().height(56.dp).pressSquish(restorePress),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(2.dp, AppColors.Ink),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
@@ -213,14 +246,18 @@ private fun ThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
     ) {
         ThemeMode.entries.forEach { mode ->
             val isSelected = mode == selected
+            val press = remember { MutableInteractionSource() }
+            // Light mode: violet with white words. Dark mode: pale violet with dark words.
+            val chosenFill = if (AppColors.isDark) AppColors.AccentText else AppColors.Accent
             Surface(
                 selected = isSelected,
                 onClick = { onSelect(mode) },
+                interactionSource = press,
                 shape = RoundedCornerShape(12.dp),
-                color = if (isSelected) AppColors.Ink else AppColors.Surface,
-                contentColor = if (isSelected) AppColors.Paper else AppColors.Ink,
-                border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) AppColors.Ink else AppColors.Border),
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { role = Role.RadioButton },
+                color = if (isSelected) chosenFill else AppColors.Surface,
+                contentColor = if (isSelected) (if (AppColors.isDark) AppColors.Paper else AppColors.White) else AppColors.Ink,
+                border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) chosenFill else AppColors.BorderStrong),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).pressSquish(press).semantics { role = Role.RadioButton },
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp)) {
                     Text(mode.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
