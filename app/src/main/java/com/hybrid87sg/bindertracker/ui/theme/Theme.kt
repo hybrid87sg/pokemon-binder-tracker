@@ -1,11 +1,13 @@
 package com.hybrid87sg.bindertracker.ui.theme
 
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -184,5 +186,10 @@ fun BinderTrackerTheme(dark: Boolean, content: @Composable () -> Unit) {
     // Swap the colour set after this frame is drawn. MainActivity also sets it
     // once before the first frame, so the app never flashes the wrong colours.
     SideEffect { AppColors.palette = palette }
-    MaterialTheme(colorScheme = materialColors(palette, dark), typography = typography, content = content)
+    val colors = materialColors(palette, dark)
+    MaterialTheme(colorScheme = colors, typography = typography) {
+        // Text with no colour of its own uses this. Without it, text outside a
+        // Surface falls back to black, which disappears in dark mode.
+        CompositionLocalProvider(LocalContentColor provides colors.onBackground, content = content)
+    }
 }
