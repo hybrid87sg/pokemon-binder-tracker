@@ -65,6 +65,12 @@ import kotlinx.coroutines.delay
 data class IndexStatus(val count: Int, val lastUpdated: Long, val downloading: Boolean, val error: String?)
 
 /**
+ * An expansion to start the filter on: the one the last [cardsInARow] cards
+ * put in this binder came from.
+ */
+data class ExpansionPreset(val setId: String, val cardsInARow: Int)
+
+/**
  * Search screen with its own search logic.
  * [title]/[backLabel] change when it's used to pick a card for a pocket.
  */
@@ -79,11 +85,22 @@ fun SearchRoute(
     onRefreshIndex: () -> Unit,
     // Every expansion in the card list, for the expansion filter.
     loadExpansions: suspend () -> List<ExpansionOption> = { emptyList() },
+    // Start filtered to this expansion (it can arrive a moment after the screen opens).
+    preset: ExpansionPreset? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     // The filter: one whole series, or one expansion, or neither ("" = all cards).
     var seriesId by rememberSaveable { mutableStateOf("") }
     var setId by rememberSaveable { mutableStateOf("") }
+    // Apply the preset once, so clearing it (✕) sticks.
+    var presetApplied by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(preset) {
+        if (preset != null && !presetApplied) {
+            presetApplied = true
+            seriesId = ""
+            setId = preset.setId
+        }
+    }
     var expansions by remember { mutableStateOf<List<ExpansionOption>>(emptyList()) }
     LaunchedEffect(status.count) { expansions = loadExpansions() }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
@@ -116,6 +133,8 @@ fun SearchRoute(
         selectedSeries = seriesId,
         selectedSet = setId,
         onFilterChange = { series, set -> seriesId = series; setId = set },
+        filterNote = preset?.takeIf { seriesId.isEmpty() && setId == it.setId }
+            ?.let { "Set from your last ${it.cardsInARow} cards. Tap ✕ to search every expansion." },
     )
 }
 
@@ -137,6 +156,8 @@ fun SearchScreen(
     selectedSet: String = "",
     // (seriesId, setId): one of them is filled in, or both are "" for all cards.
     onFilterChange: (String, String) -> Unit = { _, _ -> },
+    // A line under the filter saying why it's already set, or null.
+    filterNote: String? = null,
 ) {
     val filtered = selectedSeries.isNotEmpty() || selectedSet.isNotEmpty()
     val focus = remember { FocusRequester() }
@@ -164,7 +185,10 @@ fun SearchScreen(
                 } else null,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
-            if (expansions.isNotEmpty()) ExpansionFilter(expansions, selectedSeries, selectedSet, onFilterChange)
+            if (expansions.isNotEmpty()) {
+                ExpansionFilter(expansions, selectedSeries, selectedSet, onFilterChange)
+                if (filterNote != null) Text(filterNote, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            }
         }
 
         LazyColumn(
