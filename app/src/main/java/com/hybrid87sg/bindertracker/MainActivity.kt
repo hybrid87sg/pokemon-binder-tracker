@@ -30,6 +30,7 @@ import androidx.compose.runtime.produceState
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
 import com.hybrid87sg.bindertracker.ui.screens.CardRoute
+import com.hybrid87sg.bindertracker.ui.screens.ExpansionPreset
 import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
 import com.hybrid87sg.bindertracker.ui.screens.PageScreen
 import com.hybrid87sg.bindertracker.ui.screens.ScanRoute
@@ -332,6 +333,10 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
         composable("pick/{pageId}/{position}") { entry ->
             val pageId = entry.arguments?.getString("pageId").orEmpty()
             val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
+            // If the last cards came from one expansion, start the search on it.
+            val preset by produceState<ExpansionPreset?>(null, pageId) {
+                value = vm.expansionStreak(pageId)?.let { ExpansionPreset(it.setId, it.count) }
+            }
             SearchRoute(
                 title = "Which card is in pocket ${position + 1}?",
                 backLabel = "Page",
@@ -339,6 +344,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 search = vm::searchCards,
                 loadExpansions = vm::expansionList,
                 onBack = { nav.popBackStack() },
+                preset = preset,
                 onCardClick = { card ->
                     vm.setPocketCard(pageId, position, card.id)
                     nav.popBackStack()

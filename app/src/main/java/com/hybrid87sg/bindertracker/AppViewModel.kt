@@ -23,6 +23,7 @@ import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
 import com.hybrid87sg.bindertracker.scan.DetailMatcher
+import com.hybrid87sg.bindertracker.scan.ExpansionStreak
 import com.hybrid87sg.bindertracker.scan.GuessPicker
 import com.hybrid87sg.bindertracker.scan.PageReader
 import com.hybrid87sg.bindertracker.scan.PocketMatcher
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -371,6 +373,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pocketOpened() { _openPocket.value = null }
 
+    /** Which expansion the last cards put in each binder came from (see [ExpansionStreak]). */
+    private val streaks = ExpansionStreak()
+
+    private suspend fun binderIdOf(pageId: String): String? = pageDao.observePage(pageId).first()?.binderId
+
+    private suspend fun recordCard(pageId: String, card: Card) {
+        binderIdOf(pageId)?.let { streaks.record(it, card.setId) }
+    }
+
+    /**
+     * The expansion to preset in "Choose card from list" for this page: set when
+     * the last two or more cards put in its binder came from the same expansion.
+     */
+    suspend fun expansionStreak(pageId: String): ExpansionStreak.Streak? = binderIdOf(pageId)?.let(streaks::current)
+
     /** What recognising one pocket found: the card it's sure of, and/or guesses to pick from. */
     private data class Recognition(val card: Card?, val fromPicture: Boolean, val guesses: List<Card>)
 
@@ -444,10 +461,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     match != null -> {
                         setSuggestions(pageId, position, emptyList())
                         pageDao.upsertPocket(Pocket(pageId, position, cardId = match.id))
+                        recordCard(pageId, match)
                         "Pocket ${position + 1}: ${match.name} (${match.setName} ${match.number})."
                     }
                     found.guesses.isNotEmpty() -> {
-                        setSuggestions(pageId, position, found.guesses)
+                        // Guesses from the expansion they've been scanning go first.
+                        val streak = expansionStreak(pageId)?.setId
+                        setSuggestions(pageId, position, ExpansionStreak.preferSet(found.guesses, streak) { it.setId })
                         _openPocket.value = pageId to position
                         "Not sure which card is in pocket ${position + 1}. Pick it from the best guesses."
                     }
@@ -461,7 +481,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPocketCard(pageId: String, position: Int, cardId: String) {
         setSuggestions(pageId, position, emptyList())
-        viewModelScope.launch { pageDao.upsertPocket(Pocket(pageId, position, cardId = cardId)) }
+        viewModelScope.launch {
+            pageDao.upsertPocket(Pocket(pageId, position, cardId = cardId))
+            cardIndex.get(cardId)?.let { recordCard(pageId, it) }
+        }
     }
 
     fun setPocketEmpty(pageId: String, position: Int) {
