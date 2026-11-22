@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.unit.IntOffset
 import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.screens.CollectionStats
 import androidx.compose.ui.graphics.asImageBitmap
@@ -241,7 +242,11 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             // Which page is showing. Turning a page changes this in place,
             // so the page-turn animation flows straight into the new page.
             var pageId by rememberSaveable { mutableStateOf(entry.arguments?.getString("pageId").orEmpty()) }
-            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
+            // Keep showing the last page we had until the new one arrives. (Starting
+            // again from "no page" after a turn removed the whole screen for a
+            // moment, so every card was rebuilt and popped in again.)
+            var page by remember { mutableStateOf<Page?>(null) }
+            LaunchedEffect(pageId) { vm.page(pageId).collect { page = it } }
             val binderId = page?.binderId
             val siblings by remember(binderId) { binderId?.let { vm.pages(it) } ?: flowOf(emptyList()) }
                 .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -290,6 +295,8 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         scanPictures = scanPictures,
                         pageId = pageId,
                         pageCount = siblings.size,
+                        prevPageId = prevId,
+                        nextPageId = nextId,
                         prevPockets = prevId?.let { pocketsById[it] },
                         nextPockets = nextId?.let { pocketsById[it] },
                         onTurn = { dir -> (if (dir > 0) nextId else prevId)?.let { pageId = it } },
