@@ -14,6 +14,10 @@ import com.hybrid87sg.bindertracker.data.Binder
 import com.hybrid87sg.bindertracker.data.BinderResize
 import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.prices.ExchangeRates
+import com.hybrid87sg.bindertracker.prices.SgdRates
+import com.hybrid87sg.bindertracker.data.CardSearch
+import com.hybrid87sg.bindertracker.data.OwnedFirst
 import com.hybrid87sg.bindertracker.data.Checklist
 import com.hybrid87sg.bindertracker.data.ChecklistData
 import com.hybrid87sg.bindertracker.data.ChecklistProgress
@@ -346,10 +350,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    suspend fun searchCards(query: String, seriesId: String = "", setId: String = ""): List<Card> =
-        cardIndex.search(query, seriesId, setId)
+    /** Card search, with the cards already in your binders listed first. */
+    suspend fun searchCards(query: String, seriesId: String = "", setId: String = ""): CardSearch {
+        // Look further than the 100 we show, so your own cards are found even
+        // when lots of other cards match too.
+        val found = cardIndex.search(query, seriesId, setId, limit = 2000)
+        val places = runCatching { checklistDao.cardPlaces() }.getOrDefault(emptyList())
+        return OwnedFirst.arrange(found, places)
+    }
 
     suspend fun expansionList(): List<ExpansionOption> = cardIndex.expansions()
+
+    private val exchangeRates = ExchangeRates(app)
+
+    /** Today's rates for showing card prices in Singapore dollars, or null if we have none. */
+    suspend fun sgdRates(): SgdRates? = exchangeRates.get()
 
     suspend fun card(id: String): Card? = cardIndex.get(id)
 

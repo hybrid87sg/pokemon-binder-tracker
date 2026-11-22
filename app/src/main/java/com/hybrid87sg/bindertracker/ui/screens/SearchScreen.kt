@@ -45,6 +45,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.data.Card
+import com.hybrid87sg.bindertracker.data.CardSearch
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -79,7 +82,7 @@ fun SearchRoute(
     title: String,
     backLabel: String,
     status: IndexStatus,
-    search: suspend (query: String, seriesId: String, setId: String) -> List<Card>,
+    search: suspend (query: String, seriesId: String, setId: String) -> CardSearch,
     onBack: () -> Unit,
     onCardClick: (Card) -> Unit,
     onRefreshIndex: () -> Unit,
@@ -103,13 +106,13 @@ fun SearchRoute(
     }
     var expansions by remember { mutableStateOf<List<ExpansionOption>>(emptyList()) }
     LaunchedEffect(status.count) { expansions = loadExpansions() }
-    var results by remember { mutableStateOf<List<Card>>(emptyList()) }
+    var results by remember { mutableStateOf(CardSearch(emptyList())) }
     var searching by remember { mutableStateOf(false) }
 
     // Search shortly after typing stops, so we don't search on every letter.
     LaunchedEffect(query, seriesId, setId, status.count) {
         if (query.isBlank()) {
-            results = emptyList()
+            results = CardSearch(emptyList())
             return@LaunchedEffect
         }
         delay(200)
@@ -123,7 +126,9 @@ fun SearchRoute(
         backLabel = backLabel,
         query = query,
         onQueryChange = { query = it },
-        results = results,
+        results = results.cards,
+        places = results.places,
+        moreOthers = results.moreOthers,
         searching = searching,
         status = status,
         onBack = onBack,
@@ -158,6 +163,11 @@ fun SearchScreen(
     onFilterChange: (String, String) -> Unit = { _, _ -> },
     // A line under the filter saying why it's already set, or null.
     filterNote: String? = null,
+    // Where each of your own cards is, by card ID ("Kanto Binder · page 1").
+    // Those cards come first in [results].
+    places: Map<String, String> = emptyMap(),
+    // True when more cards matched than are shown.
+    moreOthers: Boolean = false,
 ) {
     val filtered = selectedSeries.isNotEmpty() || selectedSet.isNotEmpty()
     val focus = remember { FocusRequester() }
@@ -218,15 +228,22 @@ fun SearchScreen(
                     }
                 }
                 else -> {
+                    val mine = results.filter { it.id in places }
+                    val others = results.filter { it.id !in places }
                     item {
                         Text(
-                            if (results.size >= 100) "Showing the first 100 matches. Add more letters or the card number to narrow it down."
+                            if (moreOthers || (mine.isEmpty() && results.size >= 100)) "Showing the first 100 matches. Add more letters or the card number to narrow it down."
                             else "${results.size} ${if (results.size == 1) "card matches" else "cards match"}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.Muted,
                         )
                     }
-                    items(results, key = { it.id }) { card -> CardRow(card) { onCardClick(card) } }
+                    if (mine.isNotEmpty()) {
+                        item(key = "mine") { SectionLabel("In your binders") }
+                        items(mine, key = { it.id }) { card -> CardRow(card, places[card.id]) { onCardClick(card) } }
+                        if (others.isNotEmpty()) item(key = "others") { SectionLabel("All other cards") }
+                    }
+                    items(others, key = { it.id }) { card -> CardRow(card) { onCardClick(card) } }
                 }
             }
         }
@@ -438,7 +455,20 @@ private fun PickerRow(name: String, selected: Boolean, bold: Boolean = false, on
 }
 
 @Composable
-private fun CardRow(card: Card, onClick: () -> Unit) {
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp,
+        color = AppColors.Muted,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+}
+
+/** One card in the results. [place] says where it is in your binders, if it's yours. */
+@Composable
+private fun CardRow(card: Card, place: String? = null, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -458,6 +488,18 @@ private fun CardRow(card: Card, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (place != null) {
+                    Text(
+                        place,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.AccentText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp).clip(RoundedCornerShape(50))
+                            .background(AppColors.Surface2).padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
             }
         }
     }

@@ -338,7 +338,7 @@ private fun App(
         composable("card/{id}") { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
             val card by produceState<Card?>(null, id) { value = vm.card(id) }
-            card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }) }
+            card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }, loadRates = vm::sgdRates) }
         }
 
         // ---- Pages ----

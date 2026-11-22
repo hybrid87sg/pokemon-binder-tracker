@@ -35,12 +35,12 @@ class CardIndex(context: Context, private val dao: CardDao) {
      * Finds cards by name, number, or both. Examples:
      * "pikachu", "025/165", "#25", "charizard 4".
      */
-    suspend fun search(query: String, seriesId: String = "", setId: String = ""): List<Card> {
+    suspend fun search(query: String, seriesId: String = "", setId: String = "", limit: Int = 100): List<Card> {
         val parsed = parseQuery(query) ?: return emptyList()
         return if (parsed.number != null) {
-            dao.searchByNumber(parsed.number, parsed.name, seriesId = seriesId, setId = setId)
+            dao.searchByNumber(parsed.number, parsed.name, limit = limit, seriesId = seriesId, setId = setId)
         } else {
-            dao.searchByName(parsed.name, seriesId = seriesId, setId = setId)
+            dao.searchByName(parsed.name, limit = limit, seriesId = seriesId, setId = setId)
         }
     }
 

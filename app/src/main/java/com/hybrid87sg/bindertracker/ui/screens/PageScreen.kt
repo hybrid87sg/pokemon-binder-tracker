@@ -179,6 +179,8 @@ fun PageScreen(
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    // The "Go to page" panel, opened by tapping the page number.
+    var jumping by remember { mutableStateOf(false) }
     LaunchedEffect(openPosition, pockets) {
         val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
         selected = pocket
@@ -493,6 +495,7 @@ fun PageScreen(
                 canNext = nextPockets != null,
                 onPrev = { turnState.turn(-1) },
                 onNext = { turnState.turn(1) },
+                onJump = if (pageIds.size > 1) ({ jumping = true }) else null,
                 ping = ping,
                 onPlaced = { k, c -> drag.rectOf(c)?.let { dotCenters[k] = it.center } },
             )
@@ -618,6 +621,21 @@ fun PageScreen(
         }
     }
 
+    if (jumping) {
+        ModalBottomSheet(onDismissRequest = { jumping = false }, containerColor = AppColors.Paper) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
+                PageJumpPicker(
+                    pages = pageIds.mapIndexed { i, id -> PickerPage(id, i + 1, if (id == pageId) shownPockets else pageCards[id].orEmpty()) },
+                    currentPageId = pageId,
+                    columns = columns,
+                    onPick = { id ->
+                        jumping = false
+                        if (id != pageId) goToPage(id)
+                    },
+                )
+            }
+        }
+    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -736,6 +754,8 @@ private fun PageArrows(
     canNext: Boolean,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    // Tapping "Page 2 of 6" opens the "Go to page" panel (null = can't).
+    onJump: (() -> Unit)? = null,
     // A page's dot to pop (a card just moved to that page), with a fresh number each time.
     ping: Pair<Int, Long>? = null,
     // Tells the screen where each dot (and arrow) is, so a moving card can fly to it.
@@ -746,8 +766,17 @@ private fun PageArrows(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ArrowButton(R.drawable.ic_chevron_left, "Previous page", canPrev, onPrev, Modifier.onGloballyPositioned { onPlaced(PREV_ARROW, it) })
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Page $pageNumber of $pageCount", style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
+        Column(
+            Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                .then(if (onJump != null) Modifier.clickable(onClickLabel = "Go to another page", onClick = onJump) else Modifier)
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Page $pageNumber of $pageCount", style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
+                if (onJump != null) Text("  ▾", fontSize = 11.sp, color = AppColors.Muted)
+            }
             if (pageCount <= 12) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     repeat(pageCount) { i ->

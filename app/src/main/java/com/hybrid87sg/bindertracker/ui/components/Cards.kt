@@ -90,6 +90,7 @@ fun formatMoney(amount: Double, currencyCode: String): String {
     val format = NumberFormat.getCurrencyInstance(Locale.UK)
     runCatching { format.currency = Currency.getInstance(currencyCode) }
     if (currencyCode == "USD") return "US$" + "%,.2f".format(Locale.UK, amount)
+    if (currencyCode == "SGD") return "S$" + "%,.2f".format(Locale.UK, amount)
     return format.format(amount)
 }
 
