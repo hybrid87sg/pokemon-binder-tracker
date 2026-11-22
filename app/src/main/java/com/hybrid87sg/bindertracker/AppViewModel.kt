@@ -17,6 +17,7 @@ import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.CardIndex
 import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
+import com.hybrid87sg.bindertracker.data.BinderFill
 import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.SeriesOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
@@ -268,6 +269,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Binder pages and pockets (checklist #4, #36) ----
 
     fun pages(binderId: String): Flow<List<PageSummary>> = pageDao.observePages(binderId)
+
+    /** How full each binder is, by binder ID, for the shelf and the Account totals. */
+    val binderFill: StateFlow<Map<String, BinderFill>> = pageDao.observeBinderFill()
+        .map { list -> list.associateBy { it.binderId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun page(pageId: String): Flow<Page?> = pageDao.observePage(pageId)
 

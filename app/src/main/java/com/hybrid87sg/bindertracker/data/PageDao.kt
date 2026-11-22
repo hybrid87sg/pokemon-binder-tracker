@@ -20,6 +20,19 @@ interface PageDao {
     )
     fun observePages(binderId: String): Flow<List<PageSummary>>
 
+    /** How full every binder is, for the shelf. Binders with no pages aren't listed. */
+    @Query(
+        """
+        SELECT pages.binderId AS binderId,
+          COUNT(DISTINCT pages.id) AS pages,
+          SUM(CASE WHEN pockets.cardId IS NOT NULL THEN 1 ELSE 0 END) AS filled,
+          COUNT(pockets.position) AS total
+        FROM pages INNER JOIN pockets ON pockets.pageId = pages.id
+        GROUP BY pages.binderId
+        """,
+    )
+    fun observeBinderFill(): Flow<List<BinderFill>>
+
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observePage(id: String): Flow<Page?>
 
