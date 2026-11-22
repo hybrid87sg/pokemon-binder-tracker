@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "66153505170",
+    "project_id": "pokemon-binder-tracker",
+    "storage_bucket": "pokemon-binder-tracker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:66153505170:android:42d717eed07f8e3145e14b",
+        "android_client_info": {
+          "package_name": "com.hybrid87sg.bindertracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "66153505170-huup08rjs333b9r963aubkv8i0v5td3c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMK8OmGHdrujbP5KI9V-h1GI7pZcaX2I4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "66153505170-huup08rjs333b9r963aubkv8i0v5td3c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

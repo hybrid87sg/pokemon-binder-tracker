@@ -5,7 +5,7 @@ Each person signs in with Google and gets their own shelf of binders.
 
 ## What works so far
 
-- **Sign in with Google** (Firebase Auth), or "Use on this phone only" without an account
+- **Sign in with Google** (Firebase Auth, project `pokemon-binder-tracker`), or "Use on this phone only"
 - **Shelf** of binders, each drawn as a spine with its name and size
 - **New binder**: name, spine colour, and size (2 × 2, 3 × 3 or 3 × 4)
 - **Binder** screen, with delete (asks first)
@@ -87,13 +87,19 @@ SHA-1 to register in Firebase:
 06:C0:FD:D1:E9:3B:92:C1:59:04:13:67:9E:C3:9A:AB:28:7A:85:91
 ```
 
-## Connecting Firebase (one-time, in the Firebase console)
+## Firebase (connected)
 
-Until this is done the app builds and runs, but only "Use on this phone only" works.
+Google sign-in uses the Firebase project **pokemon-binder-tracker**. Its settings file,
+`app/google-services.json`, is committed on purpose: it identifies the project and is not a
+password. When the file is present the build switches Firebase on automatically.
 
-1. Open your Firebase project (the one Doodle Frame uses) → **Add app** → **Android**.
-   Package name: `com.hybrid87sg.bindertracker`
-2. On that app's settings, **Add fingerprint** and paste the SHA-1 above.
-3. **Authentication → Sign-in method** → enable **Google**.
-4. **Firestore Database** → **Create database** (used for syncing in a later step).
-5. Download **google-services.json** and put it in the `app/` folder, then commit it.
+If sign-in fails, check in the Firebase console under **Project settings → Your apps →
+Binder Tracker**:
+
+- Package name is `com.hybrid87sg.bindertracker`
+- **SHA certificate fingerprints** include the SHA-1 above (and ideally the SHA-256:
+  `B7:34:2D:CA:44:41:8F:D8:27:C3:C5:9B:52:DF:8E:32:86:A0:66:7E:2D:FE:85:9B:6F:FB:3F:B4:24:29:8F:2B`)
+- **Authentication → Sign-in method → Google** is enabled
+
+If you change any of these, download `google-services.json` again and replace the one in `app/`.
+Firestore (for syncing binders between phones) is not used yet.
