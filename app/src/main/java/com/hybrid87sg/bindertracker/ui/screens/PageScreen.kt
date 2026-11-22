@@ -4,6 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,8 +103,8 @@ private val CheckBorder get() = AppColors.Check
 private val CheckFill get() = AppColors.CheckFill
 
 /**
- * One binder page, shown as its pockets. Tap a pocket to say which
- * card it holds, or that it's empty.
+ * One binder page, shown as its pockets. Tap a card to open it, tap an
+ * empty pocket to scan a card into it, or press and hold any pocket for its menu.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -203,13 +207,19 @@ fun PageScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) { which ->
                 when (which) {
-                    0 -> BinderSheet(pockets, columns, pageKey = pageId, live = true, onPocket = { selected = it })
-                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = prevPageId ?: "prev", live = false, onPocket = {})
-                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = nextPageId ?: "next", live = false, onPocket = {})
+                    // Tap: a card opens straight away, an empty pocket goes straight to the camera.
+                    // Press and hold: the pocket's menu with every option.
+                    0 -> BinderSheet(
+                        pockets, columns, pageKey = pageId, live = true,
+                        onPocket = { pocket -> pocket.cardId?.let(onViewCard) ?: onScanCard(pocket.position) },
+                        onPocketHold = { selected = it },
+                    )
+                    -1 -> BinderSheet(prevPockets.orEmpty(), columns, pageKey = prevPageId ?: "prev", live = false, onPocket = {}, onPocketHold = {})
+                    else -> BinderSheet(nextPockets.orEmpty(), columns, pageKey = nextPageId ?: "next", live = false, onPocket = {}, onPocketHold = {})
                 }
             }
             Text(
-                "Tap a pocket to scan its card, or to choose it from the list.",
+                "Tap a card to see it and its price, or tap an empty pocket to scan a card into it. Press and hold a pocket for more options.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
@@ -323,6 +333,7 @@ private fun BinderSheet(
     pageKey: String,
     live: Boolean,
     onPocket: (PocketWithCard) -> Unit,
+    onPocketHold: (PocketWithCard) -> Unit,
 ) {
     val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
     Column(
@@ -345,6 +356,7 @@ private fun BinderSheet(
                             live = live,
                             order = rowIndex * columns + i,
                             onClick = { onPocket(pocket) },
+                            onHold = { onPocketHold(pocket) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -406,12 +418,13 @@ private fun PocketTile(
     live: Boolean,
     order: Int,
     onClick: () -> Unit,
+    onHold: () -> Unit,
     modifier: Modifier,
 ) {
     val label = when {
         pocket.cardName != null -> pocket.cardName
         pocket.isEmpty -> "Empty pocket"
-        else -> "Tap to identify"
+        else -> "Tap to scan"
     }
     // Cards pop into their pockets one after another when the page opens.
     val popIn = arrive(play = live, delayMillis = 80 + order * 45, durationMillis = 340)
@@ -432,18 +445,38 @@ private fun PocketTile(
     }
 
     val press = remember { MutableInteractionSource() }
-    Surface(
-        onClick = onClick,
-        interactionSource = press,
-        color = Color.Transparent,
-        modifier = modifier
+    val haptics = LocalHapticFeedback.current
+    // While a finger rests on the pocket, a violet glow fades in round the card,
+    // so you can see a press and hold is on its way to opening the menu.
+    val pressed by press.collectIsPressedAsState()
+    val holdGlow by animateFloatAsState(
+        if (pressed && live) 1f else 0f,
+        if (pressed) tween(450) else tween(Motion.Short),
+        label = "holdGlow",
+    )
+    Box(
+        modifier
             .graphicsLayer {
                 alpha = popIn
                 val s = 0.82f + 0.18f * popIn
                 scaleX = s; scaleY = s
                 translationY = (1f - popIn) * 10.dp.toPx()
             }
-            .pressSquish(press, 0.96f),
+            .pressSquish(press, 0.94f)
+            // "combinedClickable" tells a quick tap apart from a press and hold.
+            // A swipe to turn the page cancels both, so it never opens anything.
+            .combinedClickable(
+                interactionSource = press,
+                indication = null,
+                enabled = live,
+                onClickLabel = if (pocket.cardId != null) "View card" else "Scan a card",
+                onLongClickLabel = "More options",
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onHold()
+                },
+            ),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val shape = RoundedCornerShape(6.dp)
@@ -455,6 +488,7 @@ private fun PocketTile(
                             cameraDistance = 12f * density
                         }
                         .then(if (pocket.cardId != null && live) Modifier.holoTouch() else Modifier)
+                        .then(if (holdGlow > 0f) Modifier.border(3.dp, AppColors.AccentText.copy(alpha = holdGlow), shape) else Modifier)
                         .clip(shape)
                         .then(
                             when {
