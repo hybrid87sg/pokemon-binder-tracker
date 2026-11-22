@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.hybrid87sg.bindertracker.GuideRect
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,22 @@ object PageReader {
         } finally {
             recognizer.close()
         }
+    }
+
+    /**
+     * Reads one card from a live camera picture (already cut to the frame).
+     * Used many times a second while scanning live, so [recognizer] is made
+     * once by the caller and reused.
+     */
+    suspend fun readCard(recognizer: TextRecognizer, card: Bitmap): ReadCard {
+        val result = recognizer.process(InputImage.fromBitmap(card, 0)).await()
+        val lines = result.textBlocks.flatMap { block ->
+            block.lines.mapNotNull { line ->
+                val box = line.boundingBox ?: return@mapNotNull null
+                TextLine(line.text, box.left, box.top, box.right, box.bottom)
+            }
+        }
+        return CardTextParser.readPocket(0, lines, pocketTop = 0, pocketHeight = card.height)
     }
 
     /**

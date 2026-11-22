@@ -36,7 +36,8 @@ import com.hybrid87sg.bindertracker.ui.screens.CardRoute
 import com.hybrid87sg.bindertracker.ui.screens.ExpansionPreset
 import com.hybrid87sg.bindertracker.ui.screens.IndexStatus
 import com.hybrid87sg.bindertracker.ui.screens.PageScreen
-import com.hybrid87sg.bindertracker.ui.screens.ScanRoute
+import com.hybrid87sg.bindertracker.ui.screens.LiveScanActions
+import com.hybrid87sg.bindertracker.ui.screens.LiveScanRoute
 import com.hybrid87sg.bindertracker.ui.screens.SearchRoute
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +48,9 @@ import com.hybrid87sg.bindertracker.ui.components.UpdateDialog
 import com.hybrid87sg.bindertracker.ui.screens.PermissionsGate
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
+import androidx.navigation.navArgument
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.hybrid87sg.bindertracker.ui.screens.AccountScreen
@@ -417,31 +420,51 @@ private fun App(
                 }
             }
         }
-        // Photograph one card for one pocket; then back to the page.
+        // Scan one card for one pocket, live (no photo needed); then back to the page.
         composable("scancard/{pageId}/{position}") { entry ->
             val pageId = entry.arguments?.getString("pageId").orEmpty()
             val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
-            val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
-            page?.let { p ->
-                val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
-                binder?.let { b ->
-                    ScanRoute(
-                        binder = b,
-                        singleCard = true,
-                        subtitle = "Pocket ${position + 1}",
-                        onBack = { nav.popBackStack() },
-                        onCaptured = { photo, guide ->
-                            vm.scanPocket(pageId, position, photo, guide)
-                            nav.popBackStack()
-                        },
-                    )
-                }
-            }
+            val pockets by remember(pageId) { vm.pockets(pageId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            val autoNext by vm.autoNextPocket.collectAsStateWithLifecycle()
+            LiveScanRoute(
+                startPosition = position,
+                pockets = pockets,
+                autoNext = autoNext,
+                onAutoNextChange = vm::setAutoNextPocket,
+                picturesListReady = vm.picturesListReady,
+                onBack = { nav.popBackStack() },
+                actions = LiveScanActions(
+                    check = vm::liveCheck,
+                    artwork = vm::liveArtwork,
+                    place = { pos, card, picture -> vm.livePlace(pageId, pos, card, picture) },
+                    unsure = { pos, name, picture, guesses ->
+                        vm.liveUnsure(pageId, pos, picture, guesses)
+                        nav.navigate("pick/$pageId/$pos?q=${Uri.encode(name)}") {
+                            popUpTo("scancard/{pageId}/{position}") { inclusive = true }
+                        }
+                    },
+                    chooseFromList = { pos ->
+                        nav.navigate("pick/$pageId/$pos") {
+                            popUpTo("scancard/{pageId}/{position}") { inclusive = true }
+                        }
+                    },
+                    photo = { pos, file, guide ->
+                        vm.scanPocket(pageId, pos, file, guide)
+                        nav.popBackStack()
+                    },
+                    done = { nav.popBackStack() },
+                ),
+            )
         }
         // Search, but tapping a card puts it in a pocket.
-        composable("pick/{pageId}/{position}") { entry ->
+        composable(
+            "pick/{pageId}/{position}?q={q}",
+            arguments = listOf(navArgument("q") { type = NavType.StringType; defaultValue = "" }),
+        ) { entry ->
             val pageId = entry.arguments?.getString("pageId").orEmpty()
             val position = entry.arguments?.getString("position")?.toIntOrNull() ?: 0
+            // The name live scanning read, when it wasn't sure which card it is.
+            val typed = entry.arguments?.getString("q").orEmpty()
             // If the last cards came from one expansion, start the search on it.
             val preset by produceState<ExpansionPreset?>(null, pageId) {
                 value = vm.expansionStreak(pageId)?.let { ExpansionPreset(it.setId, it.count) }
@@ -453,7 +476,9 @@ private fun App(
                 search = vm::searchCards,
                 loadExpansions = vm::expansionList,
                 onBack = { nav.popBackStack() },
-                preset = preset,
+                // A typed-in name searches every expansion, so the right card isn't filtered out.
+                preset = if (typed.isBlank()) preset else null,
+                initialQuery = typed,
                 onCardClick = { card ->
                     vm.setPocketCard(pageId, position, card.id)
                     nav.popBackStack()

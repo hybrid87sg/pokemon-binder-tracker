@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -94,7 +95,7 @@ fun CardScreen(
     ratesLoaded: Boolean = true,
 ) {
     var fullScreen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Back", onBack) }
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),

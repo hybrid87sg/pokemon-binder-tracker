@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -110,7 +111,7 @@ fun PermissionsScreen(
 ) {
     val remaining = listOf(cameraGranted, installGranted).count { !it }
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 48.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),

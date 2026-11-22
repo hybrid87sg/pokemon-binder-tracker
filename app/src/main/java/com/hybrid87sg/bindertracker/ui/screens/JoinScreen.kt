@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -102,7 +103,7 @@ fun JoinScreen(
             .addOnFailureListener { scanError = "Couldn't open the QR code scanner. Type the code instead." }
     }
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) {
             BackButton("Shelf", onClick = { if (state is JoinState.Found) onReset() else onBack() })
         }

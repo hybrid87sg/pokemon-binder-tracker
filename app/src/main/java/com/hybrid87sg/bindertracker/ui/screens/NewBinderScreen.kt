@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -106,7 +107,7 @@ internal fun BinderForm(
     var size by rememberSaveable { mutableStateOf(initialSize) }
     val canSave = name.isNotBlank()
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

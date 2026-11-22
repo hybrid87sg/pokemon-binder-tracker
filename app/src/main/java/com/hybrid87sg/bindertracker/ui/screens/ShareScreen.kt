@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -106,7 +107,7 @@ fun ShareScreen(
     var confirmStop by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton(binder.name, onBack) }
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding()

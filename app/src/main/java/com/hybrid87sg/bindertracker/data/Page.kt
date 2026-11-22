@@ -55,6 +55,10 @@ data class PocketWithCard(
     val cardNumber: String?,
     val setName: String?,
     val imageUrl: String?,
+    // For the page's look: holo shine on shiny cards, and the expansion's pattern.
+    val rarity: String? = null,
+    val setId: String? = null,
+    val seriesId: String? = null,
 )
 
 /** One pocket and its card, plus which page it is on (for the page picker). */
@@ -67,6 +71,9 @@ data class PagePocket(
     val cardNumber: String?,
     val setName: String?,
     val imageUrl: String?,
+    val rarity: String? = null,
+    val setId: String? = null,
+    val seriesId: String? = null,
 ) {
-    fun withoutPage() = PocketWithCard(position, isEmpty, cardId, cardName, cardNumber, setName, imageUrl)
+    fun withoutPage() = PocketWithCard(position, isEmpty, cardId, cardName, cardNumber, setName, imageUrl, rarity, setId, seriesId)
 }

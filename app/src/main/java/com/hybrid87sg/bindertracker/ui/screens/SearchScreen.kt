@@ -1,5 +1,6 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import com.hybrid87sg.bindertracker.ui.theme.appBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,8 +91,10 @@ fun SearchRoute(
     loadExpansions: suspend () -> List<ExpansionOption> = { emptyList() },
     // Start filtered to this expansion (it can arrive a moment after the screen opens).
     preset: ExpansionPreset? = null,
+    // Start with this already typed in (the name live scanning read).
+    initialQuery: String = "",
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initialQuery) }
     // The filter: one whole series, or one expansion, or neither ("" = all cards).
     var seriesId by rememberSaveable { mutableStateOf("") }
     var setId by rememberSaveable { mutableStateOf("") }
@@ -173,7 +176,7 @@ fun SearchScreen(
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().background(AppColors.Paper).statusBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().imePadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton(backLabel, onBack) }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.headlineMedium)
