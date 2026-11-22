@@ -119,7 +119,7 @@ fun CollectingSheet(
                             onClick = { picked = if (on) picked - set.id else picked + set.id },
                             shape = RoundedCornerShape(10.dp),
                             color = if (on) AppColors.Surface2 else AppColors.Surface,
-                            modifier = Modifier.fillMaxWidth().semantics { role = Role.Checkbox; selected = on },
+                            modifier = Modifier.fillMaxWidth().semantics { role = Role.Checkbox; this.selected = on },
                         ) {
                             Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
