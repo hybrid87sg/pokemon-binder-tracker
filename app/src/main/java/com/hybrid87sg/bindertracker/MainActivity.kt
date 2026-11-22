@@ -2,6 +2,19 @@ package com.hybrid87sg.bindertracker
 
 import android.net.Uri
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.unit.IntOffset
+import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.ui.components.Motion
+import com.hybrid87sg.bindertracker.ui.screens.CollectionStats
 import androidx.compose.ui.graphics.asImageBitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -132,11 +145,23 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
 
     // Signed in: the NavHost swaps between screens. Each "route" is a screen's address.
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = "shelf") {
+    // Screens slide in from the right and back out to the right, with a fade.
+    val slide = tween<IntOffset>(Motion.Medium, easing = Motion.Ease)
+    val fade = tween<Float>(Motion.Medium, easing = Motion.Ease)
+    NavHost(
+        navController = nav,
+        startDestination = "shelf",
+        enterTransition = { slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        popEnterTransition = { slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
+        popExitTransition = { slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
+    ) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
+            val fill by vm.binderFill.collectAsStateWithLifecycle()
             ShelfScreen(
                 binders = binders,
+                fill = fill,
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
@@ -213,9 +238,22 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
 
         // ---- Pages ----
         composable("page/{pageId}") { entry ->
-            val pageId = entry.arguments?.getString("pageId").orEmpty()
+            // Which page is showing. Turning a page changes this in place,
+            // so the page-turn animation flows straight into the new page.
+            var pageId by rememberSaveable { mutableStateOf(entry.arguments?.getString("pageId").orEmpty()) }
             val page by remember(pageId) { vm.page(pageId) }.collectAsStateWithLifecycle(initialValue = null)
-            val pockets by remember(pageId) { vm.pockets(pageId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+            val binderId = page?.binderId
+            val siblings by remember(binderId) { binderId?.let { vm.pages(it) } ?: flowOf(emptyList()) }
+                .collectAsStateWithLifecycle(initialValue = emptyList())
+            val index = siblings.indexOfFirst { it.id == pageId }
+            val prevId = siblings.getOrNull(index - 1)?.takeIf { index > 0 }?.id
+            val nextId = siblings.getOrNull(index + 1)?.takeIf { index >= 0 }?.id
+            // Pockets for this page and its neighbours, kept ready so turning is instant.
+            val pocketsById = remember { mutableStateMapOf<String, List<PocketWithCard>>() }
+            listOfNotNull(prevId, pageId, nextId).forEach { id ->
+                key(id) { LaunchedEffect(id) { vm.pockets(id).collect { pocketsById[id] = it } } }
+            }
+            val pockets = pocketsById[pageId].orEmpty()
             page?.let { p ->
                 val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
                 val number by produceState(0, p.id) { value = vm.pageNumber(p) }
@@ -228,7 +266,7 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                 binder?.let { b ->
                     PageScreen(
                         binderName = b.name,
-                        pageNumber = number,
+                        pageNumber = if (index >= 0) index + 1 else number,
                         columns = b.columns,
                         rows = b.rows,
                         pockets = pockets,
@@ -250,6 +288,11 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
                         openPosition = openPocket?.takeIf { it.first == pageId }?.second,
                         onPocketOpened = vm::pocketOpened,
                         scanPictures = scanPictures,
+                        pageId = pageId,
+                        pageCount = siblings.size,
+                        prevPockets = prevId?.let { pocketsById[it] },
+                        nextPockets = nextId?.let { pocketsById[it] },
+                        onTurn = { dir -> (if (dir > 0) nextId else prevId)?.let { pageId = it } },
                     )
                 }
             }
@@ -298,7 +341,14 @@ private fun App(activity: ComponentActivity, vm: AppViewModel = viewModel()) {
             val updateMessage by vm.updateCheckMessage.collectAsStateWithLifecycle()
             val backupMessage by vm.backupMessage.collectAsStateWithLifecycle()
             val backupBusy by vm.backupBusy.collectAsStateWithLifecycle()
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            val fill by vm.binderFill.collectAsStateWithLifecycle()
             AccountScreen(
+                stats = CollectionStats(
+                    cards = binders.sumOf { fill[it.id]?.filled ?: 0 },
+                    pages = binders.sumOf { fill[it.id]?.pages ?: 0 },
+                    binders = binders.size,
+                ),
                 user = current,
                 version = vm.currentVersion,
                 updateMessage = updateMessage,

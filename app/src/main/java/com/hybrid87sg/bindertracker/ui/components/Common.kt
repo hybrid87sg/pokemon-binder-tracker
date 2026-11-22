@@ -40,7 +40,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
+import com.hybrid87sg.bindertracker.ui.theme.DisplayFont
 import com.hybrid87sg.bindertracker.ui.theme.LightPalette
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.remember
+
+/** The cream paper label on every spine, the same in light and dark mode. */
+private val SpineLabel = Color(0xFFF6F4EF)
 
 /** Turns "#8C2F2F" into a colour Compose can draw. */
 fun colorFromHex(hex: String): Color =
@@ -77,7 +84,10 @@ fun SpineArt(
     width: Dp,
     height: Dp,
     modifier: Modifier = Modifier,
+    // How full the binder is, 0 to 1, shown as a small bar. Null hides the bar.
+    fill: Float? = null,
 ) {
+    val pale = ColorMath.isLight(color.toArgb())
     Column(
         modifier = modifier
             .width(width)
@@ -93,24 +103,40 @@ fun SpineArt(
                 .padding(start = 9.dp, end = 9.dp, top = 14.dp, bottom = 8.dp)
                 .clip(RoundedCornerShape(4.dp))
                 // The paper label stays pale in dark mode too, like a real binder.
-                .background(LightPalette.paper),
+                .background(SpineLabel)
+                // A strip of rainbow foil across the top of the label.
+                .holoTopStripe(height = 6f),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = name,
                 modifier = Modifier.verticalText(),
-                color = LightPalette.ink,
+                color = AppColors.Black,
+                fontFamily = DisplayFont,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        if (fill != null) {
+            // How full the binder is: dark bar on pale spines, white on dark ones.
+            val barColor = if (pale) AppColors.Black else AppColors.White
+            Box(
+                Modifier.padding(horizontal = 9.dp).fillMaxWidth().height(5.dp)
+                    .clip(RoundedCornerShape(3.dp)).background(barColor.copy(alpha = 0.25f)),
+            ) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(fill.coerceIn(0f, 1f)).clip(RoundedCornerShape(3.dp)).background(barColor))
+            }
+            Spacer(Modifier.height(5.dp))
+        }
         Text(
             text = tag,
             modifier = Modifier.padding(bottom = 12.dp),
-            // Dark writing on light spines (like yellow), white on dark ones.
-            color = if (ColorMath.isLight(color.toArgb())) AppColors.Ink else AppColors.White,
+            // Dark writing on pale spines (like yellow), white on dark ones, in
+            // both light and dark mode. (It used the main text colour before,
+            // which is almost white in dark mode: unreadable on yellow.)
+            color = if (pale) AppColors.Black else AppColors.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -133,9 +159,11 @@ fun ShelfPlank(modifier: Modifier = Modifier, sideMargin: Dp = 8.dp) {
 /** "< Shelf" style back button used at the top of most screens. */
 @Composable
 fun BackButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = AppColors.Ink) {
+    val press = remember { MutableInteractionSource() }
     TextButton(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 48.dp),
+        interactionSource = press,
+        modifier = modifier.heightIn(min = 48.dp).pressSquish(press),
         colors = ButtonDefaults.textButtonColors(contentColor = color),
     ) {
         Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -153,10 +181,12 @@ fun PrimaryButton(
     enabled: Boolean = true,
     @DrawableRes icon: Int? = null,
 ) {
+    val press = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().height(56.dp),
+        interactionSource = press,
+        modifier = modifier.fillMaxWidth().height(56.dp).pressSquish(press),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = AppColors.Accent,
