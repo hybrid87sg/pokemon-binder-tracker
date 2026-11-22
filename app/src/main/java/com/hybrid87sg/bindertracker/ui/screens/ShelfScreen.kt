@@ -30,6 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import com.hybrid87sg.bindertracker.data.BinderFill
+import com.hybrid87sg.bindertracker.data.ChecklistProgress
+import com.hybrid87sg.bindertracker.ui.components.holoBrush
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import com.hybrid87sg.bindertracker.ui.components.Eyebrow
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.StatTile
@@ -95,6 +100,8 @@ fun ShelfScreen(
     onDismissNotice: () -> Unit = {},
     // Opens the Join screen (a binder a friend shared). Null hides the button.
     onJoin: (() -> Unit)? = null,
+    // Missing cards per collecting binder, by binder ID, for the badges.
+    missing: Map<String, ChecklistProgress> = emptyMap(),
 ) {
     // The slide-in plays once each time the app starts, not every time you come back.
     val playIntro = remember { !ShelfIntro.played }
@@ -215,15 +222,19 @@ fun ShelfScreen(
                                 translationY = (1f - inT) * 48.dp.toPx()
                             }
                             when (item) {
-                                is ShelfItem.BinderItem -> BinderSpine(
-                                    item.binder,
-                                    fill = fill[item.binder.id]?.fraction ?: 0f,
-                                    grow = inT,
-                                    onClick = { onOpenBinder(item.binder) },
-                                    // Only the owner can change a binder's colour.
-                                    onLongClick = { if (item.binder.isOwner) editingId = item.binder.id },
-                                    modifier = slide,
-                                )
+                                is ShelfItem.BinderItem -> Box(slide) {
+                                    BinderSpine(
+                                        item.binder,
+                                        fill = fill[item.binder.id]?.fraction ?: 0f,
+                                        grow = inT,
+                                        onClick = { onOpenBinder(item.binder) },
+                                        // Only the owner can change a binder's colour.
+                                        onLongClick = { if (item.binder.isOwner) editingId = item.binder.id },
+                                    )
+                                    missing[item.binder.id]?.takeIf { it.total > 0 }?.let { p ->
+                                        MissingBadge(p.missing, pop = inT, modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-8).dp))
+                                    }
+                                }
                                 ShelfItem.AddItem -> AddBinderSpine(onAddBinder, slide)
                             }
                         }
@@ -241,6 +252,34 @@ fun ShelfScreen(
             initialHex = binder.colorHex,
             onSave = { hex -> onChangeColor(binder, hex); editingId = null },
             onDismiss = { editingId = null },
+        )
+    }
+}
+
+/** The little foil-rimmed number on a spine: cards still missing, or a green tick when complete. */
+@Composable
+private fun MissingBadge(count: Int, pop: Float, modifier: Modifier = Modifier) {
+    val done = count == 0
+    Box(
+        modifier
+            .graphicsLayer { val s = pop.coerceIn(0f, 1f); scaleX = s; scaleY = s }
+            .semantics { contentDescription = if (done) "Complete" else "$count cards missing" }
+            .clip(RoundedCornerShape(50))
+            .drawBehind { drawRect(holoBrush(size.width)) }
+            .padding(2.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (done) AppColors.Success else AppColors.White)
+            .heightIn(min = 20.dp)
+            .widthIn(min = 22.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (done) "✓" else if (count > 999) "999+" else "$count",
+            color = if (done) AppColors.White else AppColors.Black,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
         )
     }
 }

@@ -1,6 +1,27 @@
 package com.hybrid87sg.bindertracker.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import com.hybrid87sg.bindertracker.data.ExpansionOption
+import com.hybrid87sg.bindertracker.ui.components.CollectingSheet
+import com.hybrid87sg.bindertracker.ui.components.holoTopStripe
+import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,8 +48,13 @@ fun EditBinderScreen(
     pageCount: Int,
     filledPositions: List<Int>,
     onCancel: () -> Unit,
-    onSave: (name: String, colorHex: String, size: BinderSize) -> Unit,
+    onSave: (name: String, colorHex: String, size: BinderSize, collecting: List<String>, countSecretRares: Boolean) -> Unit,
+    // Every expansion, for the "Collecting" section.
+    expansions: List<ExpansionOption> = emptyList(),
 ) {
+    var collecting by rememberSaveable { mutableStateOf(binder.followedSetIds) }
+    var secret by rememberSaveable { mutableStateOf(binder.countSecretRares) }
+    var choosing by rememberSaveable { mutableStateOf(false) }
     BinderForm(
         title = "Edit binder",
         initialName = binder.name,
@@ -36,9 +62,81 @@ fun EditBinderScreen(
         initialSize = BinderSize.of(binder.columns, binder.rows),
         saveText = "Save changes",
         onCancel = onCancel,
-        onSave = onSave,
+        onSave = { name, colorHex, size -> onSave(name, colorHex, size, collecting, secret) },
         sizeNote = { size -> SizeChangeNote(binder, size, pageCount, filledPositions) },
+        extra = {
+            CollectingSection(
+                names = collecting.map { id -> expansions.firstOrNull { it.id == id }?.name ?: id },
+                ids = collecting,
+                secret = secret,
+                onRemove = { id -> collecting = collecting - id },
+                onAdd = { choosing = true },
+                onSecret = { secret = it },
+            )
+        },
     )
+    if (choosing) {
+        CollectingSheet(
+            expansions = expansions,
+            selected = collecting,
+            onDismiss = { choosing = false },
+            onDone = { collecting = it; choosing = false },
+        )
+    }
+}
+
+/** "Collecting": the expansions this binder follows, for the Missing cards page. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CollectingSection(
+    names: List<String>,
+    ids: List<String>,
+    secret: Boolean,
+    onRemove: (String) -> Unit,
+    onAdd: () -> Unit,
+    onSecret: (Boolean) -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).holoTopStripe().border(1.dp, AppColors.Border, shape).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column {
+            Text("Collecting", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "The Missing cards page lists the cards from these expansions that aren't in the binder yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.Muted,
+            )
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            ids.zip(names).forEach { (id, name) ->
+                Surface(
+                    onClick = { onRemove(id) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = AppColors.Accent,
+                    modifier = Modifier.semantics { contentDescription = "$name, tap to remove" },
+                ) {
+                    Text("$name  ×", color = AppColors.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                }
+            }
+            Surface(
+                onClick = onAdd,
+                shape = RoundedCornerShape(12.dp),
+                color = AppColors.Surface,
+                border = BorderStroke(1.dp, AppColors.BorderStrong),
+            ) {
+                Text("+ Add expansion", color = AppColors.AccentText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Count secret rares", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                Text("Master set: cards numbered past the set size", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            }
+            Switch(checked = secret, onCheckedChange = onSecret)
+        }
+    }
 }
 
 /** Explains what a new size will do to the pages and cards already in the binder. */

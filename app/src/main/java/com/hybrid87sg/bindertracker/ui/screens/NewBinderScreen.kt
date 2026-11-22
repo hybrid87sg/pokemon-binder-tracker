@@ -95,6 +95,8 @@ internal fun BinderForm(
     onCancel: () -> Unit,
     onSave: (name: String, colorHex: String, size: BinderSize) -> Unit,
     sizeNote: @Composable (BinderSize) -> Unit = {},
+    // More settings under the size (Edit binder adds "Collecting" here).
+    extra: @Composable () -> Unit = {},
 ) {
     // "rememberSaveable" keeps what you typed even if the phone rotates.
     var name by rememberSaveable { mutableStateOf(initialName) }
@@ -174,6 +176,8 @@ internal fun BinderForm(
                 }
                 sizeNote(size)
             }
+
+            extra()
         }
 
         BottomBar {

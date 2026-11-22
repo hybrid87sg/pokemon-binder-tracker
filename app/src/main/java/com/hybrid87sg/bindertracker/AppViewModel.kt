@@ -16,6 +16,7 @@ import com.hybrid87sg.bindertracker.data.BinderSize
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.data.Checklist
 import com.hybrid87sg.bindertracker.data.ChecklistData
+import com.hybrid87sg.bindertracker.data.ChecklistProgress
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.CardIndex
 import com.hybrid87sg.bindertracker.data.Page
@@ -251,8 +252,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * "withTransaction" means all of these changes happen together or not
      * at all, so a crash halfway can never lose a card.
      */
-    fun updateBinder(binder: Binder, name: String, colorHex: String, size: BinderSize) {
+    fun updateBinder(
+        binder: Binder,
+        name: String,
+        colorHex: String,
+        size: BinderSize,
+        // What it collects (Missing cards). Null = leave as it is.
+        collecting: List<String>? = null,
+        countSecretRares: Boolean? = null,
+    ) {
         if (!binder.isOwner) return
+        val updated = binder.copy(
+            name = name.trim(),
+            colorHex = colorHex,
+            columns = size.columns,
+            rows = size.rows,
+            followedSets = collecting?.let(Binder::joinSetIds) ?: binder.followedSets,
+            countSecretRares = countSecretRares ?: binder.countSecretRares,
+        )
         viewModelScope.launch {
             db.withTransaction {
                 val oldCount = binder.pocketsPerPage
@@ -275,12 +292,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
-                binderDao.update(
-                    binder.copy(name = name.trim(), colorHex = colorHex, columns = size.columns, rows = size.rows),
-                )
+                binderDao.update(updated)
             }
             // Send the new settings; a new size changes pockets on every page, so send those too.
-            val updated = binder.copy(name = name.trim(), colorHex = colorHex, columns = size.columns, rows = size.rows)
             if (size.pockets != binder.pocketsPerPage) cloud.binderResized(binder.id) else cloud.binderSettingsChanged(updated)
         }
     }
@@ -348,17 +362,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * for the badges on the shelf. Binders that collect nothing aren't listed.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val missingCounts: StateFlow<Map<String, Int>> =
+    val missingCounts: StateFlow<Map<String, ChecklistProgress>> =
         combine(binders, checklistDao.observeOwnedCards(), cardCount) { list, owned, _ -> list to owned }
             .mapLatest { (list, owned) ->
                 val collecting = list.filter { it.followedSetIds.isNotEmpty() }
-                if (collecting.isEmpty()) return@mapLatest emptyMap()
+                if (collecting.isEmpty()) return@mapLatest emptyMap<String, ChecklistProgress>()
                 val cards = checklistDao.cardsInSets(collecting.flatMap { it.followedSetIds }.distinct())
-                if (cards.isEmpty()) return@mapLatest emptyMap()
+                if (cards.isEmpty()) return@mapLatest emptyMap<String, ChecklistProgress>()
                 val ownedBy = owned.groupBy({ it.binderId }, { it.cardId }).mapValues { it.value.toSet() }
                 collecting.associate { b ->
                     val entries = Checklist.entries(cards, b.followedSetIds, ownedBy[b.id].orEmpty(), b.countSecretRares)
-                    b.id to entries.count { !it.owned }
+                    b.id to ChecklistProgress(missing = entries.count { !it.owned }, total = entries.size)
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())

@@ -115,3 +115,8 @@ data class ChecklistData(
     val pockets: List<BinderPocket>,
     val owned: Set<String>,
 )
+
+/** How far along a collecting binder is: [missing] of [total] cards still to find. */
+data class ChecklistProgress(val missing: Int, val total: Int) {
+    val fraction: Float get() = if (total == 0) 0f else (total - missing).toFloat() / total
+}

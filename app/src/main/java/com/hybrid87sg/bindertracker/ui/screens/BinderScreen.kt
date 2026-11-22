@@ -49,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.ChecklistProgress
+import com.hybrid87sg.bindertracker.ui.components.holoBrush
 import com.hybrid87sg.bindertracker.data.PageSummary
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
@@ -73,6 +75,11 @@ fun BinderScreen(
     onOpenPage: (PageSummary) -> Unit,
     // Opens the Share screen (your own binders only).
     onShare: () -> Unit = {},
+    // Missing cards: progress if the binder collects an expansion, else null.
+    progress: ChecklistProgress? = null,
+    // The names of the expansions it collects, e.g. "Base Set + 151".
+    collectingLabel: String = "",
+    onOpenMissing: () -> Unit = {},
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     var addingPages by remember { mutableStateOf(false) }
@@ -136,6 +143,11 @@ fun BinderScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // The way into the Missing cards page. Hidden from people who can't
+            // choose an expansion when the binder doesn't collect one yet.
+            if (progress != null || binder.isOwner) {
+                item(key = "missing") { MissingStrip(progress, collectingLabel, onOpenMissing) }
+            }
             if (pages.isEmpty()) {
                 item {
                     Column(
@@ -235,6 +247,52 @@ fun BinderScreen(
                 TextButton(onClick = { confirmDelete = false }) { Text("Keep binder") }
             },
         )
+    }
+}
+
+/** "38 cards missing · 64% of Base Set + 151", or an invitation to start tracking. */
+@Composable
+private fun MissingStrip(progress: ChecklistProgress?, collectingLabel: String, onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = press,
+        shape = RoundedCornerShape(14.dp),
+        color = AppColors.Surface,
+        border = BorderStroke(1.dp, AppColors.Border),
+        modifier = Modifier.fillMaxWidth().pressSquish(press, 0.97f),
+    ) {
+        Row(
+            Modifier.drawBehind { drawRect(holoBrush(size.height), size = Size(4.dp.toPx(), size.height)) }
+                .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    when {
+                        progress == null -> "Track missing cards"
+                        progress.total == 0 -> "Missing cards"
+                        progress.missing == 0 -> "Complete! Every card collected"
+                        progress.missing == 1 -> "1 card missing"
+                        else -> "${progress.missing} cards missing"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (progress == null) "Pick an expansion this binder collects" else "${(progress.fraction * 100).toInt()}% of $collectingLabel",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (progress != null && progress.total > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    HoloBar(progress.fraction)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = AppColors.Muted, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
