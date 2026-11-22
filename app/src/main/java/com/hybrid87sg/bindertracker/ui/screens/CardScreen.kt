@@ -79,11 +79,12 @@ fun CardScreen(
                 modifier = Modifier.width(240.dp).align(Alignment.CenterHorizontally),
                 corner = 10.dp,
                 backupUrl = card.largeBackupUrl,
+                cardId = card.id,
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(card.name, style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    listOfNotNull(card.setName, "#${card.number}", details?.rarity).joinToString(" · "),
+                    listOfNotNull(card.setName, "#${card.number}", details?.rarity?.takeUnless { it.equals("None", ignoreCase = true) }).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
                 )

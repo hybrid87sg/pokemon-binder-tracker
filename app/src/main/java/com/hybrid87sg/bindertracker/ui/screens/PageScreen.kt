@@ -599,7 +599,7 @@ fun PageScreen(
                                     .clickable { selected = null; onPickSuggestion(pocket.position, card.id) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth(), backupUrl = card.thumbnailBackupUrl)
+                                CardImage(card.thumbnailUrl, contentDescription = "${card.name}, ${card.setName} ${card.number}", modifier = Modifier.fillMaxWidth(), backupUrl = card.thumbnailBackupUrl, cardId = card.id)
                                 Text(card.setName, style = MaterialTheme.typography.labelSmall, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -956,7 +956,7 @@ private fun PocketTile(
                         // Our own card-back picture, so an empty pocket looks like a card turned over.
                         pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
                         // Identified: the official card picture from TCGdex, not the photo.
-                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false))
+                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false), cardId = pocket.cardId)
                         else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
                     }
                 }

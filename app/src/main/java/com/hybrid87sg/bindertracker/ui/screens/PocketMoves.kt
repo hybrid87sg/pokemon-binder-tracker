@@ -376,7 +376,7 @@ internal fun PocketPicture(pocket: PocketWithCard, modifier: Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         when {
             pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
-            pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false))
+            pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false), cardId = pocket.cardId)
             else -> Box(
                 Modifier.fillMaxSize().border(2.dp, AppColors.Check, RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center,

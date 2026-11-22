@@ -25,6 +25,7 @@ import com.hybrid87sg.bindertracker.data.BinderFill
 import com.hybrid87sg.bindertracker.data.Pocket
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
+import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
 import com.hybrid87sg.bindertracker.scan.DetailMatcher
 import com.hybrid87sg.bindertracker.scan.ExpansionStreak
@@ -56,6 +57,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 /**
  * The "brain" behind the screens. Screens only draw things and report
@@ -471,6 +474,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _scanPictures.value = _scanPictures.value + (pageId to if (picture == null) page - position else page + (position to picture))
     }
 
+    /**
+     * Keeps the scan of this pocket (if it was just scanned) as the card's own
+     * photo, straightened. It only shows when no website has a picture of the
+     * card, e.g. brand-new sets (see OwnPhotos).
+     */
+    private suspend fun keepOwnPhoto(pageId: String, position: Int, cardId: String) {
+        val picture = _scanPictures.value[pageId]?.get(position) ?: return
+        withContext(Dispatchers.Default) {
+            runCatching {
+                val flat = DetailMatcher.straighten(picture) ?: picture
+                OwnPhotos.save(getApplication(), cardId, flat)
+            }
+        }
+    }
+
     /** A pocket whose menu should open by itself (after scanning one card it wasn't sure about). */
     private val _openPocket = MutableStateFlow<Pair<String, Int>?>(null)
     val openPocket: StateFlow<Pair<String, Int>?> = _openPocket.asStateFlow()
@@ -565,6 +583,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     match != null -> {
                         setSuggestions(pageId, position, emptyList())
                         savePocket(Pocket(pageId, position, cardId = match.id))
+                        keepOwnPhoto(pageId, position, match.id)
                         recordCard(pageId, match)
                         "Pocket ${position + 1}: ${match.name} (${match.setName} ${match.number})."
                     }
@@ -584,9 +603,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setPocketCard(pageId: String, position: Int, cardId: String) {
+        // Guesses waiting here mean the pocket was just scanned and the app
+        // wasn't sure, so the scan shows this card. Otherwise any scan kept
+        // for this pocket may be of a different card.
+        val justScanned = _suggestions.value[pageId]?.get(position).orEmpty().isNotEmpty()
         setSuggestions(pageId, position, emptyList())
         viewModelScope.launch {
             savePocket(Pocket(pageId, position, cardId = cardId))
+            if (justScanned) keepOwnPhoto(pageId, position, cardId)
             cardIndex.get(cardId)?.let { recordCard(pageId, it) }
         }
     }

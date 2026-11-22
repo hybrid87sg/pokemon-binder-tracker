@@ -10,15 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.text.NumberFormat
 import java.time.Instant
@@ -31,16 +34,28 @@ import java.util.Locale
 const val CARD_ASPECT = 63f / 88f
 
 /**
- * A card picture loaded from the internet, with a plain placeholder while it loads.
- * [backupUrl] is tried when [url] is missing or fails to load (some cards have
- * no picture on TCGdex, so the app asks another site, see CardPictures).
+ * A card picture, with a plain placeholder while it loads. It tries, in order:
+ * [url] (TCGdex), then [backupUrl] (another site, see CardPictures), then your
+ * own scan of the card if you have one (see OwnPhotos). Brand-new sets often
+ * have no picture anywhere yet, so your scan fills the gap.
  */
 @Composable
-fun CardImage(url: String?, contentDescription: String?, modifier: Modifier = Modifier, corner: Dp = 6.dp, backupUrl: String? = null) {
+fun CardImage(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    corner: Dp = 6.dp,
+    backupUrl: String? = null,
+    cardId: String? = null,
+) {
     val shape = RoundedCornerShape(corner)
-    // Start with the main picture, and switch to the backup if it isn't there.
-    var useBackup by remember(url, backupUrl) { mutableStateOf(url == null) }
-    val shown = if (useBackup) backupUrl else url
+    val context = LocalContext.current
+    val photoVersion by OwnPhotos.version.collectAsState()
+    val ownPhoto = remember(cardId, photoVersion) { OwnPhotos.find(context, cardId) }
+    // Every place to get the picture from, best first. Move on when one fails.
+    val sources = remember(url, backupUrl, ownPhoto) { listOfNotNull(url, backupUrl, ownPhoto) }
+    var tried by remember(sources) { mutableIntStateOf(0) }
+    val shown = sources.getOrNull(tried)
     Box(modifier.aspectRatio(CARD_ASPECT).clip(shape).background(CardPlaceholder).border(1.dp, CardPlaceholderBorder, shape)) {
         if (shown != null) {
             SubcomposeAsyncImage(
@@ -50,7 +65,7 @@ fun CardImage(url: String?, contentDescription: String?, modifier: Modifier = Mo
                 modifier = Modifier.fillMaxSize(),
                 loading = { BlankCard() },
                 error = { BlankCard() },
-                onError = { if (!useBackup && backupUrl != null) useBackup = true },
+                onError = { if (tried < sources.size) tried++ },
             )
         } else {
             BlankCard()
