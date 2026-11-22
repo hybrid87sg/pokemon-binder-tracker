@@ -52,6 +52,40 @@ interface PageDao {
     )
     fun observePockets(pageId: String): Flow<List<PocketWithCard>>
 
+    /**
+     * Every pocket in a binder, page by page, with its card. The "Move to
+     * another page" picker uses it to draw each page.
+     */
+    @Query(
+        """
+        SELECT pockets.pageId, pockets.position, pockets.isEmpty, pockets.cardId,
+          cards.name AS cardName, cards.localId AS cardNumber, cards.setName, cards.imageUrl
+        FROM pockets INNER JOIN pages ON pages.id = pockets.pageId
+        LEFT JOIN cards ON cards.id = pockets.cardId
+        WHERE pages.binderId = :binderId ORDER BY pages.createdAt, pockets.position
+        """,
+    )
+    fun observeBinderPockets(binderId: String): Flow<List<PagePocket>>
+
+    @Query("SELECT * FROM pockets WHERE pageId = :pageId AND position = :position")
+    suspend fun getPocket(pageId: String, position: Int): Pocket?
+
+    /**
+     * Swaps what two pockets hold (they can be on different pages), in one
+     * go, so the screen never shows the same card in both. Returns the two
+     * pockets as they are now.
+     */
+    @Transaction
+    suspend fun swapPockets(pageA: String, positionA: Int, pageB: String, positionB: Int): List<Pocket> {
+        val a = getPocket(pageA, positionA) ?: Pocket(pageA, positionA)
+        val b = getPocket(pageB, positionB) ?: Pocket(pageB, positionB)
+        val newA = a.copy(cardId = b.cardId, isEmpty = b.isEmpty)
+        val newB = b.copy(cardId = a.cardId, isEmpty = a.isEmpty)
+        upsertPocket(newA)
+        upsertPocket(newB)
+        return listOf(newA, newB)
+    }
+
     @Insert
     suspend fun insertPage(page: Page)
 
