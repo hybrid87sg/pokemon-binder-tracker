@@ -12,7 +12,7 @@ import java.util.Random
  * can guess one.
  */
 object InviteCodes {
-    private const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
     const val LENGTH = 8
 
     /** What a QR code holds: a link the app understands. */

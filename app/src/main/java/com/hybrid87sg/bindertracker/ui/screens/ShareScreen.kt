@@ -61,6 +61,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
+import com.hybrid87sg.bindertracker.ui.components.colorFromHex
+import com.hybrid87sg.bindertracker.ui.components.RingCodeImage
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.hybrid87sg.bindertracker.R
@@ -104,6 +106,8 @@ fun ShareScreen(
         }
     }
     var removing by remember { mutableStateOf<Member?>(null) }
+    // Friends scan the ring code with the app. The QR code is for anyone using a normal camera.
+    var showQr by rememberSaveable { mutableStateOf(false) }
     var confirmStop by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -152,7 +156,7 @@ fun ShareScreen(
                     }
                 }
 
-                // The QR code and the code to type.
+                // The binder code (or QR code) and the code to type.
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = AppColors.Surface,
@@ -174,7 +178,14 @@ fun ShareScreen(
                                 color = AppColors.Muted,
                             )
                         } else {
-                            QrCode(InviteCodes.link(invite.code), Modifier.size(200.dp))
+                            if (showQr) {
+                                QrCode(InviteCodes.link(invite.code), Modifier.size(200.dp))
+                            } else {
+                                RingCodeImage(invite.code, colorFromHex(binder.colorHex), Modifier.size(240.dp))
+                            }
+                            TextButton(onClick = { showQr = !showQr }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(if (showQr) "Show the binder code" else "Show a QR code instead", color = AppColors.AccentText)
+                            }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("OR TYPE THIS CODE", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AppColors.Muted)
                                 Text(

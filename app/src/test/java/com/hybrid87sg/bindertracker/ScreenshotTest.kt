@@ -46,6 +46,16 @@ import com.hybrid87sg.bindertracker.ui.theme.BinderTrackerTheme
 import com.hybrid87sg.bindertracker.ui.theme.DarkPalette
 import com.hybrid87sg.bindertracker.ui.theme.LightPalette
 import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
+import com.hybrid87sg.bindertracker.scan.RingCodeReader
+import com.hybrid87sg.bindertracker.ui.components.RingCodeImage
+import com.hybrid87sg.bindertracker.ui.components.colorFromHex
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -341,6 +351,25 @@ class ScreenshotTest {
             guide = GuideRect(0.1f, 0.1f, 0.9f, 0.9f),
             onBack = {}, onChooseCard = {}, onViewCard = { _, _ -> }, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
         )
+    }
+
+    /** The binder ring code as the Share screen draws it, read back by the camera reader. */
+    @Test fun ringCodeReadsBack() {
+        val code = "7Q4KM2PX"
+        // Brown is the lightest binder colour, so it's the hardest to read.
+        shoot("11-ring-code") {
+            Box(Modifier.background(AppColors.Surface).padding(40.dp)) {
+                RingCodeImage(code, colorFromHex(SpineColor.Brown.hex), Modifier.size(240.dp))
+            }
+        }
+        val picture = compose.onRoot().captureToImage().asAndroidBitmap()
+        val pixels = IntArray(picture.width * picture.height)
+        picture.getPixels(pixels, 0, picture.width, 0, 0, picture.width, picture.height)
+        val gray = IntArray(pixels.size) { i ->
+            val c = pixels[i]
+            ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000
+        }
+        assertEquals(code, RingCodeReader.read(gray, picture.width, picture.height))
     }
 
     @Test fun permissions() = shoot("0-permissions") {
