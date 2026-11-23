@@ -4,6 +4,18 @@ import android.net.Uri
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.navigation.NavBackStackEntry
+import com.hybrid87sg.bindertracker.data.Checklist
+import com.hybrid87sg.bindertracker.ui.components.CardFlight
+import com.hybrid87sg.bindertracker.ui.components.LocalScreenAnimationScope
+import com.hybrid87sg.bindertracker.ui.components.LocalSharedTransitionScope
+import com.hybrid87sg.bindertracker.ui.screens.BrowseItem
+import com.hybrid87sg.bindertracker.ui.screens.CardBrowse
+import com.hybrid87sg.bindertracker.ui.screens.missingStatus
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -119,6 +131,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun App(
     activity: ComponentActivity,
@@ -197,13 +210,18 @@ private fun App(
     // Screens slide in from the right and back out to the right, with a fade.
     val slide = tween<IntOffset>(Motion.Medium, easing = Motion.Ease)
     val fade = tween<Float>(Motion.Medium, easing = Motion.Ease)
+    // To and from the card screen, the screens only fade: the card itself flies
+    // between its pocket and the card screen (see CardFlight).
+    val flyFade = tween<Float>(CardFlight.FlyMillis, easing = Motion.Ease)
+    SharedTransitionLayout {
+    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
     NavHost(
         navController = nav,
         startDestination = "shelf",
-        enterTransition = { slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
-        popEnterTransition = { slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
-        popExitTransition = { slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
+        enterTransition = { if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        popEnterTransition = { if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
+        popExitTransition = { if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
     ) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
@@ -315,6 +333,7 @@ private fun App(
             val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
             val suggestion by produceState<ExpansionCount?>(null, id, cardCount) { value = vm.topExpansion(id) }
             data?.let { d ->
+                CompositionLocalProvider(LocalScreenAnimationScope provides this) {
                 MissingCardsScreen(
                     data = d,
                     expansions = expansions,
@@ -324,11 +343,17 @@ private fun App(
                     onSetCollecting = { sets, secret -> vm.setCollecting(d.binder, sets, secret) },
                     onPutIn = { pageId, position, cardId -> vm.setPocketCard(pageId, position, cardId) },
                     onScanInto = { pageId, position -> nav.navigate("scancard/$pageId/$position") },
-                    onViewCard = { cardId -> nav.navigate("card/${Uri.encode(cardId)}") },
+                    onOpenCards = { items, start, listName ->
+                        vm.browse = CardBrowse(items, start, listName, checklistBinderId = d.binder.id)
+                        nav.navigate("card/${Uri.encode(items[start].cardId)}")
+                    },
                 )
+                }
             }
         }
         composable("search") {
+            // The results showing, so the card screen can swipe through them.
+            var shown by remember { mutableStateOf<List<Card>>(emptyList()) }
             SearchRoute(
                 title = "Search cards",
                 backLabel = "Shelf",
@@ -336,14 +361,45 @@ private fun App(
                 search = vm::searchCards,
                 loadExpansions = vm::expansionList,
                 onBack = { nav.popBackStack() },
-                onCardClick = { nav.navigate("card/${Uri.encode(it.id)}") },
+                onCardClick = { card ->
+                    val start = shown.indexOfFirst { it.id == card.id }
+                    vm.browse = if (start >= 0) CardBrowse(shown.map { BrowseItem(it.id) }, start, "in the search results") else null
+                    nav.navigate("card/${Uri.encode(card.id)}")
+                },
+                onResults = { shown = it },
                 onRefreshIndex = { vm.refreshCardIndex(force = true) },
             )
         }
         composable("card/{id}") { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
-            val card by produceState<Card?>(null, id) { value = vm.card(id) }
-            card?.let { CardRoute(it, vm::cardDetails, onBack = { nav.popBackStack() }, loadRates = vm::sgdRates) }
+            // What you can swipe through: set by the screen that opened this one.
+            val browse = remember(id) {
+                vm.browse?.takeIf { it.items.getOrNull(it.start)?.cardId == id } ?: CardBrowse(listOf(BrowseItem(id)))
+            }
+            // Opened from Missing cards: that binder's checklist, kept up to date for "Put it in".
+            val checklist by remember(browse.checklistBinderId) {
+                browse.checklistBinderId?.let { vm.checklist(it) } ?: flowOf(null)
+            }.collectAsStateWithLifecycle(initialValue = null)
+            val entries = remember(checklist) {
+                checklist?.let { d -> Checklist.entries(d.cards, d.binder.followedSetIds, d.owned, d.binder.countSecretRares) }.orEmpty()
+            }
+            CompositionLocalProvider(LocalScreenAnimationScope provides this) {
+                CardRoute(
+                    browse = browse,
+                    loadCard = { vm.card(it) },
+                    loadDetails = vm::cardDetails,
+                    loadRates = vm::sgdRates,
+                    onBack = { item ->
+                        // Fly back to the pocket of the card showing now, turning to its page.
+                        CardFlight.landing = item.flightKey
+                        item.pageId?.let { nav.previousBackStackEntry?.savedStateHandle?.set("landingPage", it) }
+                        nav.popBackStack()
+                    },
+                    missingStatus = { card -> checklist?.let { d -> missingStatus(d, entries, card) } },
+                    onPutIn = { card, spot -> vm.setPocketCard(spot.pageId, spot.position, card.id) },
+                    onScanInto = { spot -> nav.navigate("scancard/${spot.pageId}/${spot.position}") },
+                )
+            }
         }
 
         // ---- Pages ----
@@ -351,6 +407,13 @@ private fun App(
             // Which page is showing. Turning a page changes this in place,
             // so the page-turn animation flows straight into the new page.
             var pageId by rememberSaveable { mutableStateOf(entry.arguments?.getString("pageId").orEmpty()) }
+            // Back from the card screen after swiping to a card on another page: turn to that page,
+            // so the card flies back into its own pocket.
+            val landingPage by entry.savedStateHandle.getStateFlow<String?>("landingPage", null).collectAsStateWithLifecycle()
+            landingPage?.let { landed ->
+                if (landed != pageId) pageId = landed
+                entry.savedStateHandle["landingPage"] = null
+            }
             // Keep showing the last page we had until the new one arrives. (Starting
             // again from "no page" after a turn removed the whole screen for a
             // moment, so every card was rebuilt and popped in again.)
@@ -387,6 +450,7 @@ private fun App(
                 val allPockets by remember(p.binderId) { vm.binderPockets(p.binderId) }
                     .collectAsStateWithLifecycle(initialValue = emptyMap())
                 binder?.let { b ->
+                    CompositionLocalProvider(LocalScreenAnimationScope provides this) {
                     PageScreen(
                         binderName = b.name,
                         pageNumber = if (index >= 0) index + 1 else number,
@@ -398,7 +462,21 @@ private fun App(
                         readingStatus = reading[p.id],
                         onBack = { nav.popBackStack() },
                         onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
-                        onViewCard = { cardId -> nav.navigate("card/${Uri.encode(cardId)}") },
+                        onViewCard = { atPage, atPosition ->
+                            // Every card in the binder in pocket order, so the card screen can swipe through them.
+                            val items = siblings.withIndex().flatMap { (i, s) ->
+                                (pocketsById[s.id] ?: allPockets[s.id]).orEmpty().filter { it.cardId != null }.sortedBy { it.position }.map { pk ->
+                                    BrowseItem(pk.cardId!!, CardFlight.pocketKey(s.id, pk.position), "Page ${i + 1}, pocket ${pk.position + 1}", s.id)
+                                }
+                            }
+                            val start = items.indexOfFirst { it.flightKey == CardFlight.pocketKey(atPage, atPosition) }
+                            val cardId = items.getOrNull(start)?.cardId
+                                ?: (pocketsById[atPage] ?: allPockets[atPage])?.firstOrNull { it.position == atPosition }?.cardId
+                            if (cardId != null) {
+                                vm.browse = if (start >= 0) CardBrowse(items, start, "in ${b.name}") else null
+                                nav.navigate("card/${Uri.encode(cardId)}")
+                            }
+                        },
                         onMarkEmpty = { position -> vm.setPocketEmpty(pageId, position) },
                         onClear = { position -> vm.clearPocket(pageId, position) },
                         onDeletePage = {
@@ -428,6 +506,7 @@ private fun App(
                         coverColor = colorFromHex(b.colorHex),
                         onAddPage = { vm.addPages(b, 1) },
                     )
+                    }
                 }
             }
         }
@@ -527,7 +606,13 @@ private fun App(
             )
         }
     }
+    }
+    }
 }
+
+/** Going to or from the card screen, where a card flies instead of the screens sliding. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.cardHop(): Boolean =
+    initialState.destination.route == "card/{id}" || targetState.destination.route == "card/{id}"
 
 /** The Join screen, joined up to the app's data. */
 @Composable

@@ -93,6 +93,9 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import com.hybrid87sg.bindertracker.ui.components.CardFlight
+import com.hybrid87sg.bindertracker.ui.components.cardFlight
+import androidx.compose.animation.core.CubicBezierEasing
 import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.ui.components.HoloBar
 import com.hybrid87sg.bindertracker.ui.components.Motion
@@ -151,7 +154,8 @@ fun PageScreen(
     readingStatus: String? = null,
     onBack: () -> Unit,
     onChooseCard: (position: Int) -> Unit,
-    onViewCard: (cardId: String) -> Unit,
+    // Open the card in a pocket: (page, pocket position).
+    onViewCard: (pageId: String, position: Int) -> Unit,
     onMarkEmpty: (position: Int) -> Unit,
     onClear: (position: Int) -> Unit,
     onDeletePage: () -> Unit,
@@ -211,6 +215,27 @@ fun PageScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val drag = remember { PocketDrag() }
+    val viewCardLatest by rememberUpdatedState(onViewCard)
+
+    // Opening a card: it slides up out of its sleeve, then flies into the card screen (see CardFlight).
+    fun openCard(page: String, position: Int) {
+        val key = CardFlight.pocketKey(page, position)
+        if (CardFlight.lifting != null) return
+        CardFlight.lifting = key
+        scope.launch {
+            delay(CardFlight.LiftMillis.toLong())
+            viewCardLatest(page, position)
+            delay(CardFlight.FlyMillis + 200L)
+            if (CardFlight.lifting == key) CardFlight.lifting = null
+        }
+    }
+    // Back from the card screen: the card lands lifted above its pocket, then slides in.
+    LaunchedEffect(Unit) {
+        if (CardFlight.landing != null) {
+            delay(CardFlight.FlyMillis.toLong())
+            CardFlight.landing = null
+        }
+    }
     var moving by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<Notice?>(null) }
     var flight by remember { mutableStateOf<Flight?>(null) }
@@ -282,7 +307,6 @@ fun PageScreen(
     val ids by rememberUpdatedState(pageIds)
     val cards by rememberUpdatedState(pageCards)
     val swapCb by rememberUpdatedState(onSwap)
-    val viewCard by rememberUpdatedState(onViewCard)
     val scanCard by rememberUpdatedState(onScanCard)
     val newPage by rememberUpdatedState(onMoveToNewPage)
     val goToPage by rememberUpdatedState(onGoToPage)
@@ -328,7 +352,7 @@ fun PageScreen(
     // then does what it would do there.
     fun tapOther(id: String, p: PocketWithCard) {
         goToPage(id)
-        p.cardId?.let(viewCard) ?: run { if (editable) scanCard(p.position) }
+        if (p.cardId != null) openCard(id, p.position) else if (editable) scanCard(p.position)
     }
 
     fun holdOther(id: String, p: PocketWithCard) {
@@ -441,7 +465,7 @@ fun PageScreen(
             override fun release() { drag.pressed = null }
             override fun tap(position: Int) {
                 val p = shownPocket(position) ?: return
-                p.cardId?.let(viewCard) ?: run { if (editable) scanCard(position) }
+                if (p.cardId != null) openCard(currentPageId, position) else if (editable) scanCard(position)
             }
             override fun hold(position: Int): Boolean {
                 drag.pressed = null
@@ -847,7 +871,7 @@ fun PageScreen(
                 }
                 SheetButton("Scan this card") { selected = null; onScanCard(pocket.position) }
                 SheetButton(if (pocket.cardId == null) "Choose card from list" else "Change card") { selected = null; onChooseCard(pocket.position) }
-                pocket.cardId?.let { id -> SheetButton("View card and price") { selected = null; onViewCard(id) } }
+                if (pocket.cardId != null) SheetButton("View card and price") { selected = null; onViewCard(pageId, pocket.position) }
                 if (pocket.cardId != null) SheetButton("Move to another page") { moving = true }
                 if (!pocket.isEmpty) SheetButton("Mark as empty pocket") { selected = null; onMarkEmpty(pocket.position) }
                 if (pocket.cardId != null || pocket.isEmpty) SheetButton("Clear pocket") { selected = null; onClear(pocket.position) }
@@ -1181,8 +1205,18 @@ private fun PocketTile(
         pocket.isEmpty -> "Empty pocket"
         else -> "Tap to scan"
     }
-    // Cards pop into their pockets one after another when the page opens.
-    val popIn = arrive(play = live, delayMillis = 80 + order * 45, durationMillis = 340)
+    // Flying to or from the card screen: lifted up out of the sleeve (see CardFlight).
+    val flightKey = CardFlight.pocketKey(pageKey, pocket.position)
+    val landingHere = CardFlight.landing == flightKey
+    val rise by animateFloatAsState(
+        if (pocket.cardId != null && (CardFlight.lifting == flightKey || landingHere)) 1f else 0f,
+        if (CardFlight.lifting == flightKey) tween(CardFlight.LiftMillis, easing = Motion.Ease)
+        else tween(CardFlight.SettleMillis, easing = SettleEasing),
+        label = "rise",
+    )
+    // Cards pop into their pockets one after another when the page opens
+    // (not the one flying back from the card screen: it slides in instead).
+    val popIn = arrive(play = live && !landingHere, delayMillis = 80 + order * 45, durationMillis = 340)
 
     // Sliding in from another pocket after a move (see [Arrival]).
     val arriveAt = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
@@ -1282,8 +1316,8 @@ private fun PocketTile(
                         .graphicsLayer {
                             val t = arriveAt.value + nudge
                             translationX = t.x
-                            translationY = t.y - lift * 4.dp.toPx()
-                            val k = scale * arriveScale.value
+                            translationY = t.y - lift * 4.dp.toPx() - rise * size.height * 0.34f
+                            val k = scale * arriveScale.value * (1f + 0.04f * rise)
                             scaleX = k; scaleY = k
                             rotationZ = if (target == DropKind.Swap) -3f else 0f
                             rotationY = (1f - flip.value) * 90f
@@ -1318,7 +1352,7 @@ private fun PocketTile(
                         // Our own card-back picture, so an empty pocket looks like a card turned over.
                         pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
                         // Identified: the official card picture from TCGdex, not the photo.
-                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize(), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false), cardId = pocket.cardId)
+                        pocket.cardId != null -> CardImage(pocket.imageUrl?.let { "$it/low.webp" }, contentDescription = pocket.cardName, modifier = Modifier.fillMaxSize().cardFlight(flightKey), backupUrl = CardPictures.backupUrl(pocket.cardId, large = false), cardId = pocket.cardId)
                         else -> Text("?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CheckBorder)
                     }
                 }
@@ -1437,3 +1471,6 @@ private fun Modifier.holoTouch(): Modifier {
             drawRect(holoBrush(size.width, shift = tx + 0.5f), alpha = 0.16f + 0.3f * glow, blendMode = BlendMode.Overlay)
         }
 }
+
+/** Slides the card back into its sleeve with a tiny bounce at the bottom. */
+private val SettleEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)

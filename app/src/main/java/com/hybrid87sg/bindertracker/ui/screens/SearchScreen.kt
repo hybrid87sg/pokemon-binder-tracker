@@ -93,6 +93,8 @@ fun SearchRoute(
     preset: ExpansionPreset? = null,
     // Start with this already typed in (the name live scanning read).
     initialQuery: String = "",
+    // The cards showing (yours first), so the card screen can swipe through them.
+    onResults: (List<Card>) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     // The filter: one whole series, or one expansion, or neither ("" = all cards).
@@ -110,6 +112,7 @@ fun SearchRoute(
     var expansions by remember { mutableStateOf<List<ExpansionOption>>(emptyList()) }
     LaunchedEffect(status.count) { expansions = loadExpansions() }
     var results by remember { mutableStateOf(CardSearch(emptyList())) }
+    LaunchedEffect(results) { onResults(results.cards) }
     var searching by remember { mutableStateOf(false) }
 
     // Search shortly after typing stops, so we don't search on every letter.

@@ -69,6 +69,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -93,6 +94,8 @@ import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.CARD_ASPECT
 import com.hybrid87sg.bindertracker.ui.components.CardImage
+import com.hybrid87sg.bindertracker.ui.components.CardFlight
+import com.hybrid87sg.bindertracker.ui.components.cardFlight
 import com.hybrid87sg.bindertracker.ui.components.CollectingSheet
 import com.hybrid87sg.bindertracker.ui.components.Eyebrow
 import com.hybrid87sg.bindertracker.ui.components.Motion
@@ -132,16 +135,16 @@ fun MissingCardsScreen(
     onSetCollecting: (setIds: List<String>, countSecretRares: Boolean) -> Unit,
     onPutIn: (pageId: String, position: Int, cardId: String) -> Unit,
     onScanInto: (pageId: String, position: Int) -> Unit,
-    onViewCard: (cardId: String) -> Unit,
+    // Open the card screen, able to swipe through [items] (the cards showing), starting at [start].
+    onOpenCards: (items: List<BrowseItem>, start: Int, listName: String) -> Unit,
 ) {
     val binder = data.binder
     val followed = binder.followedSetIds
     var chosenFilter by rememberSaveable { mutableStateOf("") } // "" = all collected expansions
     val filter = chosenFilter.takeIf { it in followed }.orEmpty()
-    var show by rememberSaveable { mutableStateOf(Show.Missing) }
+    var show by rememberSaveable { mutableStateOf(Show.All) }
     var chosenByRarity by rememberSaveable { mutableStateOf(false) }
     var chosenRarity by rememberSaveable { mutableStateOf<String?>(null) }
-    var openCardId by rememberSaveable { mutableStateOf<String?>(null) }
     var choosing by rememberSaveable { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var confetti by remember { mutableIntStateOf(0) }
@@ -313,7 +316,20 @@ fun MissingCardsScreen(
                         GroupHeading(title, groupAll.count { it.owned }, groupAll.size)
                     }
                     items(cards, key = { "c-${it.card.id}" }) { e ->
-                        Tile(e, onClick = { openCardId = e.card.id })
+                        Tile(e, onClick = {
+                            // Every card showing, in order, so the card screen can swipe through them.
+                            val showing = groups.flatMap { it.second }
+                            val listName = when (show) {
+                                Show.Missing -> "missing"
+                                Show.Have -> "in your binder"
+                                Show.All -> "in this list"
+                            }
+                            onOpenCards(
+                                showing.map { BrowseItem(it.card.id, CardFlight.missingKey(it.card.id)) },
+                                showing.indexOfFirst { it.card.id == e.card.id }.coerceAtLeast(0),
+                                listName,
+                            )
+                        })
                     }
                 }
             }
@@ -334,30 +350,6 @@ fun MissingCardsScreen(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AppColors.Ink).padding(horizontal = 16.dp, vertical = 12.dp),
             )
         }
-    }
-
-    // The panel for one card.
-    val open = openCardId?.let { id -> allEntries.firstOrNull { it.card.id == id } }
-    if (open != null) {
-        CardSheet(
-            entry = open,
-            binder = binder,
-            spot = if (open.owned) null else Checklist.suggestSpot(open.card, allEntries, data.pockets),
-            where = if (open.owned) data.pockets.withIndex().firstOrNull { it.value.cardId == open.card.id }?.let { (_, p) ->
-                val pageNumber = data.pockets.map { it.pageId }.distinct().indexOf(p.pageId) + 1
-                pageNumber to p.position
-            } else null,
-            setName = setNames[open.card.setId] ?: open.card.setName,
-            onDismiss = { openCardId = null },
-            onPutIn = { spot ->
-                val left = entries.count { it.card.rarity == open.card.rarity && !it.owned }
-                justPlaced = Triple(open.card, have, left)
-                onPutIn(spot.pageId, spot.position, open.card.id)
-                openCardId = null
-            },
-            onScan = { spot -> openCardId = null; onScanInto(spot.pageId, spot.position) },
-            onDetails = { openCardId = null; onViewCard(open.card.id) },
-        )
     }
 
     if (choosing) {
@@ -541,10 +533,30 @@ private fun Tile(e: Checklist.Entry, onClick: () -> Unit) {
             .semantics { contentDescription = "${e.card.name}, number ${e.card.number}, ${if (e.owned) "in the binder" else "missing"}" },
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        if (e.owned) {
-            CardImage(e.card.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxWidth(), backupUrl = e.card.thumbnailBackupUrl, cardId = e.card.id)
-        } else {
-            MissingOutline(e.card, Modifier.fillMaxWidth())
+        Box {
+            // A card you don't have yet shows its picture in grey, with its number in the corner.
+            // No picture anywhere (a brand-new set, or no internet)? The dashed outline instead.
+            CardImage(
+                e.card.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().cardFlight(CardFlight.missingKey(e.card.id)),
+                backupUrl = e.card.thumbnailBackupUrl,
+                cardId = e.card.id,
+                grey = !e.owned,
+                noPicture = if (e.owned) null else ({ MissingOutline(e.card, Modifier.fillMaxSize()) }),
+            )
+            if (!e.owned) {
+                Text(
+                    e.card.number,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                        .clip(RoundedCornerShape(5.dp)).background(Color(0xB8141223))
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                )
+            }
         }
         Text(e.card.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AppColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -673,7 +685,7 @@ private fun CardSheet(
 
 /** A tiny binder page with the target pocket lit up, so you can see where to slide the card. */
 @Composable
-private fun MiniPage(columns: Int, rows: Int, target: Int) {
+internal fun MiniPage(columns: Int, rows: Int, target: Int) {
     val pulse = remember { Animatable(1f) }
     LaunchedEffect(target) {
         while (true) {
