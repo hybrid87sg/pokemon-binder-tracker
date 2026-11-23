@@ -149,14 +149,14 @@ class ScreenshotTest {
     @Test fun missingCards() = shoot("11-missing-cards") {
         MissingCardsScreen(
             data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
+            onBack = {}, onSetCollecting = { _ -> }, onSetMaster = {}, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 
     @Test fun missingCardsDark() = shoot("11b-missing-cards-dark", dark = true) {
         MissingCardsScreen(
             data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
+            onBack = {}, onSetCollecting = { _ -> }, onSetMaster = {}, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 
@@ -164,7 +164,7 @@ class ScreenshotTest {
         MissingCardsScreen(
             data = ChecklistData(sample[0], emptyList(), emptyList(), emptySet()), expansions = emptyList(),
             suggestion = ExpansionCount("base1", "Base Set", 12), cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
+            onBack = {}, onSetCollecting = { _ -> }, onSetMaster = {}, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 

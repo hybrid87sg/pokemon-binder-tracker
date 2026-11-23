@@ -28,6 +28,7 @@ import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.PageSummary
 import com.hybrid87sg.bindertracker.data.BinderFill
 import com.hybrid87sg.bindertracker.data.Pocket
+import com.hybrid87sg.bindertracker.data.ViewPrefs
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.data.OwnPhotos
@@ -89,10 +90,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _signingIn = MutableStateFlow(false)
     val signingIn: StateFlow<Boolean> = _signingIn.asStateFlow()
 
+    /** View choices kept on this phone only, like Main set / Master set (see ViewPrefs). */
+    private val viewPrefs = ViewPrefs(app)
+
     /** The signed-in person's binders. Switches automatically when the user changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val binders: StateFlow<List<Binder>> = user
         .flatMapLatest { u -> if (u == null) flowOf(emptyList()) else binderDao.observeBinders(u.uid) }
+        // Swap in this phone's own Main/Master choice for each binder.
+        .combine(viewPrefs.masterSets) { list, chosen -> list.map { viewPrefs.personal(it, chosen) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
@@ -211,7 +217,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _updateError.value = null
     }
 
-    fun binder(id: String): Flow<Binder?> = binderDao.observeBinder(id)
+    fun binder(id: String): Flow<Binder?> =
+        binderDao.observeBinder(id).combine(viewPrefs.masterSets) { b, chosen -> b?.let { viewPrefs.personal(it, chosen) } }
+
+    /**
+     * Main set / Master set for one binder, on this phone only. Anyone can
+     * pick it (owner, Editor or Viewer); it isn't sent online, so friends
+     * sharing the binder keep their own choice.
+     */
+    fun setMasterSet(binderId: String, master: Boolean) = viewPrefs.setMasterSet(binderId, master)
 
     fun signIn(activityContext: Context) {
         viewModelScope.launch {
@@ -274,15 +288,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         countSecretRares: Boolean? = null,
     ) {
         if (!binder.isOwner) return
-        val updated = binder.copy(
-            name = name.trim(),
-            colorHex = colorHex,
-            columns = size.columns,
-            rows = size.rows,
-            followedSets = collecting?.let(Binder::joinSetIds) ?: binder.followedSets,
-            countSecretRares = countSecretRares ?: binder.countSecretRares,
-        )
+        // Main/Master is this phone's own choice, so it's saved here, not on the shared binder.
+        countSecretRares?.let { viewPrefs.setMasterSet(binder.id, it) }
         viewModelScope.launch {
+            val stored = binderDao.get(binder.id) ?: binder
+            val updated = stored.copy(
+                name = name.trim(),
+                colorHex = colorHex,
+                columns = size.columns,
+                rows = size.rows,
+                followedSets = collecting?.let(Binder::joinSetIds) ?: stored.followedSets,
+            )
             db.withTransaction {
                 val oldCount = binder.pocketsPerPage
                 val newCount = size.pockets
@@ -422,7 +438,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Everything the Missing cards page needs for one binder, kept up to date. */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun checklist(binderId: String): Flow<ChecklistData?> =
-        combine(binderDao.observeBinder(binderId), checklistDao.observeBinderPockets(binderId), cardCount) { b, pockets, _ -> b to pockets }
+        combine(binder(binderId), checklistDao.observeBinderPockets(binderId), cardCount) { b, pockets, _ -> b to pockets }
             .mapLatest { (b, pockets) ->
                 if (b == null) return@mapLatest null
                 val cards = if (b.followedSetIds.isEmpty()) emptyList() else checklistDao.cardsInSets(b.followedSetIds)
@@ -432,12 +448,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The expansion most of a binder's cards come from, to suggest collecting it. */
     suspend fun topExpansion(binderId: String): ExpansionCount? = checklistDao.topExpansion(binderId)
 
-    /** Saves which expansions a binder collects, and whether secret rares count. Owner only. */
-    fun setCollecting(binder: Binder, setIds: List<String>, countSecretRares: Boolean = binder.countSecretRares) {
+    /**
+     * Saves which expansions a binder collects (shared, owner only).
+     * Main/Master set is this phone's own choice, see [setMasterSet].
+     */
+    fun setCollecting(binder: Binder, setIds: List<String>) {
         if (!binder.isOwner) return
-        val updated = binder.copy(followedSets = Binder.joinSetIds(setIds), countSecretRares = countSecretRares)
-        if (updated == binder) return
         viewModelScope.launch {
+            val stored = binderDao.get(binder.id) ?: return@launch
+            val updated = stored.copy(followedSets = Binder.joinSetIds(setIds))
+            if (updated == stored) return@launch
             binderDao.update(updated)
             cloud.binderSettingsChanged(updated)
         }

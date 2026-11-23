@@ -132,7 +132,7 @@ private fun CollectingSection(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Count secret rares", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                Text("Master set: cards numbered past the set size", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+                Text("Master set: cards numbered past the set size. Just on this phone.", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
             }
             Switch(checked = secret, onCheckedChange = onSecret)
         }
