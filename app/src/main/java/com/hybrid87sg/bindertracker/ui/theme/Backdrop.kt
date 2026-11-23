@@ -99,7 +99,7 @@ private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean) 
     drawRect(
         Brush.linearGradient(SHEEN, start = start, end = end, tileMode = TileMode.Mirror),
         alpha = amount * if (dark) 0.5f else 0.32f,
-        blendMode = if (dark) BlendMode.SoftLight else BlendMode.Multiply,
+        blendMode = if (dark) BlendMode.Softlight else BlendMode.Multiply,
     )
 
     // The sparkles: more of them, and brighter, as [amount] goes up.
