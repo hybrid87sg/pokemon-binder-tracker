@@ -76,23 +76,60 @@ object AiSetup {
                 .text?.trim().orEmpty().ifEmpty { "Gemini answered, but with no words." }
         }.recoverCatching { e ->
             Log.w(TAG, "AI test failed", e)
-            throw IllegalStateException(explain(e), e)
+            throw aiFailure(e)
         }
     }
 
-    /** A plain-English reason an AI request failed, pointing at the setup step that fixes it. */
+    /** Every exception in the chain: the one we caught, its cause, its cause's cause, and so on. */
+    private fun chain(e: Throwable): List<Throwable> =
+        generateSequence(e) { it.cause.takeIf { c -> c !== it } }.take(8).toList()
+
+    /**
+     * A plain-English reason an AI request failed, pointing at the setup step
+     * that fixes it. Firebase often wraps the real problem ("Something
+     * unexpected happened."), so this looks through the whole cause chain.
+     */
     fun explain(e: Throwable): String {
-        val msg = (e.message ?: "") + " " + (e.cause?.message ?: "")
+        val all = chain(e)
+        val msg = all.joinToString(" ") { "${it::class.java.simpleName} ${it.message.orEmpty()}" }
+        val lower = msg.lowercase()
         return when {
-            "App Check" in msg || "app check" in msg.lowercase() || "attestation" in msg.lowercase() ->
+            "app check" in lower || "appcheck" in lower || "attestation" in lower ->
                 "Firebase doesn't trust this phone yet. Copy the code above into App Check → Manage debug tokens."
-            "API has not been used" in msg || "SERVICE_DISABLED" in msg || "not enabled" in msg.lowercase() ->
-                "AI Logic isn't switched on yet. In the Firebase console open AI Logic and press Get started."
-            "quota" in msg.lowercase() || "429" in msg ->
+            "genai config not found" in lower || "APINotConfigured" in msg ->
+                "The Gemini Developer API isn't set up yet. In the Firebase console open AI Logic, press Get started and pick the Gemini Developer API."
+            "ServiceDisabled" in msg || "API has not been used" in msg || "SERVICE_DISABLED" in msg ->
+                "AI Logic isn't switched on yet. In the Firebase console open AI Logic and press Get started. If you just did, wait 5 minutes."
+            "InvalidAPIKey" in msg || "api key not valid" in lower ->
+                "Firebase rejected the app's API key. Check the key in google-services.json matches the Firebase project."
+            "are blocked" in lower || "API_KEY_SERVICE_BLOCKED" in msg ->
+                "The app's API key isn't allowed to use AI Logic. In Google Cloud → Credentials, edit the Android key and allow the Firebase AI Logic API."
+            "quota" in lower || " 429" in msg || "QuotaExceeded" in msg ->
                 "The free AI allowance is used up for now. Try again later."
-            "network" in msg.lowercase() || "Unable to resolve host" in msg ->
-                "No internet connection."
-            else -> "Something went wrong: ${e.message ?: e::class.simpleName}"
+            "not found" in lower && "model" in lower ->
+                "Gemini doesn't know the model \"$MODEL_NAME\". The app needs an update."
+            all.any { it is java.net.UnknownHostException || it is java.net.ConnectException || it is java.net.NoRouteToHostException } ->
+                "Couldn't reach Google's AI servers. Check the phone's internet, and turn off any VPN or ad blocker (Private DNS) that might block firebasevertexai.googleapis.com."
+            all.any { it is java.net.SocketTimeoutException } || "RequestTimeout" in msg ->
+                "Gemini took too long to answer. Try again."
+            else -> "Something went wrong talking to Gemini."
         }
     }
+
+    /**
+     * The technical error text, for screenshots when [explain] isn't enough.
+     * Firebase error text names the problem, not the App Check debug code.
+     */
+    fun details(e: Throwable): String =
+        chain(e).filterNot { it is AiFailure }
+            .joinToString("\n← ") { "${it::class.java.simpleName}: ${it.message.orEmpty().trim()}" }
+            .take(900)
 }
+
+/** A failed AI request: [message] is the plain-English hint, [details] the raw error text. */
+class AiFailure(hint: String, cause: Throwable) : Exception(hint, cause) {
+    val details: String get() = AiSetup.details(this)
+}
+
+/** Turns any AI error into an [AiFailure] with a hint and the real error text. */
+fun aiFailure(e: Throwable): AiFailure = e as? AiFailure ?: AiFailure(AiSetup.explain(e), e)

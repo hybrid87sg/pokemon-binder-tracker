@@ -62,7 +62,7 @@ object CardStories {
                 file(context, card.id).apply { parentFile?.mkdirs() }.writeText(text)
             }
             text
-        }.recoverCatching { e -> throw IllegalStateException(AiSetup.explain(e), e) }
+        }.recoverCatching { e -> throw aiFailure(e) }
     }
 
     /** Removes markdown marks (bold stars, headings) so the text reads cleanly. */
