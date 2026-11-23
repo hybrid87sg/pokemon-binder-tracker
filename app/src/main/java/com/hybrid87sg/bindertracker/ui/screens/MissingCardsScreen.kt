@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -212,8 +213,11 @@ fun MissingCardsScreen(
                 return@Column
             }
 
+            // Unfolded phone (same test as the binder's two-page spread): 6 cards per row, 3 each side of the fold.
+            val config = LocalConfiguration.current
+            val unfolded = config.screenWidthDp >= 600 && config.screenHeightDp >= 480
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(if (unfolded) 6 else 4),
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
