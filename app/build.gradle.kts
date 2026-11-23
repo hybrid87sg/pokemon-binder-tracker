@@ -149,6 +149,14 @@ dependencies {
     // Firestore: the online database that keeps binders in your Google
     // account and lets you share them with friends.
     implementation(libs.firebase.firestore)
+    // Firebase AI Logic: lets the app ask Google's Gemini AI questions
+    // (for example "which card is in this photo?").
+    implementation(libs.firebase.ai)
+    // App Check proves to Firebase that requests really come from our app,
+    // so nobody else can use up the AI allowance. The "debug" version uses
+    // a secret code that you paste into the Firebase console once. It is
+    // the right one for us because the phone only ever gets debug builds.
+    implementation(libs.firebase.appcheck.debug)
     // ZXing draws the QR code for sharing a binder.
     implementation(libs.zxing.core)
     // Google's ready-made QR code scanner (no camera code of our own needed).

@@ -60,6 +60,16 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Surface
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import com.hybrid87sg.bindertracker.ai.AiSetup
+import kotlinx.coroutines.launch
 
 /** Totals shown on the Account screen. */
 data class CollectionStats(val cards: Int, val pages: Int, val binders: Int)
@@ -219,6 +229,8 @@ fun AccountScreen(
                 }
             }
 
+            AiSetupSection()
+
             HorizontalDivider(color = AppColors.Border)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -273,6 +285,83 @@ private fun ThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
                     Text(mode.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 }
             }
+        }
+    }
+}
+
+/**
+ * "AI helper" setup: shows the phone's App Check code (to paste into the
+ * Firebase console once) and a button that asks Gemini a test question.
+ * Hidden when the app was built without Firebase.
+ */
+@Composable
+private fun AiSetupSection() {
+    val context = LocalContext.current
+    if (!AiSetup.isAvailable(context)) return
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { code = AiSetup.debugCode(context) }
+
+    HorizontalDivider(color = AppColors.Border)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("AI helper (setup)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "To switch on the AI features, copy this phone's code and paste it into the Firebase console under App Check, Manage debug tokens. Keep it private.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppColors.Muted,
+        )
+        SelectionContainer {
+            Text(
+                code ?: "Making a code…",
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                modifier = Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AppColors.Surface)
+                    .border(1.dp, AppColors.Border, RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { code?.let {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("App Check code", it))
+                    message = "Code copied."
+                } },
+                enabled = code != null,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(2.dp, AppColors.Ink),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
+            ) { Text("Copy code", style = MaterialTheme.typography.labelLarge) }
+            OutlinedButton(
+                onClick = {
+                    testing = true
+                    message = "Asking Gemini…"
+                    scope.launch {
+                        message = AiSetup.test(context).fold(
+                            onSuccess = { "It works! Gemini says: $it" },
+                            onFailure = { it.message ?: "Something went wrong." },
+                        )
+                        testing = false
+                    }
+                },
+                enabled = !testing,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(2.dp, AppColors.Ink),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
+            ) { Text("Test AI", style = MaterialTheme.typography.labelLarge) }
+        }
+        message?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.Muted,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
     }
 }
