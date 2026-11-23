@@ -80,7 +80,8 @@ object AiSetup {
         }
     }
 
-    private fun explain(e: Throwable): String {
+    /** A plain-English reason an AI request failed, pointing at the setup step that fixes it. */
+    fun explain(e: Throwable): String {
         val msg = (e.message ?: "") + " " + (e.cause?.message ?: "")
         return when {
             "App Check" in msg || "app check" in msg.lowercase() || "attestation" in msg.lowercase() ->

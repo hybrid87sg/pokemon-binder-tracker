@@ -7,6 +7,9 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hybrid87sg.bindertracker.auth.AuthManager
+import com.hybrid87sg.bindertracker.ai.BinderChat
+import com.hybrid87sg.bindertracker.ai.ChatMessage
+import com.hybrid87sg.bindertracker.data.BinderMissing
 import com.hybrid87sg.bindertracker.backup.BackupFile
 import com.hybrid87sg.bindertracker.backup.BinderBackup
 import com.hybrid87sg.bindertracker.data.AppDatabase
@@ -398,6 +401,96 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /**
+     * The Missing tab: every collecting binder with the cards it still
+     * needs, in the binder's own order. Kept up to date like the badges.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allMissing: StateFlow<List<BinderMissing>> =
+        combine(binders, checklistDao.observeOwnedCards(), cardCount) { list, owned, _ -> list to owned }
+            .mapLatest { (list, owned) ->
+                val collecting = list.filter { it.followedSetIds.isNotEmpty() }
+                if (collecting.isEmpty()) return@mapLatest emptyList<BinderMissing>()
+                val cards = checklistDao.cardsInSets(collecting.flatMap { it.followedSetIds }.distinct())
+                val ownedBy = owned.groupBy({ it.binderId }, { it.cardId }).mapValues { it.value.toSet() }
+                collecting.map { b ->
+                    val entries = Checklist.entries(cards, b.followedSetIds, ownedBy[b.id].orEmpty(), b.countSecretRares)
+                    BinderMissing(b, entries.filter { !it.owned }, ChecklistProgress(entries.count { !it.owned }, entries.size))
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ---- Binder chat (AI) ----
+
+    private val _chat = MutableStateFlow<List<ChatMessage>>(emptyList())
+    /** The Binder chat conversation, kept while the app is open. */
+    val chat: StateFlow<List<ChatMessage>> = _chat.asStateFlow()
+    private val _chatBusy = MutableStateFlow(false)
+    /** True while Gemini is writing an answer. */
+    val chatBusy: StateFlow<Boolean> = _chatBusy.asStateFlow()
+
+    /** Sends a question to Binder chat with a summary of the collection. */
+    fun askChat(question: String) {
+        val q = question.trim()
+        if (q.isEmpty() || _chatBusy.value) return
+        val before = _chat.value
+        _chat.value = before + ChatMessage(fromMe = true, text = q)
+        _chatBusy.value = true
+        viewModelScope.launch {
+            val summary = runCatching { collectionSummary() }.getOrDefault("(The collection couldn't be read.)")
+            val reply = BinderChat.answer(getApplication<Application>(), summary, before, q)
+            _chat.value = _chat.value + reply.fold(
+                onSuccess = { ChatMessage(fromMe = false, text = it) },
+                onFailure = { ChatMessage(fromMe = false, text = it.message ?: "Something went wrong.", failed = true) },
+            )
+            _chatBusy.value = false
+        }
+    }
+
+    /** Starts Binder chat afresh. */
+    fun clearChat() {
+        if (!_chatBusy.value) _chat.value = emptyList()
+    }
+
+    /**
+     * A plain-text picture of the collection for Binder chat: each binder,
+     * how full it is, which cards are on which page, and (for collecting
+     * binders) what's still missing.
+     */
+    private suspend fun collectionSummary(): String = withContext(Dispatchers.IO) {
+        val list = binders.value
+        val fill = binderFill.value
+        val places = checklistDao.cardPlaces()
+        val cards = cardIndex.getMany(places.map { it.cardId }).associateBy { it.id }
+        val missing = allMissing.value.associateBy { it.binder.id }
+        fun describe(c: Card?, id: String) =
+            if (c == null) id else "${c.name} (${c.setName} ${c.number}${if (c.rarity.isNotEmpty()) ", ${c.rarity}" else ""})"
+        buildString {
+            appendLine("${list.size} binders, ${places.size} cards in pockets in total.")
+            for (b in list) {
+                val f = fill[b.id]
+                appendLine()
+                append("Binder \"${b.name}\"")
+                if (f != null) append(": ${f.filled} of ${f.total} pockets filled, ${f.pages} pages")
+                if (!b.isOwner) append(" (shared with me by ${b.ownerName ?: "a friend"})")
+                appendLine(".")
+                missing[b.id]?.let { m ->
+                    val have = m.progress.total - m.progress.missing
+                    appendLine("Collecting ${m.entries.firstOrNull()?.card?.setName ?: "an expansion"}: has $have of ${m.progress.total}, missing ${m.progress.missing}.")
+                    if (m.entries.isNotEmpty()) {
+                        val shown = m.entries.take(80).joinToString("; ") { describe(it.card, it.card.id) }
+                        appendLine("Missing: $shown" + if (m.entries.size > 80) "; and ${m.entries.size - 80} more." else ".")
+                    }
+                }
+                val inBinder = places.filter { it.binderName == b.name }
+                if (inBinder.isEmpty()) appendLine("No cards in it yet.")
+                inBinder.groupBy { it.pageNumber }.toSortedMap().forEach { (page, here) ->
+                    appendLine("Page $page: " + here.joinToString("; ") { describe(cards[it.cardId], it.cardId) })
+                }
+            }
+        }
+    }
 
     /** Everything the Missing cards page needs for one binder, kept up to date. */
     @OptIn(ExperimentalCoroutinesApi::class)

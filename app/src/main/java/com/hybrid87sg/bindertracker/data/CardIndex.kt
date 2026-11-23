@@ -52,6 +52,10 @@ class CardIndex(context: Context, private val dao: CardDao) {
 
     suspend fun get(id: String): Card? = dao.get(id)
 
+    /** Many cards at once, by ID (in batches, because SQLite limits how many IDs one question can hold). */
+    suspend fun getMany(ids: Collection<String>): List<Card> =
+        ids.distinct().chunked(900).flatMap { dao.getMany(it) }
+
     companion object {
         private const val KEY_UPDATED = "updated_at"
         private const val KEY_FORMAT = "format"

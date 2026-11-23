@@ -95,8 +95,9 @@ fun ShelfScreen(
     onOpenBinder: (Binder) -> Unit,
     onChangeColor: (Binder, String) -> Unit,
     onAddBinder: () -> Unit,
-    onOpenAccount: () -> Unit,
-    onSearch: () -> Unit,
+    // Null hides the button (the tab bar has Search and Me instead).
+    onOpenAccount: (() -> Unit)?,
+    onSearch: (() -> Unit)?,
     // How full each binder is, by binder ID (for the bars and totals).
     fill: Map<String, BinderFill> = emptyMap(),
     // A short green note, e.g. "3 binders added to your account.", or null.
@@ -146,6 +147,7 @@ fun ShelfScreen(
                 }
                 Spacer(Modifier.width(8.dp))
             }
+            if (onSearch != null) {
             val searchPress = remember { MutableInteractionSource() }
             Surface(
                 onClick = onSearch,
@@ -161,6 +163,8 @@ fun ShelfScreen(
                 }
             }
             Spacer(Modifier.width(8.dp))
+            }
+            if (onOpenAccount != null) {
             val accountPress = remember { MutableInteractionSource() }
             Surface(
                 onClick = onOpenAccount,
@@ -173,6 +177,7 @@ fun ShelfScreen(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(painterResource(R.drawable.ic_person), contentDescription = null, modifier = Modifier.size(22.dp))
                 }
+            }
             }
         }
 

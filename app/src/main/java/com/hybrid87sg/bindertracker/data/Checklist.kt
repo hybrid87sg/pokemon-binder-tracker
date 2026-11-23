@@ -120,3 +120,6 @@ data class ChecklistData(
 data class ChecklistProgress(val missing: Int, val total: Int) {
     val fraction: Float get() = if (total == 0) 0f else (total - missing).toFloat() / total
 }
+
+/** One collecting binder on the Missing tab: the cards it still needs, and how far along it is. */
+data class BinderMissing(val binder: Binder, val entries: List<Checklist.Entry>, val progress: ChecklistProgress)

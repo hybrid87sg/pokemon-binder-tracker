@@ -1,5 +1,25 @@
 package com.hybrid87sg.bindertracker
 
+import com.hybrid87sg.bindertracker.ai.AiSetup
+import com.hybrid87sg.bindertracker.ui.components.MainTab
+import com.hybrid87sg.bindertracker.ui.components.MainTabBar
+import com.hybrid87sg.bindertracker.ui.components.MainTabRail
+import com.hybrid87sg.bindertracker.ui.screens.ChatScreen
+import com.hybrid87sg.bindertracker.ui.screens.MissingTabScreen
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.currentBackStackEntryAsState
+
 import android.net.Uri
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
@@ -215,15 +235,44 @@ private fun App(
     // To and from the card screen, the screens only fade: the card itself flies
     // between its pocket and the card screen (see CardFlight).
     val flyFade = tween<Float>(CardFlight.FlyMillis, easing = Motion.Ease)
+
+    // The tab bar: shown only on the five main screens, along the bottom when
+    // folded and down the left side when unfolded (same test as the two-page spread).
+    val backStack by nav.currentBackStackEntryAsState()
+    val route = backStack?.destination?.route
+    val tab = MainTab.of(route)
+    val config = LocalConfiguration.current
+    val wide = config.screenWidthDp >= 600 && config.screenHeightDp >= 480
+    val missingCounts by vm.missingCounts.collectAsStateWithLifecycle()
+    val missingTotal = missingCounts.values.sumOf { it.missing }
+    val goTab: (MainTab) -> Unit = { t ->
+        if (t.route != route) {
+            nav.navigate(t.route) {
+                // One copy of each tab, and each keeps its place (scroll, typed search) when you come back.
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+    Row(Modifier.fillMaxSize()) {
+    if (wide && tab != null) MainTabRail(tab, missingTotal, goTab)
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Box(
+        Modifier.weight(1f).fillMaxWidth()
+            // The bar below already keeps clear of the phone's navigation bar.
+            .then(if (!wide && tab != null) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
+    ) {
     SharedTransitionLayout {
     CompositionLocalProvider(LocalSharedTransitionScope provides this) {
     NavHost(
         navController = nav,
         startDestination = "shelf",
-        enterTransition = { if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
-        popEnterTransition = { if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
-        popExitTransition = { if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
+        // Switching tabs just cross-fades; going deeper slides in from the right.
+        enterTransition = { if (tabHop()) fadeIn(fade) else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { if (tabHop()) fadeOut(fade) else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        popEnterTransition = { if (tabHop()) fadeIn(fade) else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
+        popExitTransition = { if (tabHop()) fadeOut(fade) else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
     ) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
@@ -239,8 +288,9 @@ private fun App(
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
-                onOpenAccount = { nav.navigate("account") },
-                onSearch = { nav.navigate("search") },
+                // Search and Me are tabs now.
+                onOpenAccount = null,
+                onSearch = null,
                 onJoin = if (current.isLocalOnly || !vm.auth.isFirebaseConfigured) null else { { nav.navigate("join") } },
             )
         }
@@ -353,12 +403,48 @@ private fun App(
                 }
             }
         }
+        // The Missing tab: every collecting binder's missing cards together.
+        composable("missing") {
+            val all by vm.allMissing.collectAsStateWithLifecycle()
+            CompositionLocalProvider(LocalScreenAnimationScope provides this) {
+                MissingTabScreen(
+                    binders = all,
+                    onOpenCard = { b, index ->
+                        val items = b.entries.map { BrowseItem(it.card.id, CardFlight.missingKey(it.card.id)) }
+                        if (index in items.indices) {
+                            vm.browse = CardBrowse(items, index, "missing from ${b.binder.name}", checklistBinderId = b.binder.id)
+                            nav.navigate("card/${Uri.encode(items[index].cardId)}")
+                        }
+                    },
+                    onOpenList = { nav.navigate("missing/$it") },
+                )
+            }
+        }
+        // The Chat tab: Binder chat (AI).
+        composable("chat") {
+            val messages by vm.chat.collectAsStateWithLifecycle()
+            val busy by vm.chatBusy.collectAsStateWithLifecycle()
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            val fill by vm.binderFill.collectAsStateWithLifecycle()
+            // Kept up to date while chatting, so answers about missing cards are current.
+            vm.allMissing.collectAsStateWithLifecycle()
+            ChatScreen(
+                messages = messages,
+                busy = busy,
+                cardCount = binders.sumOf { fill[it.id]?.filled ?: 0 },
+                binderCount = binders.size,
+                available = AiSetup.isAvailable(activity),
+                onAsk = vm::askChat,
+                onClear = vm::clearChat,
+            )
+        }
         composable("search") {
             // The results showing, so the card screen can swipe through them.
             var shown by remember { mutableStateOf<List<Card>>(emptyList()) }
             SearchRoute(
-                title = "Search cards",
+                title = "Search",
                 backLabel = "Shelf",
+                showBack = false,
                 status = indexStatus(vm),
                 search = vm::searchCards,
                 loadExpansions = vm::expansionList,
@@ -605,12 +691,21 @@ private fun App(
                 onRestore = vm::restoreFrom,
                 syncActive = syncActive,
                 syncProblem = syncProblem,
+                showBack = false,
             )
         }
     }
     }
     }
+    }
+    if (!wide && tab != null) MainTabBar(tab, missingTotal, goTab)
+    }
+    }
 }
+
+/** Switching between two of the main tabs. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabHop(): Boolean =
+    MainTab.of(initialState.destination.route) != null && MainTab.of(targetState.destination.route) != null
 
 /** Going to or from the card screen, where a card flies instead of the screens sliding. */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.cardHop(): Boolean =

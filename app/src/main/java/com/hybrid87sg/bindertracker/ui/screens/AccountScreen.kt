@@ -93,6 +93,8 @@ fun AccountScreen(
     // True while binders are kept in the Google account; [syncProblem] says why not, if something's wrong.
     syncActive: Boolean = false,
     syncProblem: String? = null,
+    // False on the Me tab, where the tab bar takes you back instead.
+    showBack: Boolean = true,
 ) {
     // Android's own "Save to" and "Open" screens. The person picks where the
     // file goes (Google Drive, Downloads, ...); we get back a link to it.
@@ -104,14 +106,15 @@ fun AccountScreen(
     }
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
-        Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Shelf", onBack) }
+        if (showBack) Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Shelf", onBack) }
+        else Spacer(Modifier.height(32.dp))
 
         Column(
             Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Eyebrow("Trainer profile")
-                Text("Account", style = MaterialTheme.typography.headlineMedium)
+                Text(if (showBack) "Account" else "Me", style = if (showBack) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge)
             }
 
             Row(
