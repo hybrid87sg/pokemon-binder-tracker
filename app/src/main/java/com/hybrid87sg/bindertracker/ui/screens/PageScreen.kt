@@ -15,6 +15,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.border
@@ -96,6 +97,8 @@ import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.ui.components.HoloBar
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.PageTurnStage
+import com.hybrid87sg.bindertracker.ui.components.SpreadTurnStage
+import androidx.compose.ui.platform.LocalConfiguration
 import com.hybrid87sg.bindertracker.ui.components.RingSpots
 import com.hybrid87sg.bindertracker.ui.components.arrive
 import com.hybrid87sg.bindertracker.ui.components.holoBrush
@@ -185,6 +188,12 @@ fun PageScreen(
     onMoveToNewPage: (position: Int, onCreated: (String) -> Unit) -> Unit = { _, _ -> },
     // Shows another page of this binder straight away.
     onGoToPage: (pageId: String) -> Unit = {},
+    // Pockets of the pages around this one, for the open binder on a big screen.
+    spreadPockets: Map<String, List<PocketWithCard>> = emptyMap(),
+    // The binder's colour, round the pages of the open binder.
+    coverColor: Color? = null,
+    // Adds an empty page at the end of the binder (null = can't).
+    onAddPage: (() -> Unit)? = null,
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -232,6 +241,22 @@ fun PageScreen(
     }
     val shownPockets = pockets.map { drag.shown[it.position] ?: it }
 
+    // ---- The open binder: two pages side by side on a big screen ----
+    // On an unfolded phone (or a tablet) the pages pair up 1–2, 3–4 and so on,
+    // like an open binder. The page you're on is one of the two; folded, you
+    // carry on from that page.
+    val config = LocalConfiguration.current
+    val here = pageIds.indexOf(pageId)
+    val open = config.screenWidthDp >= 600 && config.screenHeightDp >= 480 && here >= 0
+    val leftIndex = if (here >= 0) here - here % 2 else 0
+    fun pageAt(i: Int): String? = if (i >= 0) pageIds.getOrNull(i) else null
+    fun pocketsOf(id: String): List<PocketWithCard> =
+        if (id == pageId) shownPockets else spreadPockets[id] ?: pageCards[id].orEmpty()
+    val leftId = pageAt(leftIndex)
+    val rightId = pageAt(leftIndex + 1)
+    val spreadShown = if (open) listOfNotNull(leftId, rightId).flatMap { pocketsOf(it) } else shownPockets
+    val isOpen by rememberUpdatedState(open)
+
     // The gesture code below is created once, so it reads everything through
     // these "updated state" holders to always see the latest values.
     val latestPockets by rememberUpdatedState(shownPockets)
@@ -268,14 +293,35 @@ fun PageScreen(
     }
 
     fun goTo(id: String) {
-        val here = ids.indexOf(currentPageId)
+        val now = ids.indexOf(currentPageId)
         val there = ids.indexOf(id)
+        // Open binder: pages turn two at a time.
+        val step = if (isOpen) 2 else 1
         when {
-            there < 0 || there == here -> Unit
-            there == here + 1 -> turnState.turn(1)
-            there == here - 1 -> turnState.turn(-1)
+            there < 0 || there == now -> Unit
+            there / step == now / step -> goToPage(id)
+            there / step == now / step + 1 -> turnState.turn(1)
+            there / step == now / step - 1 -> turnState.turn(-1)
             else -> goToPage(id)
         }
+    }
+
+    // Open binder: a tap or hold on the other page makes it the page you're on,
+    // then does what it would do there.
+    fun tapOther(id: String, p: PocketWithCard) {
+        goToPage(id)
+        p.cardId?.let(viewCard) ?: run { if (editable) scanCard(p.position) }
+    }
+
+    fun holdOther(id: String, p: PocketWithCard) {
+        if (!editable) {
+            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+            notice = Notice("This binder is view only, so cards stay where they are.")
+            return
+        }
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        goToPage(id)
+        selected = p
     }
 
     fun undoMove(page: String, from: Int, otherPage: String, slot: Int) {
@@ -413,9 +459,16 @@ fun PageScreen(
         }
     }
 
-    val identified = shownPockets.count { it.cardId != null }
-    val empty = shownPockets.count { it.isEmpty }
-    val toDo = shownPockets.size - identified - empty
+    val identified = spreadShown.count { it.cardId != null }
+    val empty = spreadShown.count { it.isEmpty }
+    val toDo = spreadShown.size - identified - empty
+    val title = when {
+        !open -> "Page $pageNumber"
+        rightId != null -> "Pages ${leftIndex + 1}–${leftIndex + 2}"
+        else -> "Page ${leftIndex + 1}"
+    }
+    val canPrevTurn = if (open) leftIndex >= 2 else prevPockets != null
+    val canNextTurn = if (open) leftIndex + 2 < pageIds.size else nextPockets != null
 
     Box(Modifier.fillMaxSize().appBackground().onGloballyPositioned { drag.screen = it }) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -431,9 +484,9 @@ fun PageScreen(
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Page $pageNumber", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
                 // The expansion most of this page's cards come from.
-                pageExpansion(shownPockets)?.let { exp ->
+                pageExpansion(spreadShown)?.let { exp ->
                     accentFor(exp.seriesId)?.let { accent ->
                         if (exp.setName.isNotBlank()) ExpansionBadge(exp.setName, accent, Modifier.padding(start = 8.dp).widthIn(max = 180.dp))
                     }
@@ -441,14 +494,14 @@ fun PageScreen(
             }
             Text(
                 buildList {
-                    add("$identified of ${pockets.size} filled")
+                    add("$identified of ${spreadShown.size} filled")
                     if (empty > 0) add("$empty empty")
                     if (toDo > 0) add("$toDo to identify")
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppColors.Muted,
             )
-            HoloBar(if (pockets.isEmpty()) 0f else identified.toFloat() / pockets.size, Modifier.padding(top = 4.dp))
+            HoloBar(if (spreadShown.isEmpty()) 0f else identified.toFloat() / spreadShown.size, Modifier.padding(top = 4.dp))
             // Automatic card reading: "Reading the cards…", then what it found.
             readingStatus?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
@@ -456,53 +509,88 @@ fun PageScreen(
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 14.dp)) {
-            // Drag the sheet sideways to turn it like a real binder page.
-            PageTurnStage(
-                state = turnState,
-                canPrev = prevPockets != null,
-                canNext = nextPockets != null,
-                onTurned = onTurn,
-                // Each sheet is known by its page, so the page you turn to keeps
-                // its cards exactly as they were drawn during the turn.
-                keyOf = { which ->
-                    when (which) {
+            if (open) {
+                // Two pages side by side, rings down the middle; a whole spread turns at once.
+                SpreadTurnStage(
+                    state = turnState,
+                    canPrev = canPrevTurn,
+                    canNext = canNextTurn,
+                    onTurned = { d -> pageAt(leftIndex + 2 * d)?.let { goToPage(it) } },
+                    isPage = { which, side -> pageAt(leftIndex + which * 2 + side) != null },
+                    keyOf = { which, side -> pageAt(leftIndex + which * 2 + side) ?: "end:$which:$side" },
+                    coverColor = coverColor ?: AppColors.CardBack,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { which, side ->
+                    val id = pageAt(leftIndex + which * 2 + side)
+                    if (id == null) {
+                        EndOfBinder(onAddPage = if (canEdit) onAddPage else null)
+                    } else {
+                        // Every page goes through this ONE BinderSheet call, so a page you turn to
+                        // is never rebuilt (its cards would pop in all over again).
+                        val live = which == 0 && id == pageId
+                        val other = which == 0 && !live
+                        BinderSheet(
+                            pocketsOf(id), columns, pageKey = id, live = live,
+                            onPocket = { if (live) gestures.tap(it.position) },
+                            onPocketHold = { if (live && canEdit) selected = it },
+                            drag = if (live) drag else null,
+                            gestures = if (live) gestures else null,
+                            mirrored = side == 0,
+                            onOtherTap = if (other) ({ p -> tapOther(id, p) }) else null,
+                            onOtherHold = if (other) ({ p -> holdOther(id, p) }) else null,
+                        )
+                    }
+                }
+            } else {
+                // Drag the sheet sideways to turn it like a real binder page.
+                PageTurnStage(
+                    state = turnState,
+                    canPrev = prevPockets != null,
+                    canNext = nextPockets != null,
+                    onTurned = onTurn,
+                    // Each sheet is known by its page, so the page you turn to keeps
+                    // its cards exactly as they were drawn during the turn.
+                    keyOf = { which ->
+                        when (which) {
+                            0 -> pageId
+                            -1 -> prevPageId ?: "prev"
+                            else -> nextPageId ?: "next"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { which ->
+                    // Every sheet is drawn by this ONE BinderSheet call. (Separate calls
+                    // for "this page" and "next page" would count as different things,
+                    // so when a turn ended the page you turned to was thrown away and
+                    // rebuilt, and its cards popped in all over again.)
+                    val live = which == 0
+                    val sheetPockets = when (which) {
+                        0 -> shownPockets
+                        -1 -> prevPockets.orEmpty()
+                        else -> nextPockets.orEmpty()
+                    }
+                    val sheetKey = when (which) {
                         0 -> pageId
                         -1 -> prevPageId ?: "prev"
                         else -> nextPageId ?: "next"
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { which ->
-                // Every sheet is drawn by this ONE BinderSheet call. (Separate calls
-                // for "this page" and "next page" would count as different things,
-                // so when a turn ended the page you turned to was thrown away and
-                // rebuilt, and its cards popped in all over again.)
-                val live = which == 0
-                val sheetPockets = when (which) {
-                    0 -> shownPockets
-                    -1 -> prevPockets.orEmpty()
-                    else -> nextPockets.orEmpty()
+                    // Tap: a card opens straight away, an empty pocket goes straight to the camera.
+                    // Press and hold: the pocket's menu with every option.
+                    BinderSheet(
+                        sheetPockets, columns, pageKey = sheetKey, live = live,
+                        onPocket = { if (live) gestures.tap(it.position) },
+                        onPocketHold = { if (live && canEdit) selected = it },
+                        drag = if (live) drag else null,
+                        gestures = if (live) gestures else null,
+                    )
                 }
-                val sheetKey = when (which) {
-                    0 -> pageId
-                    -1 -> prevPageId ?: "prev"
-                    else -> nextPageId ?: "next"
-                }
-                // Tap: a card opens straight away, an empty pocket goes straight to the camera.
-                // Press and hold: the pocket's menu with every option.
-                BinderSheet(
-                    sheetPockets, columns, pageKey = sheetKey, live = live,
-                    onPocket = { if (live) gestures.tap(it.position) },
-                    onPocketHold = { if (live && canEdit) selected = it },
-                    drag = if (live) drag else null,
-                    gestures = if (live) gestures else null,
-                )
             }
             Text(
-                if (canEdit) {
-                    "Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
-                } else {
-                    "Tap a card to see it and its price. This binder is view only."
+                when {
+                    open && canEdit -> "Swipe a page across the rings to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket on the same page."
+                    open -> "Swipe a page across the rings to turn it. Tap a card to see it and its price. This binder is view only."
+                    canEdit -> "Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
+                    else -> "Tap a card to see it and its price. This binder is view only."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
@@ -521,8 +609,9 @@ fun PageScreen(
             PageArrows(
                 pageNumber = pageNumber,
                 pageCount = pageCount,
-                canPrev = prevPockets != null,
-                canNext = nextPockets != null,
+                canPrev = canPrevTurn,
+                canNext = canNextTurn,
+                open = open,
                 onPrev = { turnState.turn(-1) },
                 onNext = { turnState.turn(1) },
                 onJump = if (pageIds.size > 1) ({ jumping = true }) else null,
@@ -711,8 +800,17 @@ private fun BinderSheet(
     // Only for the page you're on: holding and dragging cards.
     drag: PocketDrag? = null,
     gestures: PocketGestures? = null,
+    // The left page of an open binder: ring holes down its right edge instead.
+    mirrored: Boolean = false,
+    // The other page of an open binder: a tap or hold here makes it the page you're on.
+    onOtherTap: ((PocketWithCard) -> Unit)? = null,
+    onOtherHold: ((PocketWithCard) -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
+    val shape = if (mirrored) {
+        RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp)
+    } else {
+        RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
+    }
     // A faint pattern from the page's expansion behind the pockets.
     val accent = accentFor(pageExpansion(pockets)?.seriesId)
     // Shiny cards tilt with the phone, so listen to its motion only when there are some.
@@ -729,9 +827,10 @@ private fun BinderSheet(
             .border(1.dp, AppColors.Border, shape)
             .drawBehind {
                 // Punched holes for the rings.
-                RingSpots.forEach { f -> drawCircle(AppColors.Paper, radius = 4.5.dp.toPx(), center = Offset(12.dp.toPx(), size.height * f)) }
+                val x = if (mirrored) size.width - 12.dp.toPx() else 12.dp.toPx()
+                RingSpots.forEach { f -> drawCircle(AppColors.Paper, radius = 4.5.dp.toPx(), center = Offset(x, size.height * f)) }
             }
-            .padding(start = 26.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = if (mirrored) 10.dp else 26.dp, end = if (mirrored) 26.dp else 10.dp, top = 10.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         key(pageKey) {
@@ -760,7 +859,16 @@ private fun BinderSheet(
                             order = rowIndex * columns + i,
                             onTapped = { onPocket(pocket) },
                             onHeld = { onPocketHold(pocket) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).then(
+                                if (!live && (onOtherTap != null || onOtherHold != null)) {
+                                    Modifier.pointerInput(pocket) {
+                                        detectTapGestures(
+                                            onTap = { onOtherTap?.invoke(pocket) },
+                                            onLongPress = { onOtherHold?.invoke(pocket) },
+                                        )
+                                    }
+                                } else Modifier,
+                            ),
                             pressed = drag?.pressed == k,
                             lifted = drag?.lifted == k,
                             hole = origin == k,
@@ -781,6 +889,35 @@ private fun BinderSheet(
     }
 }
 
+/** The space after the last page of an open binder, with a button to add a page. */
+@Composable
+private fun EndOfBinder(onAddPage: (() -> Unit)?) {
+    val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp)
+    val dash = AppColors.BorderStrong
+    Box(
+        Modifier.fillMaxSize().clip(shape)
+            .background(AppColors.Surface.copy(alpha = 0.5f))
+            .drawBehind {
+                drawRoundRect(
+                    dash,
+                    cornerRadius = CornerRadius(12.dp.toPx()),
+                    style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))),
+                )
+            }
+            .then(if (onAddPage != null) Modifier.clickable(onClickLabel = "Add a page", onClick = onAddPage) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (onAddPage != null) {
+                Text("+", fontSize = 32.sp, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
+                Text("Add a page", style = MaterialTheme.typography.titleMedium, color = AppColors.Muted)
+            } else {
+                Text("End of binder", style = MaterialTheme.typography.titleMedium, color = AppColors.Muted)
+            }
+        }
+    }
+}
+
 /** "‹  Page 2 of 6  ›" with a dot for each page (when there aren't too many). */
 @Composable
 private fun PageArrows(
@@ -796,7 +933,17 @@ private fun PageArrows(
     ping: Pair<Int, Long>? = null,
     // Tells the screen where each dot (and arrow) is, so a moving card can fly to it.
     onPlaced: (key: Int, LayoutCoordinates) -> Unit = { _, _ -> },
+    // Open binder: one dot for each pair of pages.
+    open: Boolean = false,
 ) {
+    val dotCount = if (open) (pageCount + 1) / 2 else pageCount
+    val current = if (open) (pageNumber - 1) / 2 else pageNumber - 1
+    val label = if (open) {
+        val first = current * 2 + 1
+        if (first + 1 <= pageCount) "Pages $first–${first + 1} of $pageCount" else "Page $first of $pageCount"
+    } else {
+        "Page $pageNumber of $pageCount"
+    }
     Row(
         Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -810,23 +957,30 @@ private fun PageArrows(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Page $pageNumber of $pageCount", style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
+                Text(label, style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
                 if (onJump != null) Text("  ▾", fontSize = 11.sp, color = AppColors.Muted)
             }
-            if (pageCount <= 12) {
+            if (dotCount <= 12) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    repeat(pageCount) { i ->
-                        val on = i == pageNumber - 1
+                    repeat(dotCount) { i ->
+                        val on = i == current
                         val w by animateDpAsState(if (on) 18.dp else 6.dp, tween(Motion.Short, easing = Motion.Ease), label = "dot")
                         val pop = remember { Animatable(1f) }
                         LaunchedEffect(ping) {
-                            if (ping?.first == i) {
+                            if (ping != null && (if (open) ping.first / 2 else ping.first) == i) {
                                 pop.snapTo(2.4f)
                                 pop.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMediumLow))
                             }
                         }
                         Box(
-                            Modifier.onGloballyPositioned { onPlaced(i, it) }
+                            Modifier.onGloballyPositioned {
+                                if (open) {
+                                    onPlaced(i * 2, it)
+                                    onPlaced(i * 2 + 1, it)
+                                } else {
+                                    onPlaced(i, it)
+                                }
+                            }
                                 .graphicsLayer { scaleX = pop.value; scaleY = pop.value }
                                 .width(w).height(6.dp).clip(RoundedCornerShape(3.dp))
                                 .background(if (on || pop.value > 1.01f) AppColors.AccentText else AppColors.BorderStrong),

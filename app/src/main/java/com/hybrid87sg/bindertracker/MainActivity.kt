@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.IntOffset
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.ui.components.Motion
+import com.hybrid87sg.bindertracker.ui.components.colorFromHex
 import com.hybrid87sg.bindertracker.ui.screens.CollectionStats
 import androidx.compose.ui.graphics.asImageBitmap
 import android.os.Bundle
@@ -361,8 +362,11 @@ private fun App(
             val prevId = siblings.getOrNull(index - 1)?.takeIf { index > 0 }?.id
             val nextId = siblings.getOrNull(index + 1)?.takeIf { index >= 0 }?.id
             // Pockets for this page and its neighbours, kept ready so turning is instant.
+            // Three pages either side, so an open binder (two pages side by side on an
+            // unfolded phone) has this pair and the pairs before and after it ready too.
             val pocketsById = remember { mutableStateMapOf<String, List<PocketWithCard>>() }
-            listOfNotNull(prevId, pageId, nextId).forEach { id ->
+            val nearby = if (index >= 0) siblings.subList((index - 3).coerceAtLeast(0), (index + 4).coerceAtMost(siblings.size)).map { it.id } else emptyList()
+            (nearby + pageId).distinct().forEach { id ->
                 key(id) { LaunchedEffect(id) { vm.pockets(id).collect { pocketsById[id] = it } } }
             }
             val pockets = pocketsById[pageId].orEmpty()
@@ -416,6 +420,9 @@ private fun App(
                         onSwap = vm::swapPockets,
                         onMoveToNewPage = { position, onCreated -> vm.moveToNewPage(b, pageId, position, onCreated) },
                         onGoToPage = { pageId = it },
+                        spreadPockets = pocketsById,
+                        coverColor = colorFromHex(b.colorHex),
+                        onAddPage = { vm.addPages(b, 1) },
                     )
                 }
             }
