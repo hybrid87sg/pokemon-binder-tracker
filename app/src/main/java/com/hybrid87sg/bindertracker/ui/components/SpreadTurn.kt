@@ -111,6 +111,8 @@ fun SpreadTurnStage(
     val okNext by rememberUpdatedState(canNext)
 
     fun allowed(d: Int) = (d > 0 && okNext) || (d < 0 && okPrev)
+    // A turn is being finished: nothing else may move it or finish it again.
+    var finishing by remember { mutableStateOf(false) }
 
     // Here progress always runs 0 (flat) to 1 (turned over), in both directions.
     suspend fun begin(d: Int) {
@@ -132,7 +134,8 @@ fun SpreadTurnStage(
 
     suspend fun finish(done: Boolean) {
         val d = state.direction
-        if (d == 0) return
+        if (d == 0 || finishing) return
+        finishing = true
         val target = if (done) 1f else 0f
         val distance = abs(target - state.progress)
         animate(
@@ -140,12 +143,14 @@ fun SpreadTurnStage(
             targetValue = target,
             animationSpec = tween((1000 * distance).toInt().coerceAtLeast(160), easing = FastOutSlowInEasing),
         ) { value, _ -> state.progress = value }
+        // Each turn is committed once, by the one finish that owns it.
         if (done) turned(d)
         state.generation++
         state.direction = 0
         state.picture = null
         backPicture = null
         state.progress = 0f
+        finishing = false
     }
 
     // The arrow buttons.
@@ -166,15 +171,17 @@ fun SpreadTurnStage(
                 detectHorizontalDragGestures(
                     onDragStart = { total = 0f; tracker.resetTracking() },
                     onDragEnd = {
-                        if (state.direction != 0) {
+                        if (state.direction != 0 && !finishing) {
                             val v = tracker.calculateVelocity().x * -state.direction
                             scope.launch { finish(state.progress > 0.4f || v > 900f) }
                         }
                     },
-                    onDragCancel = { if (state.direction != 0) scope.launch { finish(false) } },
+                    onDragCancel = { if (state.direction != 0 && !finishing) scope.launch { finish(false) } },
                     onHorizontalDrag = { change, dx ->
                         total += dx
                         tracker.addPosition(change.uptimeMillis, change.position)
+                        // A turn already on its way (e.g. from the arrows) isn't the finger's to move.
+                        if (finishing) return@detectHorizontalDragGestures
                         if (state.direction == 0) {
                             // Drag left = forward (the right page turns over), drag right = back.
                             val d = if (total < 0) 1 else -1

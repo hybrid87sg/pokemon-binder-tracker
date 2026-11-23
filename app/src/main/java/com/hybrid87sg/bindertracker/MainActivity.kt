@@ -26,6 +26,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import com.hybrid87sg.bindertracker.data.ExpansionCount
@@ -366,6 +367,9 @@ private fun App(
             // unfolded phone) has this pair and the pairs before and after it ready too.
             val pocketsById = remember { mutableStateMapOf<String, List<PocketWithCard>>() }
             val nearby = if (index >= 0) siblings.subList((index - 3).coerceAtLeast(0), (index + 4).coerceAtMost(siblings.size)).map { it.id } else emptyList()
+            // Forget pages that are no longer near: their pockets stop updating, so the
+            // page screen falls back to the binder-wide (always current) pockets for them.
+            SideEffect { pocketsById.keys.retainAll((nearby + pageId).toSet()) }
             (nearby + pageId).distinct().forEach { id ->
                 key(id) { LaunchedEffect(id) { vm.pockets(id).collect { pocketsById[id] = it } } }
             }

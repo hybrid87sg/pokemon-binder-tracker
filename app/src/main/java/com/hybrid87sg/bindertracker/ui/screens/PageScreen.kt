@@ -502,8 +502,13 @@ fun PageScreen(
             }
             override fun drop() {
                 val from = drag.origin
-                val to = drag.hover
-                val toOther = drag.hoverOther
+                // Pages turning under the card: nothing to drop on yet.
+                if (turnState.direction != 0) return cancel()
+                // Work out the target again where the finger is now, in the pages on show now
+                // (the pages may have turned since the finger last moved).
+                val slop = with(density) { 6.dp.toPx() }
+                val to = drag.pocketAt(drag.finger, slop)?.takeIf { it != from }
+                val toOther = if (to == null && isOpen) drag.otherAt(drag.finger, slop) else null
                 if (from != null && to == null && toOther != null) {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     dropOnOther(from, toOther)
@@ -640,8 +645,9 @@ fun PageScreen(
                         val other = which == 0 && !live
                         BinderSheet(
                             pocketsOf(id), columns, pageKey = id, live = live,
-                            onPocket = { if (live) gestures.tap(it.position) },
-                            onPocketHold = { if (live && canEdit) selected = it },
+                            // (Also what TalkBack's double tap / double tap and hold do.)
+                            onPocket = { if (live) gestures.tap(it.position) else if (other) tapOther(id, it) },
+                            onPocketHold = { if (live) { if (canEdit) selected = it } else if (other) holdOther(id, it) },
                             drag = if (live) drag else null,
                             gestures = if (live) gestures else null,
                             mirrored = side == 0,
