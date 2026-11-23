@@ -60,7 +60,17 @@ service cloud.firestore {
           && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([uid]);
       }
 
-      allow update: if ownerUpdate() || joining() || leaving();
+      // An Editor can change what's in the binder like the owner: its name,
+      // colour, size and the expansions it collects. Who owns it, who is in
+      // it, their roles and the share codes stay with the owner.
+      function editorUpdate() {
+        return signedIn()
+          && resource.data.roles[request.auth.uid] == 'editor'
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'colorHex', 'columns', 'rows', 'followedSets', 'countSecretRares']);
+      }
+
+      allow update: if ownerUpdate() || editorUpdate() || joining() || leaving();
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
 
       match /pages/{pageId} {

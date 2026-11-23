@@ -293,9 +293,9 @@ class CloudSync(
         }
     }
 
-    /** Name or colour changed (owners only). */
+    /** Name, colour or expansions changed (owner or an Editor). */
     fun binderSettingsChanged(b: Binder) {
-        if (user == null || !b.isOwner) return
+        if (user == null || !b.canEdit) return
         binderRef(b.id).set(settingsDoc(b), SetOptions.merge()).addOnFailureListener(::reportWriteFailure)
     }
 
@@ -305,7 +305,7 @@ class CloudSync(
         scope.launch {
             lock.withLock {
                 val b = binderDao.get(binderId) ?: return@withLock
-                if (b.isOwner) uploadWholeBinder(u, b, firstTime = false)
+                if (b.canEdit) uploadWholeBinder(u, b, firstTime = false)
             }
         }
     }

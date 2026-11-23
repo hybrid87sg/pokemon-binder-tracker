@@ -46,7 +46,8 @@ data class Binder(
     val pocketsPerPage: Int get() = columns * rows
     val sizeLabel: String get() = "$columns × $rows"
     val isOwner: Boolean get() = role == ROLE_OWNER
-    // Owners and editors can add pages and change cards; viewers can't.
+    // Owners and editors can change everything in the binder (cards, pages,
+    // name, colour, size, what it collects); viewers can only look.
     val canEdit: Boolean get() = role == ROLE_OWNER || role == ROLE_EDITOR
     val isShared: Boolean get() = memberCount > 1 || !isOwner
 

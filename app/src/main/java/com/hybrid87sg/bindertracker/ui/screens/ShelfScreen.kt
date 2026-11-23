@@ -248,8 +248,8 @@ fun ShelfScreen(
                                         fill = fill[item.binder.id]?.fraction ?: 0f,
                                         grow = inT,
                                         onClick = { onOpenBinder(item.binder) },
-                                        // Only the owner can change a binder's colour.
-                                        onLongClick = { if (item.binder.isOwner) editingId = item.binder.id },
+                                        // The owner and Editors can change a binder's colour.
+                                        onLongClick = { if (item.binder.canEdit) editingId = item.binder.id },
                                     )
                                     missing[item.binder.id]?.takeIf { it.total > 0 }?.let { p ->
                                         MissingBadge(p.missing, pop = inT, modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-8).dp))
