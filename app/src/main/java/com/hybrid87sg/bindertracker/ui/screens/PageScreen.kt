@@ -203,6 +203,9 @@ fun PageScreen(
     coverColor: Color? = null,
     // Adds an empty page at the end of the binder (null = can't).
     onAddPage: (() -> Unit)? = null,
+    // Missing cards shown greyed out in free pockets, by page then pocket position
+    // (a binder collecting expansions: see Checklist.ghosts).
+    ghosts: Map<String, Map<Int, Card>> = emptyMap(),
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -318,8 +321,16 @@ fun PageScreen(
     val newPage by rememberUpdatedState(onMoveToNewPage)
     val goToPage by rememberUpdatedState(onGoToPage)
     val nearbyCards by rememberUpdatedState(spreadPockets)
+    val latestGhosts by rememberUpdatedState(ghosts)
+    val latestGuesses by rememberUpdatedState(suggestions)
 
     fun shownPocket(position: Int) = latestPockets.firstOrNull { it.position == position }
+
+    // The missing card shown greyed out in a free pocket, if any. Not in a pocket
+    // the app just scanned and wasn't sure about: a real card is in that one.
+    fun ghostAt(page: String, position: Int): Card? =
+        if (page == currentPageId && latestGuesses[position].orEmpty().isNotEmpty()) null
+        else latestGhosts[page]?.get(position)
 
     // Swaps two pockets on this page, with both cards sliding to their new places.
     // [draggedFrom] is where the dragged card was let go, if it was dragged.
@@ -359,7 +370,7 @@ fun PageScreen(
     // then does what it would do there.
     fun tapOther(id: String, p: PocketWithCard) {
         goToPage(id)
-        if (p.cardId != null) openCard(id, p.position) else if (editable) scanCard(p.position)
+        if (p.cardId != null || ghostAt(id, p.position) != null) openCard(id, p.position) else if (editable) scanCard(p.position)
     }
 
     fun holdOther(id: String, p: PocketWithCard) {
@@ -472,7 +483,9 @@ fun PageScreen(
             override fun release() { drag.pressed = null }
             override fun tap(position: Int) {
                 val p = shownPocket(position) ?: return
-                if (p.cardId != null) openCard(currentPageId, position) else if (editable) scanCard(position)
+                // A grey missing card opens too: its card screen has "Put it in" and "Scan it in".
+                if (p.cardId != null || ghostAt(currentPageId, position) != null) openCard(currentPageId, position)
+                else if (editable) scanCard(position)
             }
             override fun hold(position: Int): Boolean {
                 drag.pressed = null
@@ -664,6 +677,7 @@ fun PageScreen(
                         val other = which == 0 && !live
                         BinderSheet(
                             pocketsOf(id), columns, pageKey = id, live = live,
+                            ghostAt = { pos -> ghostAt(id, pos) },
                             // (Also what TalkBack's double tap / double tap and hold do.)
                             onPocket = { if (live) gestures.tap(it.position) else if (other) tapOther(id, it) },
                             onPocketHold = { if (live) { if (canEdit) selected = it } else if (other) holdOther(id, it) },
@@ -719,6 +733,7 @@ fun PageScreen(
                     // Press and hold: the pocket's menu with every option.
                     BinderSheet(
                         sheetPockets, columns, pageKey = sheetKey, live = live,
+                        ghostAt = { pos -> ghostAt(sheetKey, pos) },
                         onPocket = { if (live) gestures.tap(it.position) },
                         onPocketHold = { if (live && canEdit) selected = it },
                         drag = if (live) drag else null,
@@ -889,6 +904,10 @@ fun PageScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                 }
+                // The grey missing card shown here: one tap if that's the card you're putting in.
+                if (pocket.cardId == null) ghostAt(pageId, pocket.position)?.let { ghost ->
+                    SheetButton("Put #${ghost.number} ${ghost.name} here") { selected = null; onPickSuggestion(pocket.position, ghost.id) }
+                }
                 SheetButton("Scan this card") { selected = null; onScanCard(pocket.position) }
                 SheetButton(if (pocket.cardId == null) "Choose card from list" else "Change card") { selected = null; onChooseCard(pocket.position) }
                 if (pocket.cardId != null) SheetButton("View card and price") { selected = null; onViewCard(pageId, pocket.position) }
@@ -922,9 +941,9 @@ fun PageScreen(
             text = {
                 Text(
                     when {
-                        open && canEdit -> "Swipe a page across the rings to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket, on either page."
+                        open && canEdit -> "Swipe a page across the rings to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Grey cards are ones you're still missing: tap one to see it and put it in. Hold a card until it lifts, then drag it to another pocket, on either page."
                         open -> "Swipe a page across the rings to turn it. Tap a card to see it and its price. This binder is view only."
-                        canEdit -> "Swipe the page sideways to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
+                        canEdit -> "Swipe the page sideways to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Grey cards are ones you're still missing: tap one to see it and put it in. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
                         else -> "Swipe the page sideways to turn it. Tap a card to see it and its price. This binder is view only."
                     },
                 )
@@ -973,6 +992,8 @@ private fun BinderSheet(
     columns: Int,
     pageKey: String,
     live: Boolean,
+    // The missing card shown greyed out in a free pocket, by pocket position.
+    ghostAt: (Int) -> Card?,
     onPocket: (PocketWithCard) -> Unit,
     onPocketHold: (PocketWithCard) -> Unit,
     // Only for the page you're on: holding and dragging cards.
@@ -1034,6 +1055,7 @@ private fun BinderSheet(
                         } else Offset.Zero
                         PocketTile(
                             pocket = pocket,
+                            ghost = if (pocket.cardId == null) ghostAt(k) else null,
                             pageKey = pageKey,
                             live = live,
                             tilt = tilt,
@@ -1213,6 +1235,8 @@ private const val NEXT_ARROW = -2
 @Composable
 private fun PocketTile(
     pocket: PocketWithCard,
+    // A missing card to show greyed out, when the pocket has no card.
+    ghost: Card? = null,
     pageKey: String,
     live: Boolean,
     order: Int,
@@ -1240,13 +1264,14 @@ private fun PocketTile(
 ) {
     val label = when {
         pocket.cardName != null -> pocket.cardName
+        ghost != null -> ghost.name
         pocket.isEmpty -> "Empty pocket"
         else -> "Tap to scan"
     }
     // Flying to or from the card screen: lifted up out of the sleeve (see CardFlight).
     val flightKey = CardFlight.pocketKey(pageKey, pocket.position)
     val rise by animateFloatAsState(
-        if (pocket.cardId != null && CardFlight.lifting == flightKey) 1f else 0f,
+        if ((pocket.cardId != null || ghost != null) && CardFlight.lifting == flightKey) 1f else 0f,
         tween(CardFlight.LiftMillis, easing = Motion.Ease),
         label = "rise",
     )
@@ -1322,7 +1347,7 @@ private fun PocketTile(
             }
             // For TalkBack: a double tap opens it, a double tap and hold opens the menu.
             .semantics {
-                onClick(label = if (pocket.cardId != null) "View card" else "Scan a card") { onTapped(); true }
+                onClick(label = if (pocket.cardId != null || ghost != null) "View card" else "Scan a card") { onTapped(); true }
                 onLongClick(label = "More options") { onHeld(); true }
             },
     ) {
@@ -1360,7 +1385,7 @@ private fun PocketTile(
                             cameraDistance = 12f * density
                             alpha = if (hole || hidden) 0f else 1f
                             // A soft shadow lifts every card off the page (more while it's held up).
-                            val resting = if ((pocket.cardId != null || pocket.isEmpty) && !hole && !hidden) 3.dp.toPx() else 0f
+                            val resting = if ((pocket.cardId != null || (pocket.isEmpty && ghost == null)) && !hole && !hidden) 3.dp.toPx() else 0f
                             shadowElevation = resting + lift * 14.dp.toPx()
                             ambientShadowColor = cardShadow
                             spotShadowColor = cardShadow
@@ -1377,6 +1402,7 @@ private fun PocketTile(
                         .clip(shape)
                         .then(
                             when {
+                                ghost != null -> Modifier
                                 pocket.isEmpty -> Modifier
                                 pocket.cardId == null -> Modifier.border(2.dp, CheckBorder, shape)
                                 else -> Modifier.border(1.dp, AppColors.Border, shape)
@@ -1385,6 +1411,17 @@ private fun PocketTile(
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
+                        // A card you're missing from the binder's expansions: its picture greyed out
+                        // (the Medium fade, as on the Missing cards page). Saved on the phone for offline use.
+                        ghost != null -> CardImage(
+                            ghost.thumbnailUrl,
+                            contentDescription = "${ghost.name}, missing",
+                            modifier = Modifier.fillMaxSize().cardFlight(flightKey),
+                            backupUrl = ghost.thumbnailBackupUrl,
+                            cardId = ghost.id,
+                            grey = true,
+                            noPicture = { CardBack(Modifier.fillMaxSize()) },
+                        )
                         // Our own card-back picture, so an empty pocket looks like a card turned over.
                         pocket.isEmpty -> CardBack(Modifier.fillMaxSize())
                         // Identified: the official card picture from TCGdex, not the photo.
@@ -1411,14 +1448,18 @@ private fun PocketTile(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (pocket.cardId == null && !pocket.isEmpty) AppColors.Black else AppColors.Ink,
-                modifier = if (pocket.cardId == null && !pocket.isEmpty) {
+                color = when {
+                    ghost != null -> AppColors.Muted
+                    pocket.cardId == null && !pocket.isEmpty -> AppColors.Black
+                    else -> AppColors.Ink
+                },
+                modifier = if (pocket.cardId == null && !pocket.isEmpty && ghost == null) {
                     Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 6.dp, vertical = 2.dp)
                 } else Modifier,
             )
-            pocket.cardNumber?.let {
-                val number = runCatching { URLDecoder.decode(it, "UTF-8") }.getOrDefault(it)
-                Text("#$number · ${pocket.setName.orEmpty()}", fontSize = 12.sp, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            (pocket.cardNumber?.let { it to pocket.setName } ?: ghost?.let { it.number to it.setName })?.let { (raw, setName) ->
+                val number = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
+                Text("#$number · ${setName.orEmpty()}", fontSize = 12.sp, color = AppColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
