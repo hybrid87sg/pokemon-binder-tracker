@@ -20,6 +20,12 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -95,7 +101,6 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import com.hybrid87sg.bindertracker.ui.components.CardFlight
 import com.hybrid87sg.bindertracker.ui.components.cardFlight
-import androidx.compose.animation.core.CubicBezierEasing
 import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.ui.components.HoloBar
 import com.hybrid87sg.bindertracker.ui.components.Motion
@@ -202,6 +207,7 @@ fun PageScreen(
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showTips by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     // The "Go to page" panel, opened by tapping the page number.
     var jumping by remember { mutableStateOf(false) }
@@ -235,14 +241,8 @@ fun PageScreen(
             }
         }
     }
-    // Back from the card screen: the card lands lifted above its pocket, then slides in.
-    LaunchedEffect(Unit) {
-        CardFlight.lifting = null
-        if (CardFlight.landing != null) {
-            delay(CardFlight.FlyMillis.toLong())
-            CardFlight.landing = null
-        }
-    }
+    // Back from the card screen: nothing is lifted any more (the card is simply in its pocket).
+    LaunchedEffect(Unit) { CardFlight.lifting = null }
     var moving by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<Notice?>(null) }
     var flight by remember { mutableStateOf<Flight?>(null) }
@@ -600,6 +600,8 @@ fun PageScreen(
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
+            // The tips used to sit under the page as fine print (and made the page scroll).
+            TipsButton { showTips = true }
             // Deleting the page lives behind Edit, with a Done button to leave.
             if (!editing && canEdit) {
                 TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
@@ -610,7 +612,21 @@ fun PageScreen(
         // (No "Page 3" heading: the page number shows once, in the navigation at the bottom.)
         Spacer(Modifier.height(4.dp))
 
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 14.dp)) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        // Folded: the page sits on the binder's cover, sized so the whole page fits
+        // the screen's height without scrolling (see [foldedCoverWidth]).
+        val coverWidth = if (open) maxWidth else foldedCoverWidth(
+            maxWidth = maxWidth - 20.dp,
+            maxHeight = maxHeight,
+            rows = listOfNotNull(shownPockets.size, prevPockets?.size, nextPockets?.size)
+                .maxOf { (it + columns.coerceAtLeast(1) - 1) / columns.coerceAtLeast(1) },
+            columns = columns.coerceAtLeast(1),
+        )
+        // (Still scrolls if a page is too tall for a tiny screen, so nothing is ever cut off.)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = if (open) 18.dp else 10.dp, end = if (open) 14.dp else 10.dp),
+        ) {
             if (open) {
                 // Two pages side by side, rings down the middle; a whole spread turns at once.
                 SpreadTurnStage(
@@ -661,6 +677,12 @@ fun PageScreen(
                     }
                 }
             } else {
+                // The binder's cover round the page, like the open binder's two-page spread.
+                Box(
+                    Modifier.align(Alignment.CenterHorizontally).width(coverWidth)
+                        .binderCover(coverColor ?: AppColors.CardBack)
+                        .padding(start = CoverRingSide, top = CoverEdge, end = CoverEdge, bottom = CoverEdge),
+                ) {
                 // Drag the sheet sideways to turn it like a real binder page.
                 PageTurnStage(
                     state = turnState,
@@ -703,18 +725,10 @@ fun PageScreen(
                         gestures = if (live) gestures else null,
                     )
                 }
+                }
             }
-            Text(
-                when {
-                    open && canEdit -> "Swipe a page across the rings to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket on the same page."
-                    open -> "Swipe a page across the rings to turn it. Tap a card to see it and its price. This binder is view only."
-                    canEdit -> "Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
-                    else -> "Tap a card to see it and its price. This binder is view only."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = AppColors.Muted,
-                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-            )
+            Spacer(Modifier.height(BelowPage))
+        }
         }
 
         // How full the page is, just above the page navigation (under the binder).
@@ -901,6 +915,24 @@ fun PageScreen(
             }
         }
     }
+    if (showTips) {
+        AlertDialog(
+            onDismissRequest = { showTips = false },
+            title = { Text("Tips") },
+            text = {
+                Text(
+                    when {
+                        open && canEdit -> "Swipe a page across the rings to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket, on either page."
+                        open -> "Swipe a page across the rings to turn it. Tap a card to see it and its price. This binder is view only."
+                        canEdit -> "Swipe the page sideways to turn it. Tap a card to see it, or an empty pocket to scan a card into it. Hold a card until it lifts, then drag it to another pocket. Hold and let go for more options."
+                        else -> "Swipe the page sideways to turn it. Tap a card to see it and its price. This binder is view only."
+                    },
+                )
+            },
+            confirmButton = { TextButton(onClick = { showTips = false }) { Text("Got it") } },
+        )
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -1213,16 +1245,14 @@ private fun PocketTile(
     }
     // Flying to or from the card screen: lifted up out of the sleeve (see CardFlight).
     val flightKey = CardFlight.pocketKey(pageKey, pocket.position)
-    val landingHere = CardFlight.landing == flightKey
     val rise by animateFloatAsState(
-        if (pocket.cardId != null && (CardFlight.lifting == flightKey || landingHere)) 1f else 0f,
-        if (CardFlight.lifting == flightKey) tween(CardFlight.LiftMillis, easing = Motion.Ease)
-        else tween(CardFlight.SettleMillis, easing = SettleEasing),
+        if (pocket.cardId != null && CardFlight.lifting == flightKey) 1f else 0f,
+        tween(CardFlight.LiftMillis, easing = Motion.Ease),
         label = "rise",
     )
     // Cards pop into their pockets one after another when the page opens
-    // (not the one flying back from the card screen: it slides in instead).
-    val popIn = arrive(play = live && !landingHere, delayMillis = 80 + order * 45, durationMillis = 340)
+    // (not when you come back from the card screen: then they're simply there).
+    val popIn = arrive(play = live && !CardFlight.closing, delayMillis = 80 + order * 45, durationMillis = 340)
 
     // Sliding in from another pocket after a move (see [Arrival]).
     val arriveAt = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
@@ -1478,5 +1508,79 @@ private fun Modifier.holoTouch(): Modifier {
         }
 }
 
-/** Slides the card back into its sleeve with a tiny bounce at the bottom. */
-private val SettleEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
+// The binder's cover round a folded page: a little cover shows on three sides,
+// and a wider strip down the ring side, where the rings sit.
+private val CoverEdge = 5.dp
+private val CoverRingSide = 14.dp
+// Space between the binder and the "7 of 9 filled" line.
+private val BelowPage = 8.dp
+
+/**
+ * The binder's cover, drawn behind a folded page: the binder's colour, with a
+ * darker strip down the ring side like the spine of the open two-page binder.
+ */
+private fun Modifier.binderCover(color: Color): Modifier = drawBehind {
+    val r = CornerRadius(14.dp.toPx())
+    drawRoundRect(color, cornerRadius = r)
+    drawRoundRect(
+        Brush.horizontalGradient(
+            listOf(Color.Black.copy(alpha = 0.32f), Color.White.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.18f), Color.Transparent),
+            startX = 0f,
+            endX = 22.dp.toPx(),
+        ),
+        cornerRadius = r,
+    )
+}
+
+/** A small round "?" button that shows the page's tips. */
+@Composable
+private fun TipsButton(onClick: () -> Unit) {
+    Box(
+        Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Show tips", onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(26.dp).border(1.5.dp, AppColors.Muted, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppColors.Muted)
+        }
+    }
+}
+
+/**
+ * How wide the folded binder (cover and page) can be so the whole page fits in
+ * [maxHeight] without scrolling. Each pocket is a card picture (its height goes
+ * with its width) plus two lines of text (a fixed height), so we work out the
+ * card size that fills the height, and from that the width. It always allows for
+ * both text lines in every pocket, so the size doesn't jump about as cards get
+ * identified, and every page with the same number of pockets is the same size.
+ * Keep the numbers here in step with [BinderSheet] and [PocketTile].
+ */
+@Composable
+private fun foldedCoverWidth(maxWidth: Dp, maxHeight: Dp, rows: Int, columns: Int): Dp {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val base = LocalTextStyle.current
+    val textHeight = remember(density, base) {
+        fun lineHeight(style: TextStyle) = with(density) {
+            measurer.measure("Ag", base.merge(style), maxLines = 1).size.height.toDp()
+        }
+        // The card name (with its "to identify" highlight padding), then "#25 · 151".
+        lineHeight(TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)) + 4.dp +
+            lineHeight(TextStyle(fontSize = 12.sp))
+    }
+    if (rows <= 0 || maxHeight == Dp.Infinity) return maxWidth
+    // Per pocket, besides the card: sleeve (3 + 3), then a 6 gap before each text line.
+    val pocketExtra = 6.dp + 6.dp + 6.dp + textHeight
+    // Sheet padding (10 top and bottom), 10 between rows, and the cover round it.
+    val fixed = 20.dp + 10.dp * (rows - 1) + pocketExtra * rows + CoverEdge * 2 + BelowPage + 4.dp
+    val cardHeight = (maxHeight - fixed) / rows
+    // Never shrink cards below a usable size; a tiny screen scrolls instead.
+    val cardWidth = (cardHeight * CARD_ASPECT).coerceAtLeast(56.dp)
+    val pocket = cardWidth + 6.dp
+    // 8 between pockets, sheet padding 26 + 10, cover 14 + 5.
+    val width = pocket * columns + 8.dp * (columns - 1) + 36.dp + CoverRingSide + CoverEdge
+    return width.coerceAtMost(maxWidth)
+}
+

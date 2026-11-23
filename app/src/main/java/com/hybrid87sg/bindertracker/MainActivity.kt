@@ -60,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.produceState
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.ExpansionOption
@@ -258,6 +259,13 @@ private fun App(
             }
         }
     }
+    // Once the card screen has faded away, cards can fly again next time one opens.
+    LaunchedEffect(route, CardFlight.closing) {
+        if (CardFlight.closing && route != "card/{id}") {
+            delay(Motion.Medium + 150L)
+            CardFlight.closing = false
+        }
+    }
     Row(Modifier.fillMaxSize()) {
     if (wide && tab != null) MainTabRail(tab, missingTotal, goTab)
     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -274,8 +282,9 @@ private fun App(
         // Switching tabs just cross-fades; going deeper slides in from the right.
         enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
         exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
-        popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
-        popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
+        // Closing the card screen is a quick fade (no flight back).
+        popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(fade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
+        popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(fade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
     ) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
@@ -463,8 +472,9 @@ private fun App(
                     loadDetails = vm::cardDetails,
                     loadRates = vm::sgdRates,
                     onBack = { item ->
-                        // Fly back to the pocket of the card showing now, turning to its page.
-                        CardFlight.landing = item.flightKey
+                        // No flight back: the card screen fades and the card is already in its
+                        // pocket. The binder still turns to the page of the card showing now.
+                        CardFlight.closing = true
                         item.pageId?.let { nav.previousBackStackEntry?.savedStateHandle?.set("landingPage", it) }
                         nav.popBackStack()
                     },

@@ -17,9 +17,11 @@ import androidx.compose.ui.Modifier
  * A card flying between a pocket (or a Missing cards tile) and the card screen.
  *
  * Opening: the card slides up out of its sleeve ([LiftMillis]), then flies and
- * grows into the card screen ([FlyMillis]). Closing does the reverse, then the
- * card slides back down into the sleeve ([SettleMillis]). Ril picked the
- * "Relaxed" speed in the prototype: about a second each way.
+ * grows into the card screen ([FlyMillis]). Ril picked the "Relaxed" speed in
+ * the prototype: about a second.
+ *
+ * Closing: no flight back. The card screen just fades away and the card is
+ * already resting in its pocket (Ril asked to drop the slide back in).
  *
  * Both screens mark the card picture with [cardFlight] and the same key, and
  * Compose's shared element transition does the flying.
@@ -27,7 +29,6 @@ import androidx.compose.ui.Modifier
 object CardFlight {
     const val LiftMillis = 340
     const val FlyMillis = 720
-    const val SettleMillis = 480
     val FlyEasing = CubicBezierEasing(0.2f, 0.75f, 0.2f, 1f)
 
     /** The key for the card in one pocket. */
@@ -37,10 +38,11 @@ object CardFlight {
     fun missingKey(cardId: String) = "missing-$cardId"
 
     /**
-     * The card that is flying back from the card screen, by its key. Its pocket
-     * starts lifted out of the sleeve, so the card lands there and then slides in.
+     * True while the card screen is closing. Cards don't fly then (the screen
+     * just fades), and the binder's cards don't pop in again: they are simply
+     * there. MainActivity clears it once the fade is over.
      */
-    var landing by mutableStateOf<String?>(null)
+    var closing by mutableStateOf(false)
 
     /** The card sliding up out of its sleeve on the way to the card screen, by its key. */
     var lifting by mutableStateOf<String?>(null)
@@ -62,7 +64,7 @@ val LocalScreenAnimationScope = compositionLocalOf<AnimatedVisibilityScope?> { n
 fun Modifier.cardFlight(key: String?): Modifier {
     val shared = LocalSharedTransitionScope.current ?: return this
     val screen = LocalScreenAnimationScope.current ?: return this
-    if (key == null) return this
+    if (key == null || CardFlight.closing) return this
     return with(shared) {
         this@cardFlight.sharedElement(
             rememberSharedContentState(key),
