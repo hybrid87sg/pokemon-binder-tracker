@@ -68,6 +68,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import com.hybrid87sg.bindertracker.ai.AiFailure
 import com.hybrid87sg.bindertracker.ai.AiSetup
 import kotlinx.coroutines.launch
 
@@ -305,6 +306,7 @@ private fun AiSetupSection() {
     var code by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var details by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { code = AiSetup.debugCode(context) }
 
     HorizontalDivider(color = AppColors.Border)
@@ -332,6 +334,7 @@ private fun AiSetupSection() {
                     context.getSystemService(android.content.ClipboardManager::class.java)
                         ?.setPrimaryClip(android.content.ClipData.newPlainText("App Check code", it))
                     message = "Code copied."
+                    details = null
                 } },
                 enabled = code != null,
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -343,11 +346,14 @@ private fun AiSetupSection() {
                 onClick = {
                     testing = true
                     message = "Asking Gemini…"
+                    details = null
                     scope.launch {
-                        message = AiSetup.test(context).fold(
+                        val result = AiSetup.test(context)
+                        message = result.fold(
                             onSuccess = { "It works! Gemini says: $it" },
                             onFailure = { it.message ?: "Something went wrong." },
                         )
+                        details = (result.exceptionOrNull() as? AiFailure)?.details
                         testing = false
                     }
                 },
@@ -365,6 +371,16 @@ private fun AiSetupSection() {
                 color = AppColors.Muted,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
+        }
+        details?.let {
+            // The real error text, so a screenshot shows exactly what Firebase said.
+            SelectionContainer {
+                Text(
+                    "Details: $it",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = AppColors.Muted,
+                )
+            }
         }
     }
 }

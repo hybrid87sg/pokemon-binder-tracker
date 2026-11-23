@@ -49,6 +49,6 @@ object BinderChat {
         return runCatching {
             AiSetup.model.generateContent(prompt).text?.let(CardStories::plain).orEmpty()
                 .ifBlank { error("Gemini answered, but with no words. Try asking another way.") }
-        }.recoverCatching { e -> throw IllegalStateException(AiSetup.explain(e), e) }
+        }.recoverCatching { e -> throw aiFailure(e) }
     }
 }
