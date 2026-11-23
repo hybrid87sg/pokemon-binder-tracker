@@ -223,14 +223,21 @@ fun PageScreen(
         if (CardFlight.lifting != null) return
         CardFlight.lifting = key
         scope.launch {
-            delay(CardFlight.LiftMillis.toLong())
-            viewCardLatest(page, position)
-            delay(CardFlight.FlyMillis + 200L)
-            if (CardFlight.lifting == key) CardFlight.lifting = null
+            // The binder leaves the screen while the card flies, which cancels this
+            // job. "finally" still runs then, so the flag is always cleared (if it
+            // stayed set, every later tap on a card would be ignored).
+            try {
+                delay(CardFlight.LiftMillis.toLong())
+                viewCardLatest(page, position)
+                delay(CardFlight.FlyMillis + 200L)
+            } finally {
+                if (CardFlight.lifting == key) CardFlight.lifting = null
+            }
         }
     }
     // Back from the card screen: the card lands lifted above its pocket, then slides in.
     LaunchedEffect(Unit) {
+        CardFlight.lifting = null
         if (CardFlight.landing != null) {
             delay(CardFlight.FlyMillis.toLong())
             CardFlight.landing = null
