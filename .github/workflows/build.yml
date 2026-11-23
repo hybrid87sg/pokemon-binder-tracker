@@ -33,21 +33,25 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # The version people see is appVersionBase plus a count that starts at 0:
-      # the commit that last changed appVersionBase is .0, each commit after it
-      # adds one (0.2.0, 0.2.1, ...). On main every merge is one commit.
-      # The run number stays the hidden versionCode, so updates always count as newer.
+      # The version people see starts at appVersionBase.0: the commit that last
+      # changed appVersionBase is .0 and each commit after it adds one (on main
+      # every merge is one commit). The patch never reaches 70: after x.y.69
+      # comes x.(y+1).0. The run number stays the hidden versionCode, so
+      # updates always count as newer.
       - name: Work out the version
         run: |
           BASE=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2)
           START=$(git log -1 --format=%H -G '^appVersionBase=' -- gradle.properties)
-          PATCH=$(git rev-list --count "$START"..HEAD)
-          echo "PATCH=$PATCH" >> "$GITHUB_ENV"
-          echo "VERSION=$BASE.$PATCH" >> "$GITHUB_ENV"
-          echo "Version $BASE.$PATCH (versionCode $GITHUB_RUN_NUMBER)"
+          COUNT=$(git rev-list --count "$START"..HEAD)
+          MAJOR=${BASE%%.*}
+          MINOR=$(( ${BASE#*.} + COUNT / 70 ))
+          PATCH=$(( COUNT % 70 ))
+          VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Version $VERSION (versionCode $GITHUB_RUN_NUMBER)"
 
       - name: Build and test
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }} -PversionPatch=$PATCH
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }} -PversionLabel=$VERSION
 
       # Replace the previous "Latest debug build" pre-release with this one.
       # It holds the app (named with its version) and latest.json, the small

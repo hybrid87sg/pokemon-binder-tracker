@@ -72,7 +72,8 @@ GitHub Actions builds the app on every push and publishes it as a pre-release ca
 
 - The version is `appVersionBase` from `gradle.properties` (now `0.2`) plus a count of
   commits on main since `appVersionBase` last changed, starting at 0: `0.2.0`, `0.2.1`, ...
-  Change `appVersionBase` (for example to `0.3`) to start a new milestone at `.0`.
+  The last number never reaches 70: after `0.2.69` comes `0.3.0`, after `0.3.69` comes `0.4.0`.
+  Change `appVersionBase` (for example to `1.0`) to start a new milestone at `.0`.
 - Behind the scenes `versionCode` is the GitHub Actions run number, so every build is newer.
 - Builds on your own computer are called `0.2-dev` and always see GitHub's version as newer.
 - Next to the APK, the release has `latest.json`, for example
