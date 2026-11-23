@@ -527,7 +527,7 @@ private fun GroupHeading(title: String, have: Int, total: Int) {
 
 /** One card in the grid: its picture if you have it, or a dashed outline with its number if not. */
 @Composable
-private fun Tile(e: Checklist.Entry, onClick: () -> Unit) {
+internal fun Tile(e: Checklist.Entry, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     val inT = arrive(play = true, durationMillis = Motion.Short)
     Column(

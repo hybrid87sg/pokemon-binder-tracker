@@ -95,6 +95,8 @@ fun SearchRoute(
     initialQuery: String = "",
     // The cards showing (yours first), so the card screen can swipe through them.
     onResults: (List<Card>) -> Unit = {},
+    // False on the Search tab: no Back button, and the keyboard waits until you tap the box.
+    showBack: Boolean = true,
 ) {
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     // The filter: one whole series, or one expansion, or neither ("" = all cards).
@@ -146,6 +148,8 @@ fun SearchRoute(
         onFilterChange = { series, set -> seriesId = series; setId = set },
         filterNote = preset?.takeIf { seriesId.isEmpty() && setId == it.setId }
             ?.let { "Set from your last ${it.cardsInARow} cards. Tap ✕ to search every expansion." },
+        showBack = showBack,
+        autoFocus = showBack,
     )
 }
 
@@ -174,15 +178,16 @@ fun SearchScreen(
     places: Map<String, String> = emptyMap(),
     // True when more cards matched than are shown.
     moreOthers: Boolean = false,
+    showBack: Boolean = true,
 ) {
     val filtered = selectedSeries.isNotEmpty() || selectedSet.isNotEmpty()
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().imePadding()) {
-        Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton(backLabel, onBack) }
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.headlineMedium)
+        if (showBack) Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton(backLabel, onBack) }
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = if (showBack) 8.dp else 32.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = if (showBack) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge)
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,

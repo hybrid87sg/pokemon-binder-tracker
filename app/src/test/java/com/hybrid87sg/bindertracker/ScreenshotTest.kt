@@ -57,6 +57,13 @@ import com.hybrid87sg.bindertracker.scan.RingCodeReader
 import com.hybrid87sg.bindertracker.ui.components.RingCodeImage
 import com.hybrid87sg.bindertracker.ui.components.colorFromHex
 import org.junit.Rule
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import com.hybrid87sg.bindertracker.ai.ChatMessage
+import com.hybrid87sg.bindertracker.ui.components.MainTab
+import com.hybrid87sg.bindertracker.ui.components.MainTabBar
+import com.hybrid87sg.bindertracker.ui.screens.ChatScreen
+import com.hybrid87sg.bindertracker.ui.screens.MissingTabScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -386,5 +393,41 @@ class ScreenshotTest {
             onUpdate = {},
             onLater = {},
         )
+    }
+
+    @Test fun shelfWithTabs() = shoot("7-shelf-tabs") {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                ShelfScreen(binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = null, onSearch = null, onJoin = {})
+            }
+            MainTabBar(current = MainTab.Binders, missing = 42, onSelect = {})
+        }
+    }
+
+    @Test fun chatTab() = shoot("7b-chat-tab") {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                ChatScreen(
+                    messages = listOf(
+                        ChatMessage(fromMe = true, text = "Which binder is closest to finished?"),
+                        ChatMessage(fromMe = false, text = "Kanto Favourites: 134 of 165 cards, so 31 to go. Most of the gaps are rares from 151."),
+                    ),
+                    busy = false,
+                    cardCount = 128,
+                    binderCount = 2,
+                    available = true,
+                    onAsk = {},
+                    onClear = {},
+                )
+            }
+            MainTabBar(current = MainTab.Chat, missing = 42, onSelect = {})
+        }
+    }
+
+    @Test fun missingTabEmptyDark() = shoot("7c-missing-tab-empty-dark", dark = true) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) { MissingTabScreen(binders = emptyList(), onOpenCard = { _, _ -> }, onOpenList = {}) }
+            MainTabBar(current = MainTab.Missing, missing = 0, onSelect = {})
+        }
     }
 }

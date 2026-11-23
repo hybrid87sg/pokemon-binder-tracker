@@ -19,6 +19,9 @@ interface CardDao {
     @Query("SELECT * FROM cards WHERE id = :id")
     suspend fun get(id: String): Card?
 
+    @Query("SELECT * FROM cards WHERE id IN (:ids)")
+    suspend fun getMany(ids: List<String>): List<Card>
+
     // Names that START with the search come first, then names that contain it.
     @Query(
         """

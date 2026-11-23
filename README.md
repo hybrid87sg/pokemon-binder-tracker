@@ -127,6 +127,16 @@ you can enforce it for **Firebase AI Logic** only (App Check → APIs → AI Log
 Leave **Cloud Firestore** and **Authentication** unenforced. The code is a secret for your
 phone; never put it in this repo.
 
+Each install has its own code. App updates keep it, but a new phone or a reinstall makes a new
+code: register that one too (step 4) before it can use the AI while enforcement is on.
+
+What uses the AI:
+
+- **Card stories**: on a card's screen, tap **Tell me about this card** for a short write-up
+  (artist, set, why collectors like it). It's saved on the phone, so it only asks once per card.
+- **Binder chat** (the **Chat** tab): ask about your collection in plain words. Each question is
+  sent with a short summary of your binders, pages and missing cards (card names only, no photos).
+
 ## Shared binders (Cloud Firestore)
 
 Online saving and sharing use **Cloud Firestore** in the same Firebase project. It needs
