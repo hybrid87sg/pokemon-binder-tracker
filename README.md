@@ -70,9 +70,11 @@ GitHub Actions builds the app on every push and publishes it as a pre-release ca
 
 ## Versions and updates
 
-- The version is `appVersionBase` from `gradle.properties` (now `0.1`) plus the GitHub
-  Actions run number, e.g. `0.1.7`. Change `appVersionBase` to `0.2` for a new milestone.
-- Builds on your own computer are called `0.1-dev` and always see GitHub's version as newer.
+- The version is `appVersionBase` from `gradle.properties` (now `0.2`) plus a count of
+  commits on main since `appVersionBase` last changed, starting at 0: `0.2.0`, `0.2.1`, ...
+  Change `appVersionBase` (for example to `0.3`) to start a new milestone at `.0`.
+- Behind the scenes `versionCode` is the GitHub Actions run number, so every build is newer.
+- Builds on your own computer are called `0.2-dev` and always see GitHub's version as newer.
 - Next to the APK, the release has `latest.json`, for example
   `{"versionCode":7,"versionName":"0.1.7","apkUrl":"https://.../binder-tracker-v0.1.7.apk"}`.
   The app reads it each time it opens; if `versionCode` is higher than its own, it offers the update.

@@ -18,6 +18,9 @@ if (file("google-services.json").exists()) {
 // A build on your own computer without it is called "0.1-dev".
 val versionBase = providers.gradleProperty("appVersionBase").get()
 val buildNumber = providers.gradleProperty("buildNumber").orNull?.toIntOrNull()
+// The last part of the version people see: 0 for the first release after
+// appVersionBase changes, then 1, 2, 3... (counted by CI from main's history).
+val versionPatch = providers.gradleProperty("versionPatch").orNull?.toIntOrNull()
 
 android {
     // The AI picture model is read straight from the app file, so it must not be compressed.
@@ -41,9 +44,13 @@ android {
         minSdk = 26
         targetSdk = 37
         // versionCode is the number Android compares to decide what is newer.
-        // versionName is the label people see, like "0.1.6".
+        // versionName is the label people see, like "0.2.0".
         versionCode = buildNumber ?: 1
-        versionName = if (buildNumber != null) "$versionBase.$buildNumber" else "$versionBase-dev"
+        versionName = when {
+            versionPatch != null -> "$versionBase.$versionPatch"
+            buildNumber != null -> "$versionBase.$buildNumber"
+            else -> "$versionBase-dev"
+        }
         // Only phone processors (not emulators on PCs), to keep the app download smaller.
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")

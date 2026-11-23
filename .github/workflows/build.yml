@@ -22,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, to count releases since the version base last changed.
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -30,9 +33,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # The run number (1, 2, 3...) becomes the version, e.g. 0.1.6.
+      # The version people see is appVersionBase plus a count that starts at 0:
+      # the commit that last changed appVersionBase is .0, each commit after it
+      # adds one (0.2.0, 0.2.1, ...). On main every merge is one commit.
+      # The run number stays the hidden versionCode, so updates always count as newer.
+      - name: Work out the version
+        run: |
+          BASE=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2)
+          START=$(git log -1 --format=%H -G '^appVersionBase=' -- gradle.properties)
+          PATCH=$(git rev-list --count "$START"..HEAD)
+          echo "PATCH=$PATCH" >> "$GITHUB_ENV"
+          echo "VERSION=$BASE.$PATCH" >> "$GITHUB_ENV"
+          echo "Version $BASE.$PATCH (versionCode $GITHUB_RUN_NUMBER)"
+
       - name: Build and test
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }}
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }} -PversionPatch=$PATCH
 
       # Replace the previous "Latest debug build" pre-release with this one.
       # It holds the app (named with its version) and latest.json, the small
@@ -45,8 +60,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BASE=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2)
-          VERSION="$BASE.$GITHUB_RUN_NUMBER"
           APK="binder-tracker-v$VERSION.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           APK_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/debug-latest/$APK"
