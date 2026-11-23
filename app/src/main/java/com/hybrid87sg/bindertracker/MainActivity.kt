@@ -404,7 +404,8 @@ private fun App(
                     suggestion = suggestion,
                     cardListMissing = cardCount == 0,
                     onBack = { nav.popBackStack() },
-                    onSetCollecting = { sets, secret -> vm.setCollecting(d.binder, sets, secret) },
+                    onSetCollecting = { sets -> vm.setCollecting(d.binder, sets) },
+                    onSetMaster = { vm.setMasterSet(d.binder.id, it) },
                     onPutIn = { pageId, position, cardId -> vm.setPocketCard(pageId, position, cardId) },
                     onScanInto = { pageId, position -> nav.navigate("scancard/$pageId/$position") },
                     onOpenCards = { items, start, listName ->

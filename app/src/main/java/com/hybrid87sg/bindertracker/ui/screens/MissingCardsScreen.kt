@@ -133,7 +133,9 @@ fun MissingCardsScreen(
     // True while the card list is still downloading for the first time.
     cardListMissing: Boolean,
     onBack: () -> Unit,
-    onSetCollecting: (setIds: List<String>, countSecretRares: Boolean) -> Unit,
+    onSetCollecting: (setIds: List<String>) -> Unit,
+    // Main set / Master set: this phone's own choice, anyone can change it.
+    onSetMaster: (Boolean) -> Unit,
     onPutIn: (pageId: String, position: Int, cardId: String) -> Unit,
     onScanInto: (pageId: String, position: Int) -> Unit,
     // Open the card screen, able to swipe through [items] (the cards showing), starting at [start].
@@ -209,7 +211,7 @@ fun MissingCardsScreen(
             }
 
             if (followed.isEmpty()) {
-                NotCollecting(binder, suggestion, onChoose = { choosing = true }, onFollow = { onSetCollecting(listOf(it), binder.countSecretRares) })
+                NotCollecting(binder, suggestion, onChoose = { choosing = true }, onFollow = { onSetCollecting(listOf(it)) })
                 return@Column
             }
 
@@ -234,8 +236,8 @@ fun MissingCardsScreen(
                         have = have,
                         total = total,
                         master = binder.countSecretRares,
-                        canChange = binder.isOwner,
-                        onMaster = { onSetCollecting(followed, it) },
+                        canChange = true,
+                        onMaster = onSetMaster,
                     )
                 }
                 if (cardListMissing || data.cards.isEmpty()) {
@@ -361,7 +363,7 @@ fun MissingCardsScreen(
             expansions = expansions,
             selected = followed,
             onDismiss = { choosing = false },
-            onDone = { choosing = false; onSetCollecting(it, binder.countSecretRares) },
+            onDone = { choosing = false; onSetCollecting(it) },
         )
     }
 }
