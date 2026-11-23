@@ -122,8 +122,10 @@ The app can ask Google's Gemini AI questions through **Firebase AI Logic**, prot
    debug token**, name it (for example "Ril's phone"), paste the code, and **Save**.
 5. On the phone, tap **Test AI**. "It works!" means everything is connected.
 
-Don't press **Enforce** in App Check yet: that would also lock Firestore and sign-in to
-registered phones only. The code is a secret for your phone; never put it in this repo.
+App Check **enforcement** is switched on separately for each product. Once **Test AI** works,
+you can enforce it for **Firebase AI Logic** only (App Check → APIs → AI Logic → Enforce).
+Leave **Cloud Firestore** and **Authentication** unenforced. The code is a secret for your
+phone; never put it in this repo.
 
 ## Shared binders (Cloud Firestore)
 
