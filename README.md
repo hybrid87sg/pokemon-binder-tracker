@@ -70,9 +70,12 @@ GitHub Actions builds the app on every push and publishes it as a pre-release ca
 
 ## Versions and updates
 
-- The version is `appVersionBase` from `gradle.properties` (now `0.1`) plus the GitHub
-  Actions run number, e.g. `0.1.7`. Change `appVersionBase` to `0.2` for a new milestone.
-- Builds on your own computer are called `0.1-dev` and always see GitHub's version as newer.
+- The version is `appVersionBase` from `gradle.properties` (now `0.2`) plus a count of
+  commits on main since `appVersionBase` last changed, starting at 0: `0.2.0`, `0.2.1`, ...
+  The last number never reaches 70: after `0.2.69` comes `0.3.0`, after `0.3.69` comes `0.4.0`.
+  Change `appVersionBase` (for example to `1.0`) to start a new milestone at `.0`.
+- Behind the scenes `versionCode` is the GitHub Actions run number, so every build is newer.
+- Builds on your own computer are called `0.2-dev` and always see GitHub's version as newer.
 - Next to the APK, the release has `latest.json`, for example
   `{"versionCode":7,"versionName":"0.1.7","apkUrl":"https://.../binder-tracker-v0.1.7.apk"}`.
   The app reads it each time it opens; if `versionCode` is higher than its own, it offers the update.
@@ -108,35 +111,6 @@ Binder Tracker**:
 - **Authentication → Sign-in method → Google** is enabled
 
 If you change any of these, download `google-services.json` again and replace the one in `app/`.
-## AI helper (Firebase AI Logic)
-
-The app can ask Google's Gemini AI questions through **Firebase AI Logic**, protected by
-**App Check** (so only this app can use the project's AI allowance). Switch it on once:
-
-1. In the [Firebase console](https://console.firebase.google.com/), open the project, then
-   **AI Logic → Get started**, and pick the **Gemini Developer API** (free, no billing needed).
-2. Open **App Check → Apps**. The Android app shows **Unregistered** until you do this step:
-   click it, choose **Play Integrity**, paste the SHA-256 fingerprint above, and **Save**.
-3. On the phone, open **Account → AI helper (setup)** and tap **Copy code**.
-4. Back in **App Check → Apps**, open the app's **⋮** menu → **Manage debug tokens → Add
-   debug token**, name it (for example "Ril's phone"), paste the code, and **Save**.
-5. On the phone, tap **Test AI**. "It works!" means everything is connected.
-
-App Check **enforcement** is switched on separately for each product. Once **Test AI** works,
-you can enforce it for **Firebase AI Logic** only (App Check → APIs → AI Logic → Enforce).
-Leave **Cloud Firestore** and **Authentication** unenforced. The code is a secret for your
-phone; never put it in this repo.
-
-Each install has its own code. App updates keep it, but a new phone or a reinstall makes a new
-code: register that one too (step 4) before it can use the AI while enforcement is on.
-
-What uses the AI:
-
-- **Card stories**: on a card's screen, tap **Tell me about this card** for a short write-up
-  (artist, set, why collectors like it). It's saved on the phone, so it only asks once per card.
-- **Binder chat** (the **Chat** tab): ask about your collection in plain words. Each question is
-  sent with a short summary of your binders, pages and missing cards (card names only, no photos).
-
 ## Shared binders (Cloud Firestore)
 
 Online saving and sharing use **Cloud Firestore** in the same Firebase project. It needs

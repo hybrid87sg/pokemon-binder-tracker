@@ -18,6 +18,9 @@ if (file("google-services.json").exists()) {
 // A build on your own computer without it is called "0.1-dev".
 val versionBase = providers.gradleProperty("appVersionBase").get()
 val buildNumber = providers.gradleProperty("buildNumber").orNull?.toIntOrNull()
+// The full version people see, like "0.2.0", worked out by CI from main's
+// history (see .github/workflows/build.yml).
+val versionLabel = providers.gradleProperty("versionLabel").orNull
 
 android {
     // The AI picture model is read straight from the app file, so it must not be compressed.
@@ -41,9 +44,13 @@ android {
         minSdk = 26
         targetSdk = 37
         // versionCode is the number Android compares to decide what is newer.
-        // versionName is the label people see, like "0.1.6".
+        // versionName is the label people see, like "0.2.0".
         versionCode = buildNumber ?: 1
-        versionName = if (buildNumber != null) "$versionBase.$buildNumber" else "$versionBase-dev"
+        versionName = when {
+            versionLabel != null -> versionLabel
+            buildNumber != null -> "$versionBase.$buildNumber"
+            else -> "$versionBase-dev"
+        }
         // Only phone processors (not emulators on PCs), to keep the app download smaller.
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -149,14 +156,6 @@ dependencies {
     // Firestore: the online database that keeps binders in your Google
     // account and lets you share them with friends.
     implementation(libs.firebase.firestore)
-    // Firebase AI Logic: lets the app ask Google's Gemini AI questions
-    // (for example "which card is in this photo?").
-    implementation(libs.firebase.ai)
-    // App Check proves to Firebase that requests really come from our app,
-    // so nobody else can use up the AI allowance. The "debug" version uses
-    // a secret code that you paste into the Firebase console once. It is
-    // the right one for us because the phone only ever gets debug builds.
-    implementation(libs.firebase.appcheck.debug)
     // ZXing draws the QR code for sharing a binder.
     implementation(libs.zxing.core)
     // Google's ready-made QR code scanner (no camera code of our own needed).

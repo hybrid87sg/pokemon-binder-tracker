@@ -1,10 +1,8 @@
 package com.hybrid87sg.bindertracker
 
-import com.hybrid87sg.bindertracker.ai.AiSetup
 import com.hybrid87sg.bindertracker.ui.components.MainTab
 import com.hybrid87sg.bindertracker.ui.components.MainTabBar
 import com.hybrid87sg.bindertracker.ui.components.MainTabRail
-import com.hybrid87sg.bindertracker.ui.screens.ChatScreen
 import com.hybrid87sg.bindertracker.ui.screens.MissingTabScreen
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +21,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import android.net.Uri
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -39,6 +38,7 @@ import com.hybrid87sg.bindertracker.ui.screens.missingStatus
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -123,8 +123,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // App Check for the AI features: must be on before anything talks to Firebase.
-        com.hybrid87sg.bindertracker.ai.AiSetup.start(applicationContext)
         if (savedInstanceState == null) readJoinLink(intent)
         // Light or dark: read the saved choice and pick the colours before
         // anything is drawn, so the first frame already has the right ones.
@@ -235,8 +233,13 @@ private fun App(
     // To and from the card screen, the screens only fade: the card itself flies
     // between its pocket and the card screen (see CardFlight).
     val flyFade = tween<Float>(CardFlight.FlyMillis, easing = Motion.Ease)
+    // Between tabs: a soft fade-through. The old page fades out quickly, then
+    // the new one fades in and rises a touch, so the two never look muddled.
+    val tabOut = fadeOut(tween(140, easing = LinearOutSlowInEasing))
+    val tabIn = fadeIn(tween(280, delayMillis = 90, easing = Motion.Ease)) +
+        slideInVertically(tween(320, delayMillis = 90, easing = Motion.Ease)) { it / 90 }
 
-    // The tab bar: shown only on the five main screens, along the bottom when
+    // The tab bar: shown only on the four main screens, along the bottom when
     // folded and down the left side when unfolded (same test as the two-page spread).
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
@@ -269,10 +272,10 @@ private fun App(
         navController = nav,
         startDestination = "shelf",
         // Switching tabs just cross-fades; going deeper slides in from the right.
-        enterTransition = { if (tabHop()) fadeIn(fade) else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { if (tabHop()) fadeOut(fade) else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
-        popEnterTransition = { if (tabHop()) fadeIn(fade) else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
-        popExitTransition = { if (tabHop()) fadeOut(fade) else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
+        enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
+        popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
     ) {
         composable("shelf") {
             val binders by vm.binders.collectAsStateWithLifecycle()
@@ -419,24 +422,6 @@ private fun App(
                     onOpenList = { nav.navigate("missing/$it") },
                 )
             }
-        }
-        // The Chat tab: Binder chat (AI).
-        composable("chat") {
-            val messages by vm.chat.collectAsStateWithLifecycle()
-            val busy by vm.chatBusy.collectAsStateWithLifecycle()
-            val binders by vm.binders.collectAsStateWithLifecycle()
-            val fill by vm.binderFill.collectAsStateWithLifecycle()
-            // Kept up to date while chatting, so answers about missing cards are current.
-            vm.allMissing.collectAsStateWithLifecycle()
-            ChatScreen(
-                messages = messages,
-                busy = busy,
-                cardCount = binders.sumOf { fill[it.id]?.filled ?: 0 },
-                binderCount = binders.size,
-                available = AiSetup.isAvailable(activity),
-                onAsk = vm::askChat,
-                onClear = vm::clearChat,
-            )
         }
         composable("search") {
             // The results showing, so the card screen can swipe through them.
