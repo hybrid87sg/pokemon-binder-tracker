@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +113,27 @@ internal class PocketDrag {
     var screen: LayoutCoordinates? = null
     var sheet: LayoutCoordinates? = null
 
+    // ---- The open binder (two pages side by side) ----
+    // The page you're on is the one above. These are for the other pages on
+    // show, so a card can be dropped on them too. Pockets are (page ID, position).
+
+    /** The other pages on show right now (so pockets of pages turned away are ignored). */
+    var otherPages: Set<String> = emptySet()
+    val otherTiles = mutableMapOf<Pair<String, Int>, Rect>()
+    val otherCards = mutableStateMapOf<Pair<String, Int>, Rect>()
+    /** The pocket on another page the dragged card is over right now. */
+    var hoverOther by mutableStateOf<Pair<String, Int>?>(null)
+    val otherArrivals = mutableStateMapOf<Pair<String, Int>, Arrival>()
+    /** Like [shown], for the other pages. */
+    var otherShown by mutableStateOf<Map<Pair<String, Int>, PocketWithCard>>(emptyMap())
+    /** Where the open binder is on the screen, to tell when a card is held at its edge. */
+    var stage: Rect? = null
+    /** The dragged card is held at the binder's right edge (1), left edge (-1), or neither (0). */
+    var edge by mutableIntStateOf(0)
+
+    fun otherAt(point: Offset, slop: Float): Pair<String, Int>? =
+        otherTiles.entries.firstOrNull { (k, r) -> k.first in otherPages && r.inflate(slop).contains(point) }?.key
+
     /** A point on the page sheet, in the screen's coordinates. */
     fun onScreen(local: Offset): Offset {
         val s = screen
@@ -130,6 +152,8 @@ internal class PocketDrag {
     fun clearDrag() {
         origin = null
         hover = null
+        hoverOther = null
+        edge = 0
         card = null
         lifted = null
         pressed = null

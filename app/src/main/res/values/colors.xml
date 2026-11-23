@@ -1,6 +1,4 @@
 <resources>
     <color name="paper">#F6F4EF</color>
     <color name="shelf">#EDE8DD</color>
-    <!-- Navy behind the app icon (same in light and dark mode). -->
-    <color name="ic_launcher_background">#13192D</color>
 </resources>
