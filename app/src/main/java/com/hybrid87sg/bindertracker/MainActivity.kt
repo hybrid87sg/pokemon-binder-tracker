@@ -100,8 +100,8 @@ import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.BinderTrackerTheme
-import com.hybrid87sg.bindertracker.ui.theme.DarkPalette
-import com.hybrid87sg.bindertracker.ui.theme.LightPalette
+import com.hybrid87sg.bindertracker.ui.theme.AppColourSetting
+import com.hybrid87sg.bindertracker.ui.theme.paletteFor
 import com.hybrid87sg.bindertracker.ui.theme.ThemeSetting
 
 /** The app's single Activity (window). Every screen is drawn inside it. */
@@ -128,8 +128,9 @@ class MainActivity : ComponentActivity() {
         // Light or dark: read the saved choice and pick the colours before
         // anything is drawn, so the first frame already has the right ones.
         ThemeSetting.load(this)
+        AppColourSetting.load(this)
         val startDark = ThemeSetting.isDark(ThemeSetting.mode, ThemeSetting.phoneIsDark(this))
-        AppColors.palette = if (startDark) DarkPalette else LightPalette
+        AppColors.palette = paletteFor(startDark)
         drawBehindSystemBars(startDark)
         setContent {
             val dark = ThemeSetting.isDark(ThemeSetting.mode, isSystemInDarkTheme())

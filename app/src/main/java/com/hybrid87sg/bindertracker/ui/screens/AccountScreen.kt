@@ -61,6 +61,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Switch
 import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
+import com.hybrid87sg.bindertracker.ui.components.AppColourRow
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Surface
@@ -199,6 +200,8 @@ fun AccountScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppColors.Muted,
                 )
+                // Your own app colours and background glitter (opens the colour sheet).
+                AppColourRow()
             }
 
             HorizontalDivider(color = AppColors.Border)
