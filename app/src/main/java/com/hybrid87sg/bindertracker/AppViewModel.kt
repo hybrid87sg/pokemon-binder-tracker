@@ -514,6 +514,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pocketOpened() { _openPocket.value = null }
 
+    /**
+     * The cards the card screen can swipe through, set just before opening it
+     * (a binder's cards, the Missing cards list, or search results).
+     */
+    var browse: com.hybrid87sg.bindertracker.ui.screens.CardBrowse? = null
+
     /** Which expansion the last cards put in each binder came from (see [ExpansionStreak]). */
     private val streaks = ExpansionStreak()
 

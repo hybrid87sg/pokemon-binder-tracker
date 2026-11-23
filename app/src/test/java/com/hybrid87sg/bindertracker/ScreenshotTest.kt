@@ -134,14 +134,14 @@ class ScreenshotTest {
     @Test fun missingCards() = shoot("11-missing-cards") {
         MissingCardsScreen(
             data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 
     @Test fun missingCardsDark() = shoot("11b-missing-cards-dark", dark = true) {
         MissingCardsScreen(
             data = checklistSample(), expansions = emptyList(), suggestion = null, cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 
@@ -149,7 +149,7 @@ class ScreenshotTest {
         MissingCardsScreen(
             data = ChecklistData(sample[0], emptyList(), emptyList(), emptySet()), expansions = emptyList(),
             suggestion = ExpansionCount("base1", "Base Set", 12), cardListMissing = false,
-            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onViewCard = {},
+            onBack = {}, onSetCollecting = { _, _ -> }, onPutIn = { _, _, _ -> }, onScanInto = { _, _ -> }, onOpenCards = { _, _, _ -> },
         )
     }
 
@@ -322,7 +322,7 @@ class ScreenshotTest {
             },
             photo = photo,
             guide = GuideRect(90f / 900, 120f / 1200, 810f / 900, 1080f / 1200),
-            onBack = {}, onChooseCard = {}, onViewCard = {}, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
+            onBack = {}, onChooseCard = {}, onViewCard = { _, _ -> }, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
         )
     }
 
@@ -339,7 +339,7 @@ class ScreenshotTest {
             },
             photo = null,
             guide = GuideRect(0.1f, 0.1f, 0.9f, 0.9f),
-            onBack = {}, onChooseCard = {}, onViewCard = {}, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
+            onBack = {}, onChooseCard = {}, onViewCard = { _, _ -> }, onMarkEmpty = {}, onClear = {}, onDeletePage = {},
         )
     }
 

@@ -17,6 +17,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -47,8 +51,14 @@ fun CardImage(
     corner: Dp = 6.dp,
     backupUrl: String? = null,
     cardId: String? = null,
+    // A card you don't have yet: the picture in grey and a little faded (Missing cards).
+    grey: Boolean = false,
+    // Shown instead of the blank card when no picture can be found anywhere.
+    noPicture: (@Composable () -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(corner)
+    // When you put the card in, its colour washes back in.
+    val greyness by animateFloatAsState(if (grey) 1f else 0f, tween(1100), label = "grey")
     val context = LocalContext.current
     val photoVersion by OwnPhotos.version.collectAsState()
     val ownPhoto = remember(cardId, photoVersion) { OwnPhotos.find(context, cardId) }
@@ -66,11 +76,36 @@ fun CardImage(
                 loading = { BlankCard() },
                 error = { BlankCard() },
                 onError = { if (tried < sources.size) tried++ },
+                colorFilter = greyFilter(greyness),
             )
         } else {
-            BlankCard()
+            if (noPicture != null) noPicture() else BlankCard()
         }
     }
+}
+
+/**
+ * Grey and a little faded: the "Medium" fade Ril picked in the prototype
+ * (no colour, 62% brightness, 80% opacity).
+ */
+private fun greyFilter(amount: Float): ColorFilter? {
+    if (amount <= 0f) return null
+    val k = 0.62f
+    val r = 0.2126f * k
+    val g = 0.7152f * k
+    val b = 0.0722f * k
+    // Blend between the normal picture (amount 0) and fully grey (amount 1).
+    fun mix(normal: Float, grey: Float) = normal + (grey - normal) * amount
+    return ColorFilter.colorMatrix(
+        ColorMatrix(
+            floatArrayOf(
+                mix(1f, r), mix(0f, g), mix(0f, b), 0f, 0f,
+                mix(0f, r), mix(1f, g), mix(0f, b), 0f, 0f,
+                mix(0f, r), mix(0f, g), mix(1f, b), 0f, 0f,
+                0f, 0f, 0f, mix(1f, 0.8f), 0f,
+            ),
+        ),
+    )
 }
 
 @Composable
