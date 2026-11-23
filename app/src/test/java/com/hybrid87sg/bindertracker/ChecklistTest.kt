@@ -60,6 +60,41 @@ class ChecklistTest {
     }
 
     @Test
+    fun freePocketsShowTheMissingCardsInSetOrder() {
+        val entries = Checklist.entries(set, listOf("s1"), owned = setOf("s1-1", "s1-2", "s1-5"), countSecret = false)
+        // Page A: #1, #2, (free), (free), #5. Page B: (free) (free).
+        val pockets = listOf(
+            BinderPocket("A", 1, 0, "s1-1"), BinderPocket("A", 1, 1, "s1-2"), BinderPocket("A", 1, 2, null),
+            BinderPocket("A", 1, 3, null), BinderPocket("A", 1, 4, "s1-5"),
+            BinderPocket("B", 2, 0, null), BinderPocket("B", 2, 1, null),
+        )
+        val ghosts = Checklist.ghosts(entries, pockets)
+        assertEquals("s1-3", ghosts["A" to 2]?.id)
+        assertEquals("s1-4", ghosts["A" to 3]?.id)
+        assertEquals("s1-6", ghosts["B" to 0]?.id)
+        assertEquals("s1-7", ghosts["B" to 1]?.id)
+        // "Put it in" from the card screen goes to the pocket showing it.
+        val four = Checklist.suggestSpot(card("s1", "4"), entries, pockets)!!
+        assertEquals("A", four.pageId)
+        assertEquals(3, four.position)
+    }
+
+    @Test
+    fun outOfOrderBindersStillShowEachMissingCardOnce() {
+        val entries = Checklist.entries(set, listOf("s1"), owned = setOf("s1-9"), countSecret = false)
+        // #9 first, then free pockets: #10, then back to the start (#1, #2...).
+        val pockets = listOf(BinderPocket("A", 1, 0, "s1-9")) + (1..4).map { BinderPocket("A", 1, it, null) }
+        val ghosts = Checklist.ghosts(entries, pockets)
+        assertEquals(listOf("s1-10", "s1-1", "s1-2", "s1-3"), (1..4).map { ghosts["A" to it]?.id })
+        // Everything owned: nothing to show.
+        val full = Checklist.entries(set, listOf("s1"), owned = set.map { it.id }.toSet(), countSecret = false)
+        assertTrue(Checklist.ghosts(full, pockets).isEmpty())
+        // More free pockets than missing cards: the rest stay blank.
+        val few = Checklist.entries(set.take(2), listOf("s1"), owned = emptySet(), countSecret = false)
+        assertEquals(2, Checklist.ghosts(few, pockets).size)
+    }
+
+    @Test
     fun withNoNeighbourItTakesTheFirstFreePocket() {
         val entries = Checklist.entries(set, listOf("s1"), owned = emptySet(), countSecret = false)
         val pockets = listOf(BinderPocket("A", 1, 0, "other-1"), BinderPocket("A", 1, 1, null))

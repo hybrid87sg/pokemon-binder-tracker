@@ -68,7 +68,44 @@ object Checklist {
             .keys.sortedBy(::rarityRank)
 
     /**
-     * Which pocket a missing [card] should go in. If the binder has the card
+     * Which missing card each free pocket shows (greyed out), so a collecting
+     * binder looks like the whole set with the gaps still to fill.
+     * Keyed by (page ID, pocket position).
+     *
+     * The rule, going through the pockets in order: a free pocket shows the
+     * next missing card after the last card we passed, so the pocket after
+     * #2 shows #3, then #4, and so on. Each missing card shows once only.
+     * When none is left after that point, it takes the first missing card
+     * not shown yet. Pockets stay blank once every missing card is shown.
+     */
+    fun ghosts(entries: List<Entry>, pockets: List<BinderPocket>): Map<Pair<String, Int>, Card> {
+        if (entries.none { !it.owned }) return emptyMap()
+        val indexOf = HashMap<String, Int>()
+        entries.forEachIndexed { i, e -> indexOf.putIfAbsent(e.card.id, i) }
+        val shown = BooleanArray(entries.size)
+        fun free(i: Int) = !entries[i].owned && !shown[i]
+        var next = 0
+        var left = entries.count { !it.owned }
+        val out = LinkedHashMap<Pair<String, Int>, Card>()
+        for (p in pockets) {
+            if (left == 0) break
+            val id = p.cardId
+            if (id != null) {
+                indexOf[id]?.let { next = it + 1 }
+                continue
+            }
+            val i = (next until entries.size).firstOrNull(::free) ?: (0 until next).firstOrNull(::free) ?: continue
+            shown[i] = true
+            left--
+            next = i + 1
+            out[p.pageId to p.position] = entries[i].card
+        }
+        return out
+    }
+
+    /**
+     * Which pocket a missing [card] should go in. If a free pocket already
+     * shows it greyed out (see [ghosts]), that pocket. If the binder has the card
      * just before it (by number, same expansion) and the pocket after that one
      * is free, it goes there, so the binder stays in number order. Otherwise
      * the first free pocket. Null when every pocket is full.
@@ -77,6 +114,13 @@ object Checklist {
         if (pockets.isEmpty()) return null
         val pageNumbers = pockets.map { it.pageId }.distinct().withIndex().associate { it.value to it.index + 1 }
         fun spot(i: Int, after: Card?) = pockets[i].let { Spot(it.pageId, pageNumbers.getValue(it.pageId), it.position, after) }
+
+        // Where the binder already shows it greyed out.
+        ghosts(entries, pockets).entries.firstOrNull { it.value.id == card.id }?.key?.let { (pageId, position) ->
+            val at = pockets.indexOfFirst { it.pageId == pageId && it.position == position }
+            val before = pockets.getOrNull(at - 1)?.cardId?.let { id -> entries.firstOrNull { it.card.id == id && it.card.setId == card.setId }?.card }
+            return spot(at, before)
+        }
 
         val sameSet = entries.filter { it.card.setId == card.setId }
         val index = sameSet.indexOfFirst { it.card.id == card.id }

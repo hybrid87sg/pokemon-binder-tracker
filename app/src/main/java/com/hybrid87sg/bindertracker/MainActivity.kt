@@ -533,6 +533,17 @@ private fun App(
                 // Every page's pockets, for the "Move to another page" picker.
                 val allPockets by remember(p.binderId) { vm.binderPockets(p.binderId) }
                     .collectAsStateWithLifecycle(initialValue = emptyMap())
+                // A binder collecting expansions: its missing cards, greyed out in the free
+                // pockets in set order (this phone's Main/Master set choice decides which count).
+                val checklist by remember(p.binderId) { vm.checklist(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                val ghosts = remember(checklist) {
+                    checklist?.takeIf { it.binder.followedSetIds.isNotEmpty() }?.let { d ->
+                        val entries = Checklist.entries(d.cards, d.binder.followedSetIds, d.owned, d.binder.countSecretRares)
+                        Checklist.ghosts(entries, d.pockets).entries
+                            .groupBy({ it.key.first }, { it.key.second to it.value })
+                            .mapValues { it.value.toMap() }
+                    }.orEmpty()
+                }
                 binder?.let { b ->
                     CompositionLocalProvider(LocalScreenAnimationScope provides this) {
                     PageScreen(
@@ -547,17 +558,22 @@ private fun App(
                         onBack = { nav.popBackStack() },
                         onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
                         onViewCard = { atPage, atPosition ->
-                            // Every card in the binder in pocket order, so the card screen can swipe through them.
+                            // Every card in the binder in pocket order, so the card screen can swipe through them
+                            // (the grey missing cards too, so it reads like the whole set).
                             val items = siblings.withIndex().flatMap { (i, s) ->
-                                (pocketsById[s.id] ?: allPockets[s.id]).orEmpty().filter { it.cardId != null }.sortedBy { it.position }.map { pk ->
-                                    BrowseItem(pk.cardId!!, CardFlight.pocketKey(s.id, pk.position), "Page ${i + 1}, pocket ${pk.position + 1}", s.id)
+                                (pocketsById[s.id] ?: allPockets[s.id]).orEmpty().sortedBy { it.position }.mapNotNull { pk ->
+                                    val id = pk.cardId ?: ghosts[s.id]?.get(pk.position)?.id ?: return@mapNotNull null
+                                    BrowseItem(id, CardFlight.pocketKey(s.id, pk.position), "Page ${i + 1}, pocket ${pk.position + 1}", s.id)
                                 }
                             }
                             val start = items.indexOfFirst { it.flightKey == CardFlight.pocketKey(atPage, atPosition) }
                             val cardId = items.getOrNull(start)?.cardId
                                 ?: (pocketsById[atPage] ?: allPockets[atPage])?.firstOrNull { it.position == atPosition }?.cardId
+                                ?: ghosts[atPage]?.get(atPosition)?.id
                             if (cardId != null) {
-                                vm.browse = if (start >= 0) CardBrowse(items, start, "in ${b.name}") else null
+                                // A collecting binder: the card screen says which cards are missing, with "Put it in".
+                                val checklistId = b.id.takeIf { ghosts.isNotEmpty() }
+                                vm.browse = if (start >= 0) CardBrowse(items, start, "in ${b.name}", checklistBinderId = checklistId) else null
                                 nav.navigate("card/${Uri.encode(cardId)}")
                             }
                         },
@@ -589,6 +605,7 @@ private fun App(
                         spreadPockets = pocketsById,
                         coverColor = colorFromHex(b.colorHex),
                         onAddPage = { vm.addPages(b, 1) },
+                        ghosts = ghosts,
                     )
                     }
                 }
