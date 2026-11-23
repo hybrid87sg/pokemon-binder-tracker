@@ -667,6 +667,7 @@ private fun App(
             val backupBusy by vm.backupBusy.collectAsStateWithLifecycle()
             val binders by vm.binders.collectAsStateWithLifecycle()
             val fill by vm.binderFill.collectAsStateWithLifecycle()
+            val offlineArt by vm.offlineArtStatus.collectAsStateWithLifecycle()
             AccountScreen(
                 stats = CollectionStats(
                     cards = binders.sumOf { fill[it.id]?.filled ?: 0 },
@@ -688,6 +689,10 @@ private fun App(
                 syncActive = syncActive,
                 syncProblem = syncProblem,
                 showBack = false,
+                offlineArt = offlineArt,
+                onSaveMissingArt = vm::setSaveMissingArt,
+                onArtOnMobileData = vm::setArtOnMobileData,
+                onDownloadArtAgain = vm::downloadArtAgain,
             )
         }
     }

@@ -56,6 +56,24 @@ interface ChecklistDao {
     @Query("SELECT COUNT(*) FROM cards")
     fun observeCardCount(): Flow<Int>
 
+    /** Every card in any binder on this phone, with its TCGdex picture address (for offline artwork). */
+    @Query(
+        """
+        SELECT DISTINCT pockets.cardId AS id, cards.imageUrl AS imageUrl
+        FROM pockets LEFT JOIN cards ON cards.id = pockets.cardId
+        WHERE pockets.cardId IS NOT NULL
+        """,
+    )
+    fun observeBinderCardArt(): Flow<List<CardArt>>
+
+    /** The expansions each binder on this phone collects, e.g. "sv01,sv03.5" (for offline artwork). */
+    @Query("SELECT followedSets FROM binders")
+    fun observeFollowedSets(): Flow<List<String>>
+
+    /** Every card in these expansions, with its picture address (for offline artwork). */
+    @Query("SELECT id, imageUrl FROM cards WHERE setId IN (:setIds)")
+    suspend fun cardArtInSets(setIds: List<String>): List<CardArt>
+
     /** The expansion most of a binder's cards come from, with how many: for the suggestion. */
     @Query(
         """
@@ -80,3 +98,6 @@ data class OwnedCard(val binderId: String, val cardId: String)
 
 /** "12 cards from 151." */
 data class ExpansionCount(val setId: String, val setName: String, val cards: Int)
+
+/** A card and where its TCGdex picture lives (null if TCGdex has none, or the card list hasn't got it). */
+data class CardArt(val id: String, val imageUrl: String?)

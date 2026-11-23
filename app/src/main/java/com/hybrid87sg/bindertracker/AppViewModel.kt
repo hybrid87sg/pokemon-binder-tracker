@@ -32,6 +32,8 @@ import com.hybrid87sg.bindertracker.data.ViewPrefs
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.data.PocketWithCard
 import com.hybrid87sg.bindertracker.data.OwnPhotos
+import com.hybrid87sg.bindertracker.data.OfflineArtSaver
+import com.hybrid87sg.bindertracker.data.OfflineArtStatus
 import com.hybrid87sg.bindertracker.scan.CardMoves
 import com.hybrid87sg.bindertracker.scan.CardRecognizer
 import com.hybrid87sg.bindertracker.scan.LiveCheck
@@ -395,6 +397,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Missing cards (the checklist for binders that collect an expansion) ----
 
     private val checklistDao = db.checklistDao()
+
+    // ---- Offline artwork (card pictures saved on the phone, see OfflineArt) ----
+
+    private val offlineArt = OfflineArtSaver(app, checklistDao, viewModelScope)
+
+    /** How many card pictures are saved for offline use, for the Me tab. */
+    val offlineArtStatus: StateFlow<OfflineArtStatus> = offlineArt.status
+
+    fun setSaveMissingArt(on: Boolean) = offlineArt.setSaveMissing(on)
+    fun setArtOnMobileData(on: Boolean) = offlineArt.setUseMobileData(on)
+    fun downloadArtAgain() = offlineArt.downloadAgain()
 
     /**
      * How many cards each collecting binder is still missing, by binder ID,

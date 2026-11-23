@@ -1,5 +1,7 @@
 package com.hybrid87sg.bindertracker
 
+import com.hybrid87sg.bindertracker.data.ArtWaiting
+import com.hybrid87sg.bindertracker.data.OfflineArtStatus
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.hybrid87sg.bindertracker.auth.AppUser
@@ -197,6 +199,7 @@ class ScreenshotTest {
             onBack = {},
             onSignOut = {},
             backupMessage = "Backed up 2 binders with 5 pages.",
+            offlineArt = OfflineArtStatus(binderSaved = 212, binderTotal = 218, missingSaved = 164, missingTotal = 431, bytes = 11_400_000),
         )
     }
 
@@ -210,6 +213,7 @@ class ScreenshotTest {
             onThemeModeChange = {},
             onBack = {},
             onSignOut = {},
+            offlineArt = OfflineArtStatus(binderSaved = 218, binderTotal = 218, missingSaved = 164, missingTotal = 431, bytes = 11_400_000, waiting = ArtWaiting.Wifi),
         )
     }
 
