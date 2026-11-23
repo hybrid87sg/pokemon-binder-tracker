@@ -4,6 +4,10 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -63,8 +67,8 @@ import kotlin.math.sin
 /** The gap down the middle of the open binder, where the rings sit. */
 val SpineGap = 16.dp
 
-/** Which side a sheet is on (0 = left, 1 = right), and whether it is a real page. */
-private data class SpreadSlot(val side: Int, val page: Boolean)
+/** Which side a sheet is on (0 = left, 1 = right), whether it is a real page, and whether it is kept out of sight. */
+private data class SpreadSlot(val side: Int, val page: Boolean, val away: Boolean = false)
 
 /**
  * Shows two binder sheets side by side and turns them a spread at a time when
@@ -89,6 +93,12 @@ fun SpreadTurnStage(
     // The binder's own colour, peeking out round the pages and down the spine.
     coverColor: Color,
     modifier: Modifier = Modifier,
+    // A sheet that has to stay alive although it was turned away: the page a
+    // card is being dragged from (its finger is still being followed there).
+    // Given as (which, side), like [sheet]; it is kept out of sight.
+    keep: Pair<Int, Int>? = null,
+    // Glows the right (1) or left (-1) edge: a dragged card is held there and the pages will turn.
+    edgeGlow: Int = 0,
     sheet: @Composable (which: Int, side: Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -207,6 +217,10 @@ fun SpreadTurnStage(
             d > 0 -> listOf(Triple(0, 0, 0), Triple(1, 1, 0), Triple(0, 1, FRONT), Triple(1, 0, BACK))
             d < 0 -> listOf(Triple(0, 1, 0), Triple(-1, 0, 0), Triple(0, 0, FRONT), Triple(-1, 1, BACK))
             else -> listOf(Triple(0, 0, 0), Triple(0, 1, 0))
+        }.let { list ->
+            if (keep != null && list.none { it.first == keep.first && it.second == keep.second }) {
+                list + Triple(keep.first, keep.second, AWAY)
+            } else list
         }
         Layout(
             content = {
@@ -215,9 +229,10 @@ fun SpreadTurnStage(
                         val record = when (role) {
                             FRONT -> Modifier.drawWithContent { frontLayer.record { this@drawWithContent.drawContent() } }
                             BACK -> Modifier.drawWithContent { backLayer.record { this@drawWithContent.drawContent() } }
+                            AWAY -> Modifier.drawWithContent { }
                             else -> Modifier
                         }
-                        Box(Modifier.layoutId(SpreadSlot(side, isPage(which, side))).then(record)) {
+                        Box(Modifier.layoutId(SpreadSlot(side, isPage(which, side), away = role == AWAY)).then(record)) {
                             sheet(which, side)
                         }
                     }
@@ -232,12 +247,16 @@ fun SpreadTurnStage(
             measurables.forEachIndexed { i, m ->
                 if (slots[i].page) placed[i] = m.measure(Constraints(minWidth = width, maxWidth = width))
             }
-            val height = placed.maxOfOrNull { it?.height ?: 0 } ?: 0
+            val height = placed.filterIndexed { i, _ -> !slots[i].away }.maxOfOrNull { it?.height ?: 0 } ?: 0
             measurables.forEachIndexed { i, m ->
                 if (!slots[i].page) placed[i] = m.measure(Constraints.fixed(width, height))
             }
             layout(constraints.maxWidth, height) {
-                placed.forEachIndexed { i, p -> p?.place(if (slots[i].side == 0) 0 else width + gap, 0) }
+                placed.forEachIndexed { i, p ->
+                    // A sheet kept out of sight sits far off the screen, where it can't be touched.
+                    val x = if (slots[i].away) -100_000 else if (slots[i].side == 0) 0 else width + gap
+                    p?.place(x, 0)
+                }
             }
         }
 
@@ -259,11 +278,34 @@ fun SpreadTurnStage(
         }
         // The rings, across the middle, on top of everything.
         Canvas(Modifier.matchParentSize()) { drawSpineRings() }
+        if (edgeGlow != 0) {
+            val pulse by rememberInfiniteTransition(label = "edge").animateFloat(
+                initialValue = 0.35f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
+                label = "edgePulse",
+            )
+            val glow = AppColors.AccentText
+            Canvas(Modifier.matchParentSize()) {
+                val w = 36.dp.toPx()
+                val right = edgeGlow > 0
+                val x0 = if (right) size.width - w else 0f
+                drawRect(
+                    Brush.horizontalGradient(
+                        if (right) listOf(Color.Transparent, glow.copy(alpha = 0.5f * pulse)) else listOf(glow.copy(alpha = 0.5f * pulse), Color.Transparent),
+                        startX = x0, endX = x0 + w,
+                    ),
+                    topLeft = Offset(x0, 0f),
+                    size = Size(w, size.height),
+                )
+            }
+        }
     }
 }
 
 private const val FRONT = 1
 private const val BACK = 2
+private const val AWAY = 3
 
 /** Rings that run across the spine, from the holes in the left page to the holes in the right. */
 private fun DrawScope.drawSpineRings() {
