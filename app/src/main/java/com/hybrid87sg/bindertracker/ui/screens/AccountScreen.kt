@@ -54,6 +54,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.time.LocalDate
+import com.hybrid87sg.bindertracker.data.ArtWaiting
+import com.hybrid87sg.bindertracker.data.OfflineArtStatus
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
 import com.hybrid87sg.bindertracker.ui.theme.ThemeMode
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.selection.selectableGroup
@@ -94,6 +100,11 @@ fun AccountScreen(
     syncProblem: String? = null,
     // False on the Me tab, where the tab bar takes you back instead.
     showBack: Boolean = true,
+    // Card pictures saved for offline use; null hides the section.
+    offlineArt: OfflineArtStatus? = null,
+    onSaveMissingArt: (Boolean) -> Unit = {},
+    onArtOnMobileData: (Boolean) -> Unit = {},
+    onDownloadArtAgain: () -> Unit = {},
 ) {
     // Android's own "Save to" and "Open" screens. The person picks where the
     // file goes (Google Drive, Downloads, ...); we get back a link to it.
@@ -192,6 +203,11 @@ fun AccountScreen(
 
             HorizontalDivider(color = AppColors.Border)
 
+            offlineArt?.let { art ->
+                OfflineArtSection(art, onSaveMissingArt, onArtOnMobileData, onDownloadArtAgain)
+                HorizontalDivider(color = AppColors.Border)
+            }
+
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Backups", style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -254,6 +270,132 @@ fun AccountScreen(
             }
         }
     }
+}
+
+/**
+ * "Offline artwork": how many card pictures are saved on the phone, two
+ * switches, and a way to start over. See OfflineArt for how saving works.
+ */
+@Composable
+private fun OfflineArtSection(
+    art: OfflineArtStatus,
+    onSaveMissing: (Boolean) -> Unit,
+    onUseMobileData: (Boolean) -> Unit,
+    onDownloadAgain: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Offline artwork", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Card pictures are saved on this phone, so your binders look the same without internet.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppColors.Muted,
+        )
+        // Binder cards save on any connection, so they only ever wait for internet.
+        ArtProgress(
+            "Cards in your binders",
+            art.binderSaved,
+            art.binderTotal,
+            art.waiting.takeIf { it == ArtWaiting.NoInternet && art.binderSaved < art.binderTotal },
+            busy = art.busy,
+        )
+        ArtProgress(
+            "Missing cards in your expansions",
+            art.missingSaved,
+            art.missingTotal,
+            art.waiting.takeIf { art.missingSaved < art.missingTotal },
+            busy = art.busy,
+            off = !art.saveMissing,
+        )
+        ArtSwitch(
+            "Save Missing cards too",
+            "Pictures of cards you're still hunting for",
+            art.saveMissing,
+            onSaveMissing,
+        )
+        ArtSwitch(
+            "Use mobile data",
+            if (art.useMobileData) "On: Missing cards also download on mobile data."
+            else "Off: Missing cards wait for Wi-Fi. Binder cards always save.",
+            art.useMobileData,
+            onUseMobileData,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Using ${megabytes(art.bytes)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.Muted,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onDownloadAgain,
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = AppColors.AccentText),
+            ) { Text("Download again", style = MaterialTheme.typography.titleMedium) }
+        }
+    }
+}
+
+/** One line of progress: a label, "164 of 431" and a foil bar. */
+@Composable
+private fun ArtProgress(label: String, saved: Int, total: Int, waiting: ArtWaiting?, busy: Boolean, off: Boolean = false) {
+    val shape = RoundedCornerShape(12.dp)
+    val fraction = if (total == 0) (if (off) 0f else 1f) else saved.toFloat() / total
+    val shown by animateFloatAsState(fraction, tween(600), label = "art progress")
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .semantics(mergeDescendants = true) {},
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            val done = !off && saved >= total
+            Text(
+                when {
+                    off -> "Off"
+                    total == 0 -> "Nothing to save"
+                    done -> if (total == 1) "Saved" else "All $total saved"
+                    waiting == ArtWaiting.NoInternet -> "$saved of $total · waiting for internet"
+                    waiting == ArtWaiting.Wifi -> "$saved of $total · waiting for Wi-Fi"
+                    busy -> "$saved of $total"
+                    // Finished, but a few cards have no picture on either website (brand-new sets).
+                    else -> "$saved of $total · ${total - saved} ${if (total - saved == 1) "has" else "have"} no picture online"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (done && total > 0) AppColors.SuccessText else AppColors.Muted,
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(AppColors.Surface2)) {
+            Box(
+                Modifier.fillMaxWidth(shown.coerceIn(0f, 1f)).height(6.dp).clip(RoundedCornerShape(3.dp))
+                    .drawBehind { drawRect(holoBrush(size.width)) },
+            )
+        }
+    }
+}
+
+/** A setting with a short explanation under it and an on/off switch. */
+@Composable
+private fun ArtSwitch(title: String, explain: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(value = on, role = Role.Switch, onValueChange = onChange).heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(explain, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+        }
+        Spacer(Modifier.width(12.dp))
+        // The whole row handles the tap, so the switch itself doesn't need to.
+        Switch(checked = on, onCheckedChange = null)
+    }
+}
+
+/** 14_200_000 bytes -> "14 MB"; small amounts in KB. */
+private fun megabytes(bytes: Long): String = when {
+    bytes < 1_000_000 -> "${(bytes + 999) / 1_000} KB"
+    bytes < 10_000_000 -> String.format(java.util.Locale.US, "%.1f MB", bytes / 1_000_000.0)
+    else -> "${bytes / 1_000_000} MB"
 }
 
 /**

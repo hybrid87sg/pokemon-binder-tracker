@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import com.hybrid87sg.bindertracker.data.OfflineArt
 import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import java.text.NumberFormat
@@ -62,8 +63,16 @@ fun CardImage(
     val context = LocalContext.current
     val photoVersion by OwnPhotos.version.collectAsState()
     val ownPhoto = remember(cardId, photoVersion) { OwnPhotos.find(context, cardId) }
+    // The picture saved on the phone for offline use (see OfflineArt), if there is one.
+    val saved = remember(cardId) { OfflineArt.find(context, cardId) }
+    // The big card view asks for the sharp picture; everywhere else uses the small one.
+    val large = url?.endsWith("/high.webp") == true
     // Every place to get the picture from, best first. Move on when one fails.
-    val sources = remember(url, backupUrl, ownPhoto) { listOfNotNull(url, backupUrl, ownPhoto) }
+    // Small pictures: the saved copy first, so no internet is needed at all.
+    // Big pictures: the sharp one from the internet first, the saved copy when offline.
+    val sources = remember(url, backupUrl, ownPhoto, saved) {
+        if (large) listOfNotNull(url, backupUrl, saved, ownPhoto) else listOfNotNull(saved, url, backupUrl, ownPhoto)
+    }
     var tried by remember(sources) { mutableIntStateOf(0) }
     val shown = sources.getOrNull(tried)
     Box(modifier.aspectRatio(CARD_ASPECT).clip(shape).background(CardPlaceholder).border(1.dp, CardPlaceholderBorder, shape)) {
