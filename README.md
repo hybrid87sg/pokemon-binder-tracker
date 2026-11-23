@@ -108,6 +108,23 @@ Binder Tracker**:
 - **Authentication → Sign-in method → Google** is enabled
 
 If you change any of these, download `google-services.json` again and replace the one in `app/`.
+## AI helper (Firebase AI Logic)
+
+The app can ask Google's Gemini AI questions through **Firebase AI Logic**, protected by
+**App Check** (so only this app can use the project's AI allowance). Switch it on once:
+
+1. In the [Firebase console](https://console.firebase.google.com/), open the project, then
+   **AI Logic → Get started**, and pick the **Gemini Developer API** (free, no billing needed).
+2. Open **App Check → Apps**. The Android app shows **Unregistered** until you do this step:
+   click it, choose **Play Integrity**, paste the SHA-256 fingerprint above, and **Save**.
+3. On the phone, open **Account → AI helper (setup)** and tap **Copy code**.
+4. Back in **App Check → Apps**, open the app's **⋮** menu → **Manage debug tokens → Add
+   debug token**, name it (for example "Ril's phone"), paste the code, and **Save**.
+5. On the phone, tap **Test AI**. "It works!" means everything is connected.
+
+Don't press **Enforce** in App Check yet: that would also lock Firestore and sign-in to
+registered phones only. The code is a secret for your phone; never put it in this repo.
+
 ## Shared binders (Cloud Firestore)
 
 Online saving and sharing use **Cloud Firestore** in the same Firebase project. It needs

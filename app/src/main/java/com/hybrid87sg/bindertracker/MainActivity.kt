@@ -103,6 +103,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // App Check for the AI features: must be on before anything talks to Firebase.
+        com.hybrid87sg.bindertracker.ai.AiSetup.start(applicationContext)
         if (savedInstanceState == null) readJoinLink(intent)
         // Light or dark: read the saved choice and pick the colours before
         // anything is drawn, so the first frame already has the right ones.
