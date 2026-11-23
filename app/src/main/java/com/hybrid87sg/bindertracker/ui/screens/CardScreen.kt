@@ -407,7 +407,6 @@ private fun CardInfo(
         }
         missing?.let { MissingBox(it, onPutIn, onScanInto) }
 
-        CardStoryBox(card, details)
 
         Text("Market price", style = MaterialTheme.typography.titleLarge)
         when {
