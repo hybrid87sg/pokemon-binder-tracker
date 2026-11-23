@@ -223,14 +223,21 @@ fun PageScreen(
         if (CardFlight.lifting != null) return
         CardFlight.lifting = key
         scope.launch {
-            delay(CardFlight.LiftMillis.toLong())
-            viewCardLatest(page, position)
-            delay(CardFlight.FlyMillis + 200L)
-            if (CardFlight.lifting == key) CardFlight.lifting = null
+            // The binder leaves the screen while the card flies, which cancels this
+            // job. "finally" still runs then, so the flag is always cleared (if it
+            // stayed set, every later tap on a card would be ignored).
+            try {
+                delay(CardFlight.LiftMillis.toLong())
+                viewCardLatest(page, position)
+                delay(CardFlight.FlyMillis + 200L)
+            } finally {
+                if (CardFlight.lifting == key) CardFlight.lifting = null
+            }
         }
     }
     // Back from the card screen: the card lands lifted above its pocket, then slides in.
     LaunchedEffect(Unit) {
+        CardFlight.lifting = null
         if (CardFlight.landing != null) {
             delay(CardFlight.FlyMillis.toLong())
             CardFlight.landing = null
@@ -585,11 +592,6 @@ fun PageScreen(
     val identified = spreadShown.count { it.cardId != null }
     val empty = spreadShown.count { it.isEmpty }
     val toDo = spreadShown.size - identified - empty
-    val title = when {
-        !open -> "Page $pageNumber"
-        rightId != null -> "Pages ${leftIndex + 1}–${leftIndex + 2}"
-        else -> "Page ${leftIndex + 1}"
-    }
     val canPrevTurn = if (open) leftIndex >= 2 else prevPockets != null
     val canNextTurn = if (open) leftIndex + 2 < pageIds.size else nextPockets != null
 
@@ -605,31 +607,8 @@ fun PageScreen(
                 }
             }
         }
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-                // The expansion most of this page's cards come from.
-                pageExpansion(spreadShown)?.let { exp ->
-                    accentFor(exp.seriesId)?.let { accent ->
-                        if (exp.setName.isNotBlank()) ExpansionBadge(exp.setName, accent, Modifier.padding(start = 8.dp).widthIn(max = 180.dp))
-                    }
-                }
-            }
-            Text(
-                buildList {
-                    add("$identified of ${spreadShown.size} filled")
-                    if (empty > 0) add("$empty empty")
-                    if (toDo > 0) add("$toDo to identify")
-                }.joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppColors.Muted,
-            )
-            HoloBar(if (spreadShown.isEmpty()) 0f else identified.toFloat() / spreadShown.size, Modifier.padding(top = 4.dp))
-            // Automatic card reading: "Reading the cards…", then what it found.
-            readingStatus?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
-            }
-        }
+        // (No "Page 3" heading: the page number shows once, in the navigation at the bottom.)
+        Spacer(Modifier.height(4.dp))
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 14.dp)) {
             if (open) {
@@ -736,6 +715,33 @@ fun PageScreen(
                 color = AppColors.Muted,
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
             )
+        }
+
+        // How full the page is, just above the page navigation (under the binder).
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    buildList {
+                        add("$identified of ${spreadShown.size} filled")
+                        if (empty > 0) add("$empty empty")
+                        if (toDo > 0) add("$toDo to identify")
+                    }.joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.Muted,
+                    modifier = Modifier.weight(1f),
+                )
+                // The expansion most of this page's cards come from.
+                pageExpansion(spreadShown)?.let { exp ->
+                    accentFor(exp.seriesId)?.let { accent ->
+                        if (exp.setName.isNotBlank()) ExpansionBadge(exp.setName, accent, Modifier.padding(start = 8.dp).widthIn(max = 180.dp))
+                    }
+                }
+            }
+            HoloBar(if (spreadShown.isEmpty()) 0f else identified.toFloat() / spreadShown.size)
+            // Automatic card reading: "Reading the cards…", then what it found.
+            readingStatus?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
+            }
         }
 
         if (editing) {
