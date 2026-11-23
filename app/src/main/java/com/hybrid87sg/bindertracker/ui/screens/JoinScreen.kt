@@ -78,6 +78,8 @@ fun JoinScreen(
 ) {
     var typed by rememberSaveable { mutableStateOf("") }
     var scanError by rememberSaveable { mutableStateOf<String?>(null) }
+    // True while our own camera screen for binder codes is open.
+    var ringScanning by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -103,6 +105,19 @@ fun JoinScreen(
             .addOnFailureListener { scanError = "Couldn't open the QR code scanner. Type the code instead." }
     }
 
+    if (ringScanning) {
+        RingScanScreen(
+            onFound = { code ->
+                ringScanning = false
+                typed = InviteCodes.pretty(code)
+                onLookUp(code)
+            },
+            onTypeInstead = { ringScanning = false },
+            onBack = { ringScanning = false },
+        )
+        return
+    }
+
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Box(Modifier.padding(start = 8.dp, top = 12.dp)) {
             BackButton("Shelf", onClick = { if (state is JoinState.Found) onReset() else onBack() })
@@ -116,14 +131,25 @@ fun JoinScreen(
             if (found == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Eyebrow("Join a binder")
-                    Text("Scan the QR code", style = MaterialTheme.typography.headlineLarge)
+                    Text("Scan the binder code", style = MaterialTheme.typography.headlineLarge)
                     Text(
                         "On your friend's phone: open their binder and tap Share. Then scan the code it shows.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AppColors.Muted,
                     )
                 }
-                PrimaryButton(text = "Scan QR code", onClick = ::scan, icon = R.drawable.ic_qr, enabled = state !is JoinState.Busy)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    PrimaryButton(
+                        text = "Scan binder code",
+                        onClick = { scanError = null; ringScanning = true },
+                        icon = R.drawable.ic_camera,
+                        enabled = state !is JoinState.Busy,
+                    )
+                    // For a friend who switched their Share screen to a QR code.
+                    TextButton(onClick = ::scan, enabled = state !is JoinState.Busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Scan a QR code instead", color = AppColors.AccentText)
+                    }
+                }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Or type the code", style = MaterialTheme.typography.titleSmall, color = AppColors.Muted)
