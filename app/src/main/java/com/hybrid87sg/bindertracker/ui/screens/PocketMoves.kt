@@ -307,7 +307,7 @@ internal fun MovePicker(
             }
         }
         if (chosen != null) {
-            Text("Then the pocket", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+            Text("Then tap a pocket to move it there", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
             val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 12.dp, bottomEnd = 12.dp)
             // Kept small enough (about 260dp tall) that the Move button below stays on screen.
             val cols = columns.coerceAtLeast(1)
@@ -326,7 +326,8 @@ internal fun MovePicker(
                             Box(
                                 Modifier.weight(1f).aspectRatio(CARD_ASPECT).clip(RoundedCornerShape(6.dp))
                                     .then(if (on) Modifier.border(3.dp, AppColors.AccentText, RoundedCornerShape(6.dp)) else Modifier)
-                                    .clickable(onClickLabel = "Put it in pocket ${pocket.position + 1}") { slot = pocket.position },
+                                    // One tap moves the card there (the message bar has Undo).
+                                    .clickable(onClickLabel = "Put it in pocket ${pocket.position + 1}") { slot = pocket.position; onMove(chosen.id, pocket.position) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 PocketPicture(pocket, Modifier.fillMaxSize())
