@@ -30,6 +30,8 @@ data class BinderLook3D(
     val placement: CoverPlacement,
     /** The binder's first page, shown inside it. Null: the binder has no pages yet. */
     val sheet: SheetLook? = null,
+    /** This phone's card back (Me > Card back), for the empty pockets on that page. */
+    val back: com.hybrid87sg.bindertracker.data.CardBackChoice = com.hybrid87sg.bindertracker.data.CardBackChoice(),
 )
 
 /** The first page of a binder, as the 3D binder shows it when it opens. */
@@ -64,13 +66,13 @@ data class SheetPocket(
  */
 object BinderPaint {
     /** [cards] are the card pictures for the first page, by pocket position. */
-    fun pictures(look: BinderLook3D, picture: Bitmap?, cards: Map<Int, Bitmap> = emptyMap()): BinderModel.Pictures {
+    fun pictures(look: BinderLook3D, picture: Bitmap?, cards: Map<Int, Bitmap> = emptyMap(), backPicture: Bitmap? = null): BinderModel.Pictures {
         val color = parse(look.colorHex)
         return BinderModel.Pictures(
             cover = jpeg(cover(look, color, picture)),
             spine = jpeg(spine(look, color, picture)),
             lining = jpeg(lining(color)),
-            sheet = look.sheet?.let { jpeg(firstPage(it, cards)) } ?: sheet,
+            sheet = look.sheet?.let { jpeg(firstPage(it, cards, Back(look.back, color, backPicture))) } ?: sheet,
             grain = grain,
         )
     }
@@ -180,7 +182,10 @@ object BinderPaint {
      * screen. Cards you have, grey missing cards, blue card backs for empty
      * pockets, and a dashed outline where we don't know the card yet.
      */
-    private fun firstPage(s: SheetLook, cards: Map<Int, Bitmap>): Bitmap {
+    /** How to draw the card backs on the page: the design, the binder's colour, your own picture. */
+    private class Back(val choice: com.hybrid87sg.bindertracker.data.CardBackChoice, val binderColor: Int, val picture: Bitmap?)
+
+    private fun firstPage(s: SheetLook, cards: Map<Int, Bitmap>, back: Back): Bitmap {
         val w = SHEET_PX
         val h = (SHEET_PX * SheetGrid.HEIGHT / SheetGrid.WIDTH).toInt()
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -213,13 +218,13 @@ object BinderPaint {
                         p.colorFilter = null; p.alpha = 255
                         c.restore()
                     } else if (missing) {
-                        cardBack(c, r, corner, p)
+                        cardBack(c, r, corner, back)
                     } else {
                         // No picture anywhere: a plain blank card, like the page screen.
                         p.color = 0xFFE7E6EE.toInt(); c.drawRoundRect(r, corner, corner, p)
                     }
                 }
-                SheetPocket.Kind.Empty -> cardBack(c, r, corner, p)
+                SheetPocket.Kind.Empty -> cardBack(c, r, corner, back)
                 else -> {
                     p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.color = 0xFFB4B0C8.toInt()
                     p.pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
@@ -240,22 +245,14 @@ object BinderPaint {
         return bmp
     }
 
-    /** Our own blue card back (see CardBack.kt), simplified for the 3D page. */
-    private fun cardBack(c: Canvas, r: RectF, corner: Float, p: Paint) {
-        p.shader = LinearGradient(r.left, r.top, r.right, r.bottom, 0xFF23379A.toInt(), 0xFF1A2A78.toInt(), Shader.TileMode.CLAMP)
-        c.drawRoundRect(r, corner, corner, p)
-        p.shader = null
-        val u = r.width() / 63f
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f * u; p.color = 0xD9C9D2F5.toInt()
-        c.drawRoundRect(RectF(r.left + 3.5f * u, r.top + 3.5f * u, r.right - 3.5f * u, r.bottom - 3.5f * u), 3f * u, 3f * u, p)
-        p.color = 0xFF8EA4FF.toInt()
-        for ((radius, width) in listOf(21f to 2.2f, 15f to 2.6f, 9f to 2.8f)) {
-            p.strokeWidth = width * u
-            val o = RectF(r.centerX() - radius * u, r.centerY() - radius * u, r.centerX() + radius * u, r.centerY() + radius * u)
-            c.drawArc(o, radius * 9f, 140f, false, p)
-            c.drawArc(o, radius * 9f + 180f, 140f, false, p)
-        }
-        p.style = Paint.Style.FILL
+    /** The card back this phone uses (see CardBackArt), clipped to the card's round corners. */
+    private fun cardBack(c: Canvas, r: RectF, corner: Float, back: Back) {
+        c.save()
+        c.clipPath(android.graphics.Path().apply { addRoundRect(r, corner, corner, android.graphics.Path.Direction.CW) })
+        c.translate(r.left, r.top)
+        val style = back.choice.style.let { if (it == com.hybrid87sg.bindertracker.data.CardBackStyle.Own && back.picture == null) com.hybrid87sg.bindertracker.data.CardBackStyle.Original else it }
+        com.hybrid87sg.bindertracker.ui.components.CardBackArt.draw(c, r.width(), r.height(), style, back.binderColor, back.picture, back.choice.placement)
+        c.restore()
     }
 
     /** Grey and a little faded, like missing cards on the page screen. */

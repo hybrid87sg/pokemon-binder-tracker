@@ -137,13 +137,16 @@ private suspend fun build(context: Context, b: BinderLook3D, online: Boolean): T
         val art = cardPicture(context, p, online)
         if (art != null) cards[p.position] = art else complete = false
     }
+    // Your own card back picture, for the empty pockets on the page.
+    val backPicture = if (b.sheet != null && b.back.style == com.hybrid87sg.bindertracker.data.CardBackStyle.Own) b.back.picturePath?.let { decodeSmall(File(it)) } else null
     val color = BinderPaint.parse(b.colorHex)
     val glb = BinderModel.build(
         b.dir,
         floatArrayOf(BinderModel.lin(android.graphics.Color.red(color)), BinderModel.lin(android.graphics.Color.green(color)), BinderModel.lin(android.graphics.Color.blue(color))),
-        BinderPaint.pictures(b, picture, cards),
+        BinderPaint.pictures(b, picture, cards, backPicture),
     )
     picture?.recycle()
+    backPicture?.recycle()
     // Only remember it once every picture is in, so a missing one gets another go next time.
     if (complete || online) GlbCache.binders.put(b, glb)
     return Triple(b, glb, complete)

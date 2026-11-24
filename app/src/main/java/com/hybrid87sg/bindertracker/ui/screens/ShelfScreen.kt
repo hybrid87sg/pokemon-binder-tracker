@@ -270,6 +270,7 @@ fun ShelfScreen(
         )
 
         if (use3D) {
+            val cardBack = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current.choice
             val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
             val looks = binders.map { b ->
                 val c = covers[b.id]
@@ -284,6 +285,7 @@ fun ShelfScreen(
                     pictureVersion = c?.version ?: 0L,
                     placement = c?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
                     sheet = firstPages[b.id],
+                    back = cardBack,
                 )
             }
             com.hybrid87sg.bindertracker.ui.three.Shelf3D(

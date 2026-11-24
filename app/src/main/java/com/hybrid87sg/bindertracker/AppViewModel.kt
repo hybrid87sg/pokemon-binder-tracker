@@ -113,6 +113,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Copies a picked photo for the cover editor. Returns its temporary path, or null. */
     suspend fun importCover(uri: android.net.Uri): String? = coverPictures.importDraft(uri)
 
+    // ---- Card back (Me > Card back): this phone's own setting ----
+
+    private val cardBackPrefs = com.hybrid87sg.bindertracker.data.CardBackPrefs(app)
+    val cardBack: StateFlow<com.hybrid87sg.bindertracker.data.CardBackChoice> = cardBackPrefs.choice
+
+    fun setCardBackStyle(style: com.hybrid87sg.bindertracker.data.CardBackStyle) = cardBackPrefs.setStyle(style)
+
+    /** Saves your own card back picture ([path] from [importCover]) and uses it. */
+    fun saveCardBackPicture(path: String, placement: com.hybrid87sg.bindertracker.data.CoverPlacement) {
+        viewModelScope.launch { cardBackPrefs.savePicture(path, placement) }
+    }
+
+    fun removeCardBackPicture() {
+        viewModelScope.launch { cardBackPrefs.removePicture() }
+    }
+
     fun discardCoverDraft(path: String?) = coverPictures.discardDraft(path)
 
     /** Saves (path + placement) or removes (null path) a binder's cover picture. */

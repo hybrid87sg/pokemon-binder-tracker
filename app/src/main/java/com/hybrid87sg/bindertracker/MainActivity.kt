@@ -62,6 +62,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.produceState
+import com.hybrid87sg.bindertracker.ui.components.CardBackSetting
+import com.hybrid87sg.bindertracker.ui.components.LocalBinderColor
+import com.hybrid87sg.bindertracker.ui.components.LocalCardBack
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
@@ -269,6 +272,14 @@ private fun App(
             CardFlight.closing = false
         }
     }
+    // This phone's card back (Me > Card back), and your own picture for it if you chose one.
+    val cardBackChoice by vm.cardBack.collectAsStateWithLifecycle()
+    val cardBackPicture by produceState<android.graphics.Bitmap?>(null, cardBackChoice.picturePath, cardBackChoice.version) {
+        value = cardBackChoice.picturePath?.let { path ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { decodeCardBack(path) }
+        }
+    }
+    val cardBackSetting = remember(cardBackChoice, cardBackPicture) { CardBackSetting(cardBackChoice, cardBackPicture) }
     Row(Modifier.fillMaxSize()) {
     if (wide && tab != null) MainTabRail(tab, missingTotal, goTab)
     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -278,7 +289,7 @@ private fun App(
             .then(if (!wide && tab != null) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
     ) {
     SharedTransitionLayout {
-    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+    CompositionLocalProvider(LocalSharedTransitionScope provides this, LocalCardBack provides cardBackSetting) {
     NavHost(
         navController = nav,
         startDestination = "shelf",
@@ -598,7 +609,8 @@ private fun App(
                     }.orEmpty()
                 }
                 binder?.let { b ->
-                    CompositionLocalProvider(LocalScreenAnimationScope provides this) {
+                    // The card backs in empty pockets can take on the binder's colour.
+                    CompositionLocalProvider(LocalScreenAnimationScope provides this, LocalBinderColor provides colorFromHex(b.colorHex)) {
                     PageScreen(
                         binderName = b.name,
                         pageNumber = if (index >= 0) index + 1 else number,
@@ -763,6 +775,22 @@ private fun App(
                 onSaveMissingArt = vm::setSaveMissingArt,
                 onArtOnMobileData = vm::setArtOnMobileData,
                 onDownloadArtAgain = vm::downloadArtAgain,
+                onOpenCardBack = { nav.navigate("card-back") },
+            )
+        }
+        // Me > Card back: the back of every face-down card, set for this phone.
+        composable("card-back") {
+            val choice by vm.cardBack.collectAsStateWithLifecycle()
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            com.hybrid87sg.bindertracker.ui.screens.CardBackScreen(
+                choice = choice,
+                binders = binders.map { com.hybrid87sg.bindertracker.ui.screens.CardBackBinder(it.name, colorFromHex(it.colorHex)) },
+                onBack = { nav.popBackStack() },
+                onPick = vm::setCardBackStyle,
+                importPicture = vm::importCover,
+                discardDraft = vm::discardCoverDraft,
+                onSavePicture = vm::saveCardBackPicture,
+                onRemovePicture = vm::removeCardBackPicture,
             )
         }
     }
@@ -773,6 +801,15 @@ private fun App(
     }
     }
 }
+
+/** Reads your own card back picture at about the size a card is shown (it can be a big photo). */
+private fun decodeCardBack(path: String): android.graphics.Bitmap? = runCatching {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(path, bounds)
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 900) sample *= 2
+    android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
 
 /** Switching between two of the main tabs. */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabHop(): Boolean =

@@ -31,6 +31,16 @@ object CardFlight {
     const val FlyMillis = 720
     val FlyEasing = CubicBezierEasing(0.2f, 0.75f, 0.2f, 1f)
 
+    /**
+     * A card opened from Missing cards turns round once as it flies in, showing
+     * its back halfway (Ril picked style A, Relaxed speed, staying grey).
+     */
+    const val SpinMillis = 830
+    val SpinEasing = CubicBezierEasing(0.65f, 0f, 0.35f, 1f)
+
+    /** True for a card flying from the Missing cards page. */
+    fun spins(key: String?) = key?.startsWith("missing-") == true
+
     /** The key for the card in one pocket. */
     fun pocketKey(pageId: String, position: Int) = "pocket-$pageId-$position"
 

@@ -11,7 +11,25 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import com.hybrid87sg.bindertracker.data.CardBackChoice
+import com.hybrid87sg.bindertracker.data.CardBackStyle
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
+
+/** This phone's card back (Me > Card back) and your own picture, set round the whole app. */
+class CardBackSetting(val choice: CardBackChoice = CardBackChoice(), val picture: android.graphics.Bitmap? = null) {
+    /** The design actually drawn: the original blue until your own picture has loaded. */
+    val style: CardBackStyle get() = if (choice.style == CardBackStyle.Own && picture == null) CardBackStyle.Original else choice.style
+}
+
+val LocalCardBack = compositionLocalOf { CardBackSetting() }
+
+/** The colour of the binder the cards are in: Orbit, Prism and Lattice take it on. */
+val LocalBinderColor = compositionLocalOf<Color?> { null }
 
 /**
  * The picture shown in an empty pocket: our own "back of a card" design.
@@ -26,6 +44,18 @@ import com.hybrid87sg.bindertracker.ui.theme.AppColors
  */
 @androidx.compose.runtime.Composable
 fun CardBack(modifier: Modifier = Modifier) {
+    val setting = LocalCardBack.current
+    if (setting.style != CardBackStyle.Original) {
+        // One of the other designs, or your own picture: drawn by CardBackArt
+        // (the same drawing as the pockets inside the 3D binder).
+        val binder = (LocalBinderColor.current ?: AppColors.Accent).toArgb()
+        Canvas(modifier.semantics { contentDescription = "Empty pocket" }) {
+            drawIntoCanvas {
+                CardBackArt.draw(it.nativeCanvas, size.width, size.height, setting.style, binder, setting.picture, setting.choice.placement)
+            }
+        }
+        return
+    }
     val top = AppColors.CardBack
     val bottom = AppColors.CardBackDeep
     val frame = AppColors.CardBackFrame
