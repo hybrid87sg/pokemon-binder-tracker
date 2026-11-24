@@ -213,6 +213,8 @@ fun PageScreen(
     // Missing cards shown greyed out in free pockets, by page then pocket position
     // (a binder collecting expansions: see Checklist.ghosts).
     ghosts: Map<String, Map<Int, Card>> = emptyMap(),
+    // Opens the Glossary pop-up (every page of the binder). Null = no Glossary button.
+    onOpenGlossary: (() -> Unit)? = null,
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -657,6 +659,7 @@ fun PageScreen(
             BackButton(binderName, onBack)
             Spacer(Modifier.weight(1f))
             // The tips used to sit under the page as fine print (and made the page scroll).
+            onOpenGlossary?.let { GlossaryButton(it) }
             TipsButton { showTips = true }
             // Deleting the page lives behind Edit, with a Done button to leave.
             if (!editing && canEdit) {
@@ -985,6 +988,7 @@ fun PageScreen(
                         jumping = false
                         if (id != pageId) goToPage(id)
                     },
+                    onGlossary = onOpenGlossary?.let { open -> { jumping = false; open() } },
                 )
             }
         }

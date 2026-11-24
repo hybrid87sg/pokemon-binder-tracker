@@ -374,7 +374,7 @@ private fun PageChip(selected: Boolean, enabled: Boolean, onClick: () -> Unit, c
 
 /** A tiny drawing of a page: coloured blocks for cards, blue for empty pockets, outlines for "to scan". */
 @Composable
-private fun MiniGrid(pockets: List<PocketWithCard>, columns: Int) {
+internal fun MiniGrid(pockets: List<PocketWithCard>, columns: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         pockets.chunked(columns.coerceAtLeast(1)).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -421,9 +421,14 @@ internal fun PageJumpPicker(
     currentPageId: String,
     columns: Int,
     onPick: (pageId: String) -> Unit,
+    // Opens the Glossary pop-up instead (null = no button).
+    onGlossary: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Go to page", style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Go to page", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            onGlossary?.let { GlossaryButton(it) }
+        }
         Column(
             Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
