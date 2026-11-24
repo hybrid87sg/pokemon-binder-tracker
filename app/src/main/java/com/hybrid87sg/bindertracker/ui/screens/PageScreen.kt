@@ -10,7 +10,11 @@ import com.hybrid87sg.bindertracker.ui.components.accentFor
 import com.hybrid87sg.bindertracker.ui.components.ExpansionBadge
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.State
-import com.hybrid87sg.bindertracker.ui.theme.appBackground
+import com.hybrid87sg.bindertracker.ui.theme.windowBackground
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.layout.boundsInWindow
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -215,6 +219,9 @@ fun PageScreen(
     ghosts: Map<String, Map<Int, Card>> = emptyMap(),
     // Opens the Glossary pop-up (every page of the binder). Null = no Glossary button.
     onOpenGlossary: (() -> Unit)? = null,
+    // The binder's ID: its first page leaves a picture of itself for the 3D binder
+    // on the shelf to open onto (see PageLanding). Null = don't.
+    landingBinderId: String? = null,
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -302,7 +309,18 @@ fun PageScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     // (The pockets can arrive after the screen first appears, so read the latest ones.)
     val landingPockets by rememberUpdatedState(pockets)
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing) {
+    // The binder area (cover, rings, page) drawn through a layer, so a picture of it can be taken.
+    val shotLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
+    var shotRect by remember { mutableStateOf<Rect?>(null) }
+    val shotArea = Modifier
+        .drawWithContent {
+            shotLayer.record { this@drawWithContent.drawContent() }
+            drawLayer(shotLayer)
+        }
+        .onGloballyPositioned { shotRect = it.boundsInWindow() }
+    // (A new picture whenever the cards on the page change.)
+    val pageLook = pockets.map { Triple(it.cardId, it.isEmpty, it.position) }.hashCode()
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
@@ -328,6 +346,19 @@ fun PageScreen(
             com.hybrid87sg.bindertracker.ui.three.PageLanding.key(columns, rows, config.screenWidthDp, config.screenHeightDp),
             rects,
         )
+        // The first page: keep a picture of the whole binder area for the 3D binder.
+        if (landingBinderId != null && pageId == pageIds.firstOrNull()) {
+            val area = shotRect ?: return@LaunchedEffect
+            if (area.width < 1f || area.height < 1f) return@LaunchedEffect
+            val picture = runCatching { shotLayer.toImageBitmap().asAndroidBitmap() }.getOrNull() ?: return@LaunchedEffect
+            val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.shotKey(landingBinderId, config.screenWidthDp, config.screenHeightDp, AppColors.isDark)
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val soft = if (picture.config == android.graphics.Bitmap.Config.HARDWARE) picture.copy(android.graphics.Bitmap.Config.ARGB_8888, false) else picture
+                if (soft != null) {
+                    com.hybrid87sg.bindertracker.ui.three.PageLanding.saveShot(landingContext, key, soft, listOf(area.left, area.top, area.right, area.bottom), open)
+                }
+            }
+        }
     }
     // While a card is being dragged, the pages can turn under it (hold it at the
     // binder's edge) without leaving the page it came from: this is then the
@@ -653,7 +684,7 @@ fun PageScreen(
     val canPrevTurn = if (open) leftIndex >= 2 else prevPockets != null
     val canNextTurn = if (open) leftIndex + 2 < pageIds.size else nextPockets != null
 
-    Box(Modifier.fillMaxSize().appBackground().onGloballyPositioned { drag.screen = it }) {
+    Box(Modifier.fillMaxSize().windowBackground().onGloballyPositioned { drag.screen = it }) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             BackButton(binderName, onBack)
@@ -719,6 +750,7 @@ fun PageScreen(
                     },
                     // Sized so both pages fit the screen's height too (see [spreadWidth]).
                     modifier = Modifier.align(Alignment.CenterHorizontally).width(coverWidth)
+                        .then(shotArea)
                         .onGloballyPositioned { drag.stage = drag.rectOf(it) },
                 ) { which, side ->
                     val id = pageAt(leftIndex + which * 2 + side)
@@ -748,6 +780,7 @@ fun PageScreen(
                 // The binder's cover round the page, like the open binder's two-page spread.
                 Box(
                     Modifier.align(Alignment.CenterHorizontally).width(coverWidth)
+                        .then(shotArea)
                         .binderCover(coverColor ?: AppColors.CardBack)
                         .padding(start = CoverRingSide, top = CoverEdge, end = CoverEdge, bottom = CoverEdge),
                 ) {

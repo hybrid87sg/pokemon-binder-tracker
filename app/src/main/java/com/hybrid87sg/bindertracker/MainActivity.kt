@@ -68,6 +68,7 @@ import com.hybrid87sg.bindertracker.ui.components.LocalBinderColor
 import com.hybrid87sg.bindertracker.ui.components.LocalCardBack
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.ExpansionOption
+import androidx.compose.animation.core.LinearEasing
 import androidx.activity.compose.BackHandler
 import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
 import com.hybrid87sg.bindertracker.data.Card
@@ -245,6 +246,18 @@ private fun App(
     // while the shelf stays put underneath until the page is fully there.
     val openFade = tween<Float>(300, easing = Motion.Ease)
     val openStay = tween<Float>(1, delayMillis = 300)
+    // When the 3D binder lands on a picture of the page, the page screen waits
+    // (hidden) until the binder has landed, then appears in an instant: it looks
+    // exactly like the binder's last picture, so nothing seems to change. Only
+    // the header and arrows come in, with a quick fade.
+    fun openIn(): androidx.compose.animation.EnterTransition {
+        val wait = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealDelay()
+        return if (wait > 0) fadeIn(tween(160, delayMillis = wait, easing = LinearEasing)) else fadeIn(openFade)
+    }
+    fun openOut(): androidx.compose.animation.ExitTransition {
+        val wait = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealDelay()
+        return if (wait > 0) fadeOut(tween(1, delayMillis = wait + 260)) else fadeOut(openStay)
+    }
     // Between tabs: a soft fade-through. The old page fades out quickly, then
     // the new one fades in and rises a touch, so the two never look muddled.
     val tabOut = fadeOut(tween(140, easing = LinearOutSlowInEasing))
@@ -299,8 +312,8 @@ private fun App(
         navController = nav,
         startDestination = "shelf",
         // Switching tabs just cross-fades; going deeper slides in from the right.
-        enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else if (openHop()) fadeIn(openFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else if (openHop()) fadeOut(openStay) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else if (openHop()) openIn() else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else if (openHop()) openOut() else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
         // Closing the card screen is a quick fade (no flight back).
         popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(fade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
         popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(fade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
@@ -683,6 +696,7 @@ private fun App(
                         onAddPage = { vm.addPages(b, 1) },
                         ghosts = ghosts,
                         onOpenGlossary = { showGlossary = true },
+                        landingBinderId = b.id,
                     )
                     if (showGlossary) {
                         val missing by vm.missingCounts.collectAsStateWithLifecycle()

@@ -69,6 +69,82 @@ object BinderModel {
         return g.write(listOf(root))
     }
 
+    /** How far in front of the back cover the picture of the page sits (above the rings). */
+    const val SHOT_Z = -0.1f
+
+    /**
+     * The binder that opens onto its page: the same outside as [build], but
+     * [height] tall (so its inside has exactly the shape of the page on the
+     * screen), and the inside painted with [shot], a picture of the page
+     * screen's binder area. Folded, the whole picture fills the back cover.
+     * As a two-page [spread], its two halves go on the inside of the front
+     * cover and on the back cover, meeting at the spine.
+     *
+     * Nodes: "binder" (the root), "spine" (slides away as it lands), and
+     * "hinge" (the front cover).
+     */
+    fun buildLanding(dir: Int, color: FloatArray, pictures: Pictures, shot: ByteArray, height: Float, spread: Boolean): ByteArray {
+        val g = Glb()
+        val grain = g.texture(pictures.grain, "image/png", repeat = true)
+        val leather = g.material(Glb.Material("leather", floatArrayOf(color[0], color[1], color[2], 1f), roughness = 0.72f, normalTexture = grain, normalScale = 0.6f))
+        val cover = g.material(Glb.Material("cover", roughness = 0.62f, baseTexture = g.texture(pictures.cover, pictures.mime), normalTexture = grain, normalScale = 0.3f))
+        val spine = g.material(Glb.Material("spine", roughness = 0.66f, baseTexture = g.texture(pictures.spine, pictures.mime), normalTexture = grain, normalScale = 0.4f))
+        val pages = g.material(Glb.Material("pages", srgb(0xF4, 0xF2, 0xF7), roughness = 0.6f))
+        val lining = g.material(Glb.Material("lining", roughness = 0.8f, baseTexture = g.texture(pictures.lining, pictures.mime)))
+        // The picture of the page: not lit, so it shows exactly the colours the page screen drew.
+        val picture = g.material(Glb.Material("shot", baseTexture = g.texture(shot, "image/png"), unlitBlend = true))
+
+        val d = dir.toFloat()
+        val H = height; val C = COVER; val T = THICK; val B = BOARD
+
+        val pLeather = Glb.Part(leather); val pPages = Glb.Part(pages)
+        // (The back board sits just inside the picture's edge, so none of it peeks out round it.)
+        Shapes.board(pLeather, pLeather, C - 0.04f, H - 0.04f, B, 0.07f, Shapes.at(Vec3(d * C / 2f, H / 2f, -T + B / 2f)), capUv = 3f)
+        Shapes.box(pPages, Vec3(C - 0.2f, H - 0.16f, T - 2 * B - 0.12f), Shapes.at(Vec3(d * (C / 2f + 0.06f), H / 2f, -T / 2f - 0.02f)))
+        // The page: folded, the whole picture; as a spread, the half on this side of the spine.
+        val pShot = Glb.Part(picture)
+        val backU = if (!spread) 0f to 1f else if (dir > 0) 0.5f to 1f else 0f to 0.5f
+        plane(pShot, C, H, Vec3(d * C / 2f, H / 2f, SHOT_Z), backU, turned = false)
+
+        val pSpine = Glb.Part(spine); val pSpineEdge = Glb.Part(leather)
+        Shapes.board(pSpine, pSpineEdge, T + 0.01f, H, B, 0.03f, Shapes.at(Vec3(-d * B / 2f, H / 2f, -T / 2f), -d * PI.toFloat() / 2f))
+
+        // The front cover. As a spread, its inside shows the other half of the picture.
+        val pCover = Glb.Part(cover); val pEdge = Glb.Part(leather)
+        Shapes.board(pCover, pEdge, C, H, B, 0.07f, Shapes.at(Vec3(d * C / 2f, H / 2f, -B / 2f)))
+        val inside = if (spread) {
+            val p = Glb.Part(picture)
+            plane(p, C, H, Vec3(d * C / 2f, H / 2f, -B - 0.003f), if (dir > 0) 0f to 0.5f else 0.5f to 1f, turned = true)
+            p
+        } else {
+            val p = Glb.Part(lining)
+            Shapes.plane(p, C - 0.08f, H - 0.08f, Shapes.at(Vec3(d * C / 2f, H / 2f, -B - 0.003f), PI.toFloat()))
+            p
+        }
+
+        val front = g.node(Glb.Node("front", listOf(pCover, pEdge, inside)))
+        val hinge = g.node(Glb.Node("hinge", children = listOf(front)))
+        val spineNode = g.node(Glb.Node("spine", listOf(pSpine, pSpineEdge)))
+        val body = g.node(Glb.Node("body", listOf(pLeather, pPages, pShot)))
+        val root = g.node(Glb.Node("binder", children = listOf(body, spineNode, hinge)))
+        return g.write(listOf(root))
+    }
+
+    /**
+     * A flat picture [w] by [h] centred on [centre], showing the part of its
+     * picture from u = [u].first to [u].second. Facing +z, or -z when [turned]
+     * (the inside of the front cover, which faces you once it's swung open).
+     */
+    private fun plane(part: Glb.Part, w: Float, h: Float, centre: Vec3, u: Pair<Float, Float>, turned: Boolean) {
+        val place = Shapes.at(centre, if (turned) PI.toFloat() else 0f)
+        val n = place.n(Vec3(0f, 0f, 1f))
+        val a = part.vertex(place.p(Vec3(-w / 2f, -h / 2f, 0f)), n, u.first, 1f)
+        val b = part.vertex(place.p(Vec3(w / 2f, -h / 2f, 0f)), n, u.second, 1f)
+        val c = part.vertex(place.p(Vec3(w / 2f, h / 2f, 0f)), n, u.second, 0f)
+        val e = part.vertex(place.p(Vec3(-w / 2f, h / 2f, 0f)), n, u.first, 0f)
+        part.tri(a, b, c); part.tri(a, c, e)
+    }
+
     /** The corners of the binder's box, before it's turned (for fitting and tapping). */
     fun bounds(dir: Int): Pair<Vec3, Vec3> {
         val minX = if (dir > 0) -BOARD else -COVER

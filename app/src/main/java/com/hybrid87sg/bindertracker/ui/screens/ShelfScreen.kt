@@ -3,7 +3,7 @@ package com.hybrid87sg.bindertracker.ui.screens
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.shadow
-import com.hybrid87sg.bindertracker.ui.theme.appBackground
+import com.hybrid87sg.bindertracker.ui.theme.windowBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -152,7 +152,7 @@ fun ShelfScreen(
 
     // Where the title and totals end (in the window), so the 3D shelf keeps its binders below them.
     var headerBottom by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    Box(Modifier.fillMaxSize().appBackground()) {
+    Box(Modifier.fillMaxSize().windowBackground()) {
         if (use3D) {
             val cardBack = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current.choice
             val context = androidx.compose.ui.platform.LocalContext.current
