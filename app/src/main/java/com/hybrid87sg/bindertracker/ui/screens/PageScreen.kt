@@ -49,6 +49,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -947,8 +948,15 @@ fun PageScreen(
     }
 
     selected?.let { pocket ->
-        ModalBottomSheet(onDismissRequest = { selected = null; moving = false }, containerColor = AppColors.Paper) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Opens all the way up, and scrolls, so the "Move" button under the pocket
+        // picker is always reachable (on a big binder it used to sit off the screen,
+        // so tapping a pocket showed "Here" but nothing could be moved).
+        ModalBottomSheet(
+            onDismissRequest = { selected = null; moving = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = AppColors.Paper,
+        ) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
               if (moving && pocket.cardId != null) {
                 MovePicker(
                     cardName = pocket.cardName ?: "this card",
