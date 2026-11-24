@@ -73,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.R
 import com.hybrid87sg.bindertracker.data.Binder
-import com.hybrid87sg.bindertracker.ui.components.ColorPickerSheet
 import com.hybrid87sg.bindertracker.ui.components.ShelfPlank
 import com.hybrid87sg.bindertracker.ui.components.SpineArt
 import com.hybrid87sg.bindertracker.ui.components.colorFromHex
@@ -126,8 +125,15 @@ fun ShelfScreen(
     covers: Map<String, CoverPicture> = emptyMap(),
     // Opens Edit shelf. Null hides the pencil button.
     onEditShelf: (() -> Unit)? = null,
+    // Hold a binder: opens Edit binder (only for binders you can edit).
+    onEditBinder: (Binder) -> Unit = {},
 ) {
-    val coverBitmaps = rememberCoverBitmaps(if (look.turned) covers else emptyMap())
+    val coverBitmaps = rememberCoverBitmaps(covers)
+    // Real 3D binders, when switched on and this phone can run the 3D engine.
+    val use3D = look.threeD && binders.isNotEmpty() && com.hybrid87sg.bindertracker.ui.three.Engine3D.ready
+    // How far a binder has got opening (0 to 1); the title fades out as it opens.
+    var opening by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val headerFade = Modifier.graphicsLayer { alpha = (1f - opening * 2.2f).coerceIn(0f, 1f) }
     // The slide-in plays once each time the app starts, not every time you come back.
     val playIntro = remember { !ShelfIntro.played }
     SideEffect { ShelfIntro.played = true }
@@ -136,19 +142,33 @@ fun ShelfScreen(
     // All binders, then the "Add binder" slot, cut into rows of 4.
     val items: List<ShelfItem> = binders.map { ShelfItem.BinderItem(it) } + ShelfItem.AddItem
     val rows = items.chunked(SPINES_PER_ROW)
-    // The binder whose colour is being changed (after a tap and hold), or null.
-    // We remember only its ID, so the panel survives the phone rotating.
-    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
-    val editing = binders.firstOrNull { it.id == editingId }
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 12.dp),
+            headerFade.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Eyebrow("Your collection")
                 Text("My binders", style = MaterialTheme.typography.headlineLarge)
+            }
+            if (use3D) {
+                // The 3D shelf has no empty "Add binder" slot, so it's a button up here.
+                val addPress = remember { MutableInteractionSource() }
+                Surface(
+                    onClick = onAddBinder,
+                    interactionSource = addPress,
+                    shape = RoundedCornerShape(14.dp),
+                    color = AppColors.Surface,
+                    contentColor = AppColors.Ink,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
+                    modifier = Modifier.size(48.dp).pressSquish(addPress).semantics { contentDescription = "Add binder" },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(painterResource(R.drawable.ic_plus), contentDescription = null, modifier = Modifier.size(22.dp))
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
             }
             if (onEditShelf != null) {
                 val editPress = remember { MutableInteractionSource() }
@@ -230,7 +250,7 @@ fun ShelfScreen(
         // Totals: cards in pockets, binders, and how full they are overall.
         val statsIn = arrive(playIntro, durationMillis = Motion.Medium)
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+            headerFade.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
                 .graphicsLayer { alpha = statsIn; translationY = (1f - statsIn) * 12.dp.toPx() },
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -239,12 +259,38 @@ fun ShelfScreen(
             StatTile("${countUp(if (pockets == 0) 0 else cards * 100 / pockets, 150)}%", "filled", Modifier.weight(1f))
         }
         Text(
-            if (binders.isEmpty()) "No binders yet · add your first one" else "Tap to open, hold to change colour",
+            if (binders.isEmpty()) "No binders yet · add your first one" else "Tap to open, hold to edit",
             style = MaterialTheme.typography.bodyMedium,
             color = AppColors.Muted,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+            modifier = headerFade.padding(start = 20.dp, end = 20.dp, top = 6.dp),
         )
 
+        if (use3D) {
+            val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
+            val looks = binders.map { b ->
+                val c = covers[b.id]
+                com.hybrid87sg.bindertracker.ui.three.BinderLook3D(
+                    id = b.id,
+                    name = b.name,
+                    tag = if (b.isShared) "Shared" else b.sizeLabel,
+                    colorHex = b.colorHex,
+                    fill = fill[b.id]?.fraction ?: 0f,
+                    dir = dir,
+                    picturePath = c?.path,
+                    pictureVersion = c?.version ?: 0L,
+                    placement = c?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
+                )
+            }
+            com.hybrid87sg.bindertracker.ui.three.Shelf3D(
+                binders = looks,
+                look = look,
+                colors = com.hybrid87sg.bindertracker.ui.three.ShelfColors(AppColors.Wood, AppColors.ShelfBackground, AppColors.Paper),
+                onOpen = { id -> binders.firstOrNull { it.id == id }?.let(onOpenBinder) },
+                onEdit = { id -> binders.firstOrNull { it.id == id }?.let { if (it.canEdit) onEditBinder(it) else onOpenBinder(it) } },
+                onOpening = { opening = it },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        } else {
         // LazyColumn only builds the rows that are on screen, so a shelf
         // with many binders still scrolls smoothly.
         LazyColumn(
@@ -296,8 +342,9 @@ fun ShelfScreen(
                                         setup = setup,
                                         cover = coverLook(item.binder.name, item.binder.colorHex, coverBitmaps[item.binder.id], covers[item.binder.id]),
                                         onClick = { onOpenBinder(item.binder) },
-                                        // Only the owner can change a binder's colour.
-                                        onLongClick = { if (item.binder.isOwner) editingId = item.binder.id },
+                                        // Hold: Edit binder, for binders you can edit.
+                                        onLongClick = { if (item.binder.canEdit) onEditBinder(item.binder) },
+                                        picture = coverBitmaps[item.binder.id],
                                     )
                                     missing[item.binder.id]?.takeIf { it.total > 0 }?.let { p ->
                                         MissingBadge(p.missing, pop = inT, modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-8).dp))
@@ -318,16 +365,7 @@ fun ShelfScreen(
                 }
             }
         }
-    }
-
-    editing?.let { binder ->
-        ColorPickerSheet(
-            binderName = binder.name,
-            sizeLabel = binder.sizeLabel,
-            initialHex = binder.colorHex,
-            onSave = { hex -> onChangeColor(binder, hex); editingId = null },
-            onDismiss = { editingId = null },
-        )
+        }
     }
 }
 
@@ -369,6 +407,7 @@ private fun BinderSpine(
     modifier: Modifier = Modifier,
     setup: ShelfSetup? = null,
     cover: CoverLook? = null,
+    picture: ImageBitmap? = null,
 ) {
     val turn = setup?.turn
     val haptics = LocalHapticFeedback.current
@@ -388,6 +427,7 @@ private fun BinderSpine(
         height = setup?.spineHeight ?: SpineHeight,
         // The fill bar grows as the binder arrives on the shelf.
         fill = fill * grow,
+        picture = picture,
         modifier = modifier
             .graphicsLayer {
                 translationY = -lift * 12.dp.toPx()
@@ -402,7 +442,7 @@ private fun BinderSpine(
                 interactionSource = press,
                 indication = LocalIndication.current,
                 onClickLabel = "Open",
-                onLongClickLabel = "Change colour",
+                onLongClickLabel = "Edit binder",
                 onClick = onClick,
                 onLongClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -501,6 +541,7 @@ internal fun ShelfPreview(binders: List<PreviewBinder>, look: ShelfLook, perRow:
                         width = setup.binderWidth,
                         height = setup.spineHeight,
                         fill = b.fill,
+                        picture = b.picture,
                         modifier = Modifier
                             .zIndex(if (look.coversOnRight) i.toFloat() else -i.toFloat())
                             .then(if (setup.turn != null) Modifier.turnedBinder(setup.turn, cover) else Modifier),

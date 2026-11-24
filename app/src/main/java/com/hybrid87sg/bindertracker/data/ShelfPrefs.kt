@@ -11,7 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * [angle] is how far each binder is turned, in degrees (0 = straight on, the
  * classic shelf). [coversOnRight] picks the side the cover shows on.
  */
-data class ShelfLook(val angle: Int = 0, val coversOnRight: Boolean = true) {
+data class ShelfLook(
+    val angle: Int = 0,
+    val coversOnRight: Boolean = true,
+    // Real 3D binders (drawn with the Filament 3D engine). Off = the flat drawn shelf.
+    val threeD: Boolean = true,
+) {
     val turned: Boolean get() = angle > 0
 
     companion object {
@@ -31,17 +36,19 @@ class ShelfPrefs(context: Context) {
         ShelfLook(
             angle = prefs.getInt(KEY_ANGLE, 0).takeIf { it in ShelfLook.Angles } ?: 0,
             coversOnRight = prefs.getBoolean(KEY_RIGHT, true),
+            threeD = prefs.getBoolean(KEY_3D, true),
         ),
     )
     val look: StateFlow<ShelfLook> = _look.asStateFlow()
 
     fun set(look: ShelfLook) {
-        prefs.edit().putInt(KEY_ANGLE, look.angle).putBoolean(KEY_RIGHT, look.coversOnRight).apply()
+        prefs.edit().putInt(KEY_ANGLE, look.angle).putBoolean(KEY_RIGHT, look.coversOnRight).putBoolean(KEY_3D, look.threeD).apply()
         _look.value = look
     }
 
     private companion object {
         const val KEY_ANGLE = "angle"
         const val KEY_RIGHT = "covers_right"
+        const val KEY_3D = "three_d"
     }
 }

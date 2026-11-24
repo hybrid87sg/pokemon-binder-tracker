@@ -1,0 +1,109 @@
+package com.hybrid87sg.bindertracker.ui.three
+
+import com.hybrid87sg.bindertracker.ui.three.BinderModel.COVER
+import com.hybrid87sg.bindertracker.ui.three.BinderModel.HEIGHT
+import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.tan
+
+/**
+ * Where each 3D binder stands on the shelves, and where the planks go.
+ * Plain maths, so unit tests can check it.
+ */
+class ShelfLayout(count: Int, angleDegrees: Int, coversOnRight: Boolean, perRow: Int = 4) {
+    /** 1 = covers to the right of the spine, -1 = to the left. Straight binders use 1. */
+    val dir = if (angleDegrees == 0 || coversOnRight) 1 else -1
+    /** How far each binder is turned around the up axis (radians). */
+    val turn: Float = dir * (PI.toFloat() / 2f - Math.toRadians(angleDegrees.toDouble()).toFloat())
+
+    class Spot(val position: Vec3, val row: Int)
+    class Plank(val centre: Vec3, val size: Vec3)
+
+    val spots = ArrayList<Spot>()
+    val planks = ArrayList<Plank>()
+    val panels = ArrayList<Plank>()
+    /** The whole shelf, for fitting the camera. */
+    var min = Vec3(0f, 0f, 0f); private set
+    var max = Vec3(0f, 0f, 0f); private set
+
+    init {
+        val rows = max(1, (count + perRow - 1) / perRow)
+        val rowGap = HEIGHT + 0.75f
+        val a = Math.toRadians(angleDegrees.toDouble()).toFloat()
+        val (lo, hi) = BinderModel.bounds(dir)
+        // The box corners of one turned binder (it sits with its hinge at 0).
+        val corners = listOf(lo.x, hi.x).flatMap { x -> listOf(lo.z, hi.z).map { z -> Vec3(x, 0f, z).rotateY(turn) } }
+        val bxMin = corners.minOf { it.x }; val bxMax = corners.maxOf { it.x }; val bzMax = corners.maxOf { it.z }
+        val width = bxMax - bxMin
+        val step = width + 0.05f + 0.12f * sin(a)
+        var widest = 0f
+        val rowWidths = ArrayList<Float>()
+        for (r in 0 until rows) {
+            val n = min(perRow, count - r * perRow).coerceAtLeast(0)
+            rowWidths += if (n == 0) step else n * step - (step - width)
+        }
+        widest = rowWidths.max()
+        val depth = COVER + 0.5f
+        for (r in 0 until rows) {
+            val y = -r * rowGap
+            val n = min(perRow, count - r * perRow).coerceAtLeast(0)
+            val start = -rowWidths[r] / 2f
+            for (k in 0 until n) {
+                val left = start + k * step
+                spots += Spot(Vec3(left - bxMin, y, -0.15f - bzMax), r)
+            }
+            planks += Plank(Vec3(0f, y - 0.08f, -depth / 2f + 0.1f), Vec3(widest + 0.6f, 0.16f, depth))
+            panels += Plank(Vec3(0f, y + (HEIGHT + 0.55f) / 2f - 0.08f, -depth + 0.07f), Vec3(widest + 0.6f, HEIGHT + 0.55f, 0.06f))
+        }
+        val bottom = -(rows - 1) * rowGap - 0.16f
+        min = Vec3(-(widest + 0.6f) / 2f, bottom, -depth)
+        max = Vec3((widest + 0.6f) / 2f, HEIGHT + 0.47f, 0.1f)
+    }
+}
+
+/**
+ * A simple camera: where it is, what it looks at, and how wide it sees.
+ * Used to fit the shelf on screen and to find which binder a finger touched.
+ */
+class Cam(val eye: Vec3, val target: Vec3, val fovYDegrees: Float, val aspect: Float) {
+    val forward = (target - eye).normalized()
+    val right = forward.cross(Vec3(0f, 1f, 0f)).normalized()
+    val up = right.cross(forward)
+    private val t = tan(Math.toRadians(fovYDegrees / 2.0)).toFloat()
+
+    /** The point on screen (0..1 across, 0..1 down) for a point in the world. */
+    fun project(p: Vec3): Pair<Float, Float> {
+        val d = p - eye
+        val z = d.dot(forward)
+        val x = d.dot(right) / (z * t * aspect)
+        val y = d.dot(up) / (z * t)
+        return (x + 1f) / 2f to (1f - y) / 2f
+    }
+
+    /** The direction from the eye through a point on screen (0..1, 0..1). */
+    fun ray(sx: Float, sy: Float): Vec3 {
+        val x = (sx * 2f - 1f) * t * aspect
+        val y = (1f - sy * 2f) * t
+        return (forward + right * x + up * y).normalized()
+    }
+}
+
+/** Does a ray hit a box? Returns how far along, or null. */
+fun hitBox(origin: Vec3, dir: Vec3, lo: Vec3, hi: Vec3): Float? {
+    var tMin = -Float.MAX_VALUE; var tMax = Float.MAX_VALUE
+    val o = floatArrayOf(origin.x, origin.y, origin.z); val d = floatArrayOf(dir.x, dir.y, dir.z)
+    val l = floatArrayOf(lo.x, lo.y, lo.z); val h = floatArrayOf(hi.x, hi.y, hi.z)
+    for (i in 0..2) {
+        if (kotlin.math.abs(d[i]) < 1e-6f) {
+            if (o[i] < l[i] || o[i] > h[i]) return null
+        } else {
+            var a = (l[i] - o[i]) / d[i]; var b = (h[i] - o[i]) / d[i]
+            if (a > b) { val s = a; a = b; b = s }
+            tMin = max(tMin, a); tMax = min(tMax, b)
+            if (tMin > tMax) return null
+        }
+    }
+    return if (tMax < 0f) null else max(tMin, 0f)
+}
