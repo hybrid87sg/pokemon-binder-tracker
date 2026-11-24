@@ -276,6 +276,7 @@ fun SpreadTurnStage(
                 if (front == null) {
                     // Pictures not taken yet (a frame or two): show the sheet flat where it is.
                     translate(left = if (d > 0) width + gap else 0f) { drawLayer(frontLayer) }
+                    drawSpineRings()
                 } else {
                     withTransform({ if (d < 0) scale(-1f, 1f, pivot = Offset(size.width / 2f, size.height / 2f)) }) {
                         drawSpreadCurl(front, backPicture, state.progress, width, gap, mirrored = d < 0, sheetColor = sheetColor)
@@ -283,8 +284,9 @@ fun SpreadTurnStage(
                 }
             }
         }
-        // The rings, across the middle, on top of everything.
-        Canvas(Modifier.matchParentSize()) { drawSpineRings() }
+        // The rings, across the middle, on top of the still pages. (While a page
+        // turns, drawSpreadCurl draws them itself, under the lifted page.)
+        if (d == 0) Canvas(Modifier.matchParentSize()) { drawSpineRings() }
         if (edgeGlow != 0) {
             val pulse by rememberInfiniteTransition(label = "edge").animateFloat(
                 initialValue = 0.35f,
@@ -315,28 +317,28 @@ private const val BACK = 2
 private const val AWAY = 3
 
 /** Rings that run across the spine, from the holes in the left page to the holes in the right. */
-private fun DrawScope.drawSpineRings() {
+private fun DrawScope.drawSpineRings(alpha: Float = 1f) {
     val mid = size.width / 2f
     val w = SpineGap.toPx() + 30.dp.toPx()
     val h = 16.dp.toPx()
     RingSpots.forEach { f ->
         val top = size.height * f - h / 2
         drawRoundRect(
-            color = Color.Black.copy(alpha = 0.18f),
+            color = Color.Black.copy(alpha = 0.18f * alpha),
             topLeft = Offset(mid - w / 2, top + 2.dp.toPx()),
             size = Size(w, h),
             cornerRadius = CornerRadius(h / 2),
             style = Stroke(3.dp.toPx()),
         )
         drawRoundRect(
-            color = Color(0xFF8D90A0),
+            color = Color(0xFF8D90A0).copy(alpha = alpha),
             topLeft = Offset(mid - w / 2, top),
             size = Size(w, h),
             cornerRadius = CornerRadius(h / 2),
             style = Stroke(3.dp.toPx()),
         )
         drawRoundRect(
-            color = Color(0xFFD5D7E0),
+            color = Color(0xFFD5D7E0).copy(alpha = alpha),
             topLeft = Offset(mid - w / 2 + 3.dp.toPx(), top + 1.dp.toPx()),
             size = Size(w - 6.dp.toPx(), h - 2.dp.toPx()),
             cornerRadius = CornerRadius(h / 2),
@@ -395,12 +397,17 @@ private fun DrawScope.drawSpreadCurl(
     val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     val matrix = Matrix()
     val cuts = PageCurl.cuts(width, fold, radius)
+    // Two passes: first the part of the sheet still lying flat, then the rings,
+    // then the part lifted off the page, so the turning page passes over the rings.
+    for (pass in 0..1) {
+    if (pass == 1) drawSpineRings()
     drawIntoCanvas { c ->
         val canvas = c.nativeCanvas
         for (i in 0 until cuts.size - 1) {
             val s0 = cuts[i]
             val s1 = cuts[i + 1]
             if (s1 - s0 < 0.5f) continue
+            if ((s1 > fold + 0.01f) != (pass == 1)) continue
             val (x0, z0) = PageCurl.position(s0, fold, radius)
             val (x1, z1) = PageCurl.position(s1, fold, radius)
             val a0 = project(x0, 0f, z0)
@@ -437,4 +444,9 @@ private fun DrawScope.drawSpreadCurl(
             canvas.restore()
         }
     }
+    }
+    // As the page lands on the other side, the rings come back over it (as they
+    // are on a page lying still), so nothing jumps when the turn ends.
+    val settle = ((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)
+    if (settle > 0f) drawSpineRings(settle)
 }

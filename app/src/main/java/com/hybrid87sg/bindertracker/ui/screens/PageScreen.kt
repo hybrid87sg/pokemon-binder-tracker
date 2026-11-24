@@ -703,6 +703,10 @@ fun PageScreen(
                     canPrev = prevPockets != null,
                     canNext = nextPockets != null,
                     onTurned = onTurn,
+                    // The back of the turning sheet shows this binder's own pocket layout.
+                    columns = columns.coerceAtLeast(1),
+                    rows = listOfNotNull(shownPockets.size, prevPockets?.size, nextPockets?.size)
+                        .maxOf { (it + columns.coerceAtLeast(1) - 1) / columns.coerceAtLeast(1) },
                     // Each sheet is known by its page, so the page you turn to keeps
                     // its cards exactly as they were drawn during the turn.
                     keyOf = { which ->

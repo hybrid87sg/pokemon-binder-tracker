@@ -126,6 +126,10 @@ fun PageTurnStage(
     canNext: Boolean,
     onTurned: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    // The binder's pocket layout, so the back of a turning sheet shows the same
+    // grid as its front (0 rows = as many as fit).
+    columns: Int = 3,
+    rows: Int = 0,
     // A name for each sheet (e.g. its page ID), so a sheet is never rebuilt
     // just because it moved from "next page" to "this page".
     keyOf: (which: Int) -> Any = { it },
@@ -249,12 +253,16 @@ fun PageTurnStage(
                     // Picture not taken yet (a frame or two): show the sheet flat.
                     if (d > 0) drawLayer(layer)
                 } else {
-                    drawCurl(picture, state.progress, sheetColor, backPocket, holeColor)
+                    // The rings are drawn in the middle of the curl: over the flat part of
+                    // the sheet, but under the part that lifts up as it turns.
+                    drawCurl(picture, state.progress, sheetColor, backPocket, holeColor, columns, rows)
                 }
+                if (picture == null) drawRings()
             }
+        } else {
+            // The binder rings, on top of the still page.
+            Canvas(Modifier.matchParentSize()) { drawRings() }
         }
-        // The binder rings, on top of everything.
-        Canvas(Modifier.matchParentSize()) { drawRings() }
     }
 }
 
@@ -285,7 +293,15 @@ private fun DrawScope.drawRings() {
 }
 
 /** Draws the turning sheet bent round its fold, plus the shadow it casts on the page below. */
-private fun DrawScope.drawCurl(picture: ImageBitmap, progress: Float, sheetColor: Color, backPocket: Color, holeColor: Color) {
+private fun DrawScope.drawCurl(
+    picture: ImageBitmap,
+    progress: Float,
+    sheetColor: Color,
+    backPocket: Color,
+    holeColor: Color,
+    columns: Int,
+    rows: Int,
+) {
     val width = size.width
     val height = size.height
     val radius = 22.dp.toPx()
@@ -315,12 +331,17 @@ private fun DrawScope.drawCurl(picture: ImageBitmap, progress: Float, sheetColor
     val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     val matrix = Matrix()
     val cuts = PageCurl.cuts(width, fold, radius)
+    // Two passes: first the part still lying flat, then the rings, then the
+    // part lifted off the page, so the rings sit under the turning page.
+    for (pass in 0..1) {
+    if (pass == 1) drawRings()
     drawIntoCanvas { c ->
         val canvas = c.nativeCanvas
         for (i in 0 until cuts.size - 1) {
             val s0 = cuts[i]
             val s1 = cuts[i + 1]
             if (s1 - s0 < 0.5f) continue
+            if ((s1 > fold + 0.01f) != (pass == 1)) continue
             val (x0, z0) = PageCurl.position(s0, fold, radius)
             val (x1, z1) = PageCurl.position(s1, fold, radius)
             val a0 = project(x0, 0f, z0)
@@ -341,7 +362,7 @@ private fun DrawScope.drawCurl(picture: ImageBitmap, progress: Float, sheetColor
             if (front) {
                 canvas.drawBitmap(bitmap, 0f, 0f, paint)
             } else {
-                drawSheetBack(canvas, width, height, fill, sheetColor, backPocket, holeColor)
+                drawSheetBack(canvas, width, height, fill, sheetColor, backPocket, holeColor, columns, rows)
             }
             // Darker where the sheet is tilted away from the light.
             val shade = sin(mid) * if (front) 0.42f else 0.3f
@@ -351,6 +372,7 @@ private fun DrawScope.drawCurl(picture: ImageBitmap, progress: Float, sheetColor
             }
             canvas.restore()
         }
+    }
     }
 }
 
@@ -363,22 +385,29 @@ private fun DrawScope.drawSheetBack(
     sheetColor: Color,
     pocket: Color,
     hole: Color,
+    columns: Int,
+    rows: Int,
 ) {
     fill.color = sheetColor.toArgb()
     canvas.drawRoundRect(RectF(0f, 0f, width, height), 14.dp.toPx(), 14.dp.toPx(), fill)
+    // The same spacing as the front of the sheet (see BinderSheet), mirrored:
+    // seen from behind, the ring holes are on the right.
     val pad = 10.dp.toPx()
     val holeSide = 26.dp.toPx()
-    val gap = 8.dp.toPx()
-    val cols = 3
-    val cellW = (width - pad - holeSide - gap * (cols - 1)) / cols
+    val gapX = 8.dp.toPx()
+    val gapY = 10.dp.toPx()
+    val cols = columns.coerceAtLeast(1)
+    val cellW = (width - pad - holeSide - gapX * (cols - 1)) / cols
     val cellH = cellW * 88f / 63f
-    val rows = ((height - pad) / (cellH + gap)).toInt().coerceAtLeast(1)
+    val rowCount = if (rows > 0) rows else ((height - pad) / (cellH + gapY)).toInt().coerceAtLeast(1)
+    // Each row's share of the height (a pocket plus its card name underneath).
+    val rowH = (height - 2 * pad - gapY * (rowCount - 1)) / rowCount
+    val pocketH = min(cellH, rowH)
     fill.color = pocket.copy(alpha = 0.45f).toArgb()
-    for (r in 0 until rows) for (col in 0 until cols) {
-        val left = pad + col * (cellW + gap)
-        val top = pad + r * (cellH + gap)
-        if (top + cellH > height) continue
-        canvas.drawRoundRect(RectF(left, top, left + cellW, top + cellH), 6.dp.toPx(), 6.dp.toPx(), fill)
+    for (r in 0 until rowCount) for (col in 0 until cols) {
+        val left = pad + col * (cellW + gapX)
+        val top = pad + r * (rowH + gapY)
+        canvas.drawRoundRect(RectF(left, top, left + cellW, top + pocketH), 6.dp.toPx(), 6.dp.toPx(), fill)
     }
     fill.color = hole.toArgb()
     RingSpots.forEach { f -> canvas.drawCircle(width - 12.dp.toPx(), height * f, 4.5.dp.toPx(), fill) }
