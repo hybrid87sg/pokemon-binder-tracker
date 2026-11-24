@@ -66,6 +66,9 @@ class AppColourMathTest {
         assertEquals("Off", AppColourMath.glitterWord(0f))
         assertEquals("Full holo", AppColourMath.glitterWord(1f))
         assertTrue(AppColourMath.isClassic(listOf(AppColourMath.CLASSIC)))
+        assertEquals("Off", AppColourMath.tiltWord(0f))
+        assertEquals("Medium", AppColourMath.tiltWord(0.6f))
+        assertEquals("Strong", AppColourMath.tiltWord(1f))
     }
 
     @Test

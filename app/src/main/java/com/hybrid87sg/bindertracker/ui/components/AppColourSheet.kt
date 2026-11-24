@@ -152,16 +152,18 @@ fun AppColourSheet(onClose: () -> Unit) {
     val context = LocalContext.current
     val startColours = remember { AppColourSetting.colours }
     val startGlitter = remember { AppColourSetting.glitter }
+    val startTilt = remember { AppColourSetting.tiltReaction }
     var colours by remember { mutableStateOf(startColours ?: listOf(AppColourMath.CLASSIC)) }
     var active by remember { mutableIntStateOf(0) }
     var glitter by remember { mutableFloatStateOf(startGlitter) }
+    var tiltReaction by remember { mutableFloatStateOf(startTilt) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    fun preview() = AppColourSetting.show(colours, glitter)
+    fun preview() = AppColourSetting.show(colours, glitter, tiltReaction)
 
     ModalBottomSheet(
-        onDismissRequest = { AppColourSetting.show(startColours, startGlitter); onClose() },
+        onDismissRequest = { AppColourSetting.show(startColours, startGlitter, startTilt); onClose() },
         sheetState = sheetState,
         containerColor = AppColors.Surface,
         // A light dim, so you can still see the app re-tint behind the sheet.
@@ -212,13 +214,28 @@ fun AppColourSheet(onClose: () -> Unit) {
                 preview()
             })
 
-            GlitterBar(glitter, onChange = { glitter = it; preview() })
+            FoilBar(
+                label = "Background glitter",
+                value = glitter,
+                word = AppColourMath.glitterWord(glitter),
+                steps = AppColourMath.GLITTER_STEPS,
+                onChange = { glitter = it; preview() },
+            )
+            FoilBar(
+                label = "Tilt reaction",
+                value = tiltReaction,
+                word = AppColourMath.tiltWord(tiltReaction),
+                steps = AppColourMath.TILT_STEPS,
+                onChange = { tiltReaction = it; preview() },
+                hint = "Tilt your phone and the glitter moves, like a holo card.",
+            )
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val resetPress = remember { MutableInteractionSource() }
                 OutlinedButton(
                     onClick = {
                         colours = listOf(AppColourMath.CLASSIC); active = 0; glitter = 0f
+                        tiltReaction = AppColourSetting.DEFAULT_TILT
                         preview()
                     },
                     interactionSource = resetPress,
@@ -230,7 +247,7 @@ fun AppColourSheet(onClose: () -> Unit) {
                 val usePress = remember { MutableInteractionSource() }
                 Button(
                     onClick = {
-                        AppColourSetting.save(context, colours, glitter)
+                        AppColourSetting.save(context, colours, glitter, tiltReaction)
                         scope.launch { sheetState.hide() }.invokeOnCompletion { onClose() }
                     },
                     interactionSource = usePress,
@@ -456,16 +473,19 @@ private fun PresetGems(selectedHue: Float, onPick: (Float) -> Unit) {
     }
 }
 
-/** The background glitter bar: a foil track with a sparkle gem you slide from Off to Full holo. */
+/**
+ * A foil slider: a rainbow track with a sparkle gem you slide, and the step
+ * names underneath (the current one in bold). Used for the background
+ * glitter (Off to Full holo) and the tilt reaction (Off to Strong).
+ */
 @Composable
-private fun GlitterBar(value: Float, onChange: (Float) -> Unit) {
+private fun FoilBar(label: String, value: Float, word: String, steps: List<String>, onChange: (Float) -> Unit, hint: String? = null) {
     val latest by rememberUpdatedState(onChange)
-    val word = AppColourMath.glitterWord(value)
     val trackEmpty = AppColors.Surface2
     val border = AppColors.Border
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Background glitter", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text("$word · ${(value * 100).roundToInt()}%", fontSize = 12.5.sp, color = AppColors.Muted)
         }
         Box(
@@ -473,7 +493,7 @@ private fun GlitterBar(value: Float, onChange: (Float) -> Unit) {
                 .fillMaxWidth()
                 .height(36.dp)
                 .semantics {
-                    contentDescription = "Background glitter"
+                    contentDescription = label
                     stateDescription = word
                     progressBarRangeInfo = ProgressBarRangeInfo(value, 0f..1f)
                     setProgress { latest(it.coerceIn(0f, 1f)); true }
@@ -527,7 +547,7 @@ private fun GlitterBar(value: Float, onChange: (Float) -> Unit) {
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            AppColourMath.GLITTER_STEPS.forEach { step ->
+            steps.forEach { step ->
                 Text(
                     step, fontSize = 10.5.sp,
                     fontWeight = if (step == word) FontWeight.Bold else FontWeight.SemiBold,
@@ -535,5 +555,6 @@ private fun GlitterBar(value: Float, onChange: (Float) -> Unit) {
                 )
             }
         }
+        if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
     }
 }
