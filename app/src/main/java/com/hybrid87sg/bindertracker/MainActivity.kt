@@ -62,6 +62,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.produceState
+import com.hybrid87sg.bindertracker.ui.components.CardBackSetting
+import com.hybrid87sg.bindertracker.ui.components.LocalBinderColor
+import com.hybrid87sg.bindertracker.ui.components.LocalCardBack
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.ExpansionOption
 import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
@@ -235,6 +238,8 @@ private fun App(
     // To and from the card screen, the screens only fade: the card itself flies
     // between its pocket and the card screen (see CardFlight).
     val flyFade = tween<Float>(CardFlight.FlyMillis, easing = Motion.Ease)
+    // The 3D binder hands over to its page: a short cross-fade (see Shelf3D).
+    val openFade = tween<Float>(260, easing = Motion.Ease)
     // Between tabs: a soft fade-through. The old page fades out quickly, then
     // the new one fades in and rises a touch, so the two never look muddled.
     val tabOut = fadeOut(tween(140, easing = LinearOutSlowInEasing))
@@ -267,6 +272,14 @@ private fun App(
             CardFlight.closing = false
         }
     }
+    // This phone's card back (Me > Card back), and your own picture for it if you chose one.
+    val cardBackChoice by vm.cardBack.collectAsStateWithLifecycle()
+    val cardBackPicture by produceState<android.graphics.Bitmap?>(null, cardBackChoice.picturePath, cardBackChoice.version) {
+        value = cardBackChoice.picturePath?.let { path ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { decodeCardBack(path) }
+        }
+    }
+    val cardBackSetting = remember(cardBackChoice, cardBackPicture) { CardBackSetting(cardBackChoice, cardBackPicture) }
     Row(Modifier.fillMaxSize()) {
     if (wide && tab != null) MainTabRail(tab, missingTotal, goTab)
     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -276,13 +289,13 @@ private fun App(
             .then(if (!wide && tab != null) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
     ) {
     SharedTransitionLayout {
-    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+    CompositionLocalProvider(LocalSharedTransitionScope provides this, LocalCardBack provides cardBackSetting) {
     NavHost(
         navController = nav,
         startDestination = "shelf",
         // Switching tabs just cross-fades; going deeper slides in from the right.
-        enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else if (openHop()) fadeIn(openFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
+        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else if (openHop()) fadeOut(openFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
         // Closing the card screen is a quick fade (no flight back).
         popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(fade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
         popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(fade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },
@@ -294,7 +307,15 @@ private fun App(
             val missing by vm.missingCounts.collectAsStateWithLifecycle()
             val look by vm.shelfLook.collectAsStateWithLifecycle()
             val covers by vm.covers.collectAsStateWithLifecycle()
+            val firstPages by vm.firstPages.collectAsStateWithLifecycle()
             ShelfScreen(
+                firstPages = firstPages,
+                // The 3D binder opened onto its first page: the binder's page list goes
+                // underneath, so Back from the page goes to the list like before.
+                onOpenPage = { binder, pageId ->
+                    nav.navigate("binder/${binder.id}")
+                    nav.navigate("page/$pageId")
+                },
                 missing = missing,
                 look = look,
                 covers = covers,
@@ -588,7 +609,8 @@ private fun App(
                     }.orEmpty()
                 }
                 binder?.let { b ->
-                    CompositionLocalProvider(LocalScreenAnimationScope provides this) {
+                    // The card backs in empty pockets can take on the binder's colour.
+                    CompositionLocalProvider(LocalScreenAnimationScope provides this, LocalBinderColor provides colorFromHex(b.colorHex)) {
                     PageScreen(
                         binderName = b.name,
                         pageNumber = if (index >= 0) index + 1 else number,
@@ -753,6 +775,22 @@ private fun App(
                 onSaveMissingArt = vm::setSaveMissingArt,
                 onArtOnMobileData = vm::setArtOnMobileData,
                 onDownloadArtAgain = vm::downloadArtAgain,
+                onOpenCardBack = { nav.navigate("card-back") },
+            )
+        }
+        // Me > Card back: the back of every face-down card, set for this phone.
+        composable("card-back") {
+            val choice by vm.cardBack.collectAsStateWithLifecycle()
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            com.hybrid87sg.bindertracker.ui.screens.CardBackScreen(
+                choice = choice,
+                binders = binders.map { com.hybrid87sg.bindertracker.ui.screens.CardBackBinder(it.name, colorFromHex(it.colorHex)) },
+                onBack = { nav.popBackStack() },
+                onPick = vm::setCardBackStyle,
+                importPicture = vm::importCover,
+                discardDraft = vm::discardCoverDraft,
+                onSavePicture = vm::saveCardBackPicture,
+                onRemovePicture = vm::removeCardBackPicture,
             )
         }
     }
@@ -764,9 +802,22 @@ private fun App(
     }
 }
 
+/** Reads your own card back picture at about the size a card is shown (it can be a big photo). */
+private fun decodeCardBack(path: String): android.graphics.Bitmap? = runCatching {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(path, bounds)
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 900) sample *= 2
+    android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
+
 /** Switching between two of the main tabs. */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabHop(): Boolean =
     MainTab.of(initialState.destination.route) != null && MainTab.of(targetState.destination.route) != null
+
+/** A 3D binder opening onto its first page: the page fades in where the binder's page was. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.openHop(): Boolean =
+    initialState.destination.route == "shelf" && targetState.destination.route == "page/{pageId}"
 
 /** Going to or from the card screen, where a card flies instead of the screens sliding. */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.cardHop(): Boolean =

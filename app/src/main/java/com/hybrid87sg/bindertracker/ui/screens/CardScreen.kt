@@ -93,6 +93,9 @@ import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.components.cardFlight
+import com.hybrid87sg.bindertracker.ui.components.CardFlight
+import com.hybrid87sg.bindertracker.ui.components.CardBack
+import androidx.compose.runtime.derivedStateOf
 import com.hybrid87sg.bindertracker.ui.components.formatDate
 import com.hybrid87sg.bindertracker.ui.components.formatMoney
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
@@ -288,18 +291,40 @@ fun CardScreen(
         }
     }
 
+    // Opened from Missing cards: the card turns round once in 3D as it flies in.
+    // Only the first card; swiping to the next one doesn't spin.
+    val spin = remember { Animatable(if (CardFlight.spins(flightKey) && !CardFlight.closing) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (spin.value < 1f) spin.animateTo(1f, tween(CardFlight.SpinMillis, easing = CardFlight.SpinEasing))
+    }
+    // Halfway round you see the card's back.
+    val showingBack by remember { derivedStateOf { (spin.value * 360f).let { it > 90f && it < 270f } } }
     val picture = @Composable { modifier: Modifier ->
-        CardImage(
-            card.largeImageUrl,
-            contentDescription = "${card.name} card",
-            modifier = modifier.cardFlight(flightKey)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable(onClickLabel = "Show the card full screen") { fullScreen = true },
-            corner = 10.dp,
-            backupUrl = card.largeBackupUrl,
-            cardId = card.id,
-            grey = missing?.owned == false,
-        )
+        Box(
+            modifier.cardFlight(flightKey).graphicsLayer {
+                rotationY = spin.value * 360f
+                // Far enough away that the turn looks natural, not stretched.
+                cameraDistance = 16f * density
+            },
+        ) {
+            CardImage(
+                card.largeImageUrl,
+                contentDescription = "${card.name} card",
+                modifier = Modifier.fillMaxWidth()
+                    .graphicsLayer { alpha = if (showingBack) 0f else 1f }
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClickLabel = "Show the card full screen") { fullScreen = true },
+                corner = 10.dp,
+                backupUrl = card.largeBackupUrl,
+                cardId = card.id,
+                grey = missing?.owned == false,
+            )
+            if (showingBack) {
+                // Seen from behind the picture would be mirrored, so flip it back.
+                CardBack(Modifier.matchParentSize().graphicsLayer { scaleX = -1f }.clip(RoundedCornerShape(10.dp)))
+            }
+            if (spin.value < 1f) SpinShine(spin.value, Modifier.matchParentSize().clip(RoundedCornerShape(10.dp)))
+        }
     }
     val info = @Composable {
         CardInfo(card, details, failed, onRetry, rates, ratesLoaded, missing, onPutIn, onScanInto, slideIn)
@@ -681,5 +706,41 @@ private fun PriceTable(prices: List<MarketPrice>, rates: SgdRates?) {
                 }
             }
         }
+    }
+}
+
+/**
+ * The light catching a spinning card: a bright band sweeping across, with a
+ * faint holo rainbow, strongest when the card is side-on to you.
+ */
+@Composable
+private fun SpinShine(progress: Float, modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val turn = progress * 2f * kotlin.math.PI.toFloat()
+        val strength = kotlin.math.abs(kotlin.math.sin(turn))
+        if (strength < 0.02f) return@Canvas
+        val x = size.width * (1.4f - 1.8f * ((progress * 2f) % 1f))
+        drawRect(
+            androidx.compose.ui.graphics.Brush.linearGradient(
+                0f to androidx.compose.ui.graphics.Color.Transparent,
+                0.5f to androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f * strength),
+                1f to androidx.compose.ui.graphics.Color.Transparent,
+                start = androidx.compose.ui.geometry.Offset(x - size.width * 0.35f, 0f),
+                end = androidx.compose.ui.geometry.Offset(x + size.width * 0.35f, size.height),
+            ),
+        )
+        drawRect(
+            androidx.compose.ui.graphics.Brush.linearGradient(
+                listOf(
+                    androidx.compose.ui.graphics.Color(0xFFFF7AB6), androidx.compose.ui.graphics.Color(0xFFFFD36E),
+                    androidx.compose.ui.graphics.Color(0xFF8CF0C8), androidx.compose.ui.graphics.Color(0xFF7FB2FF),
+                    androidx.compose.ui.graphics.Color(0xFFC49BFF),
+                ),
+                start = androidx.compose.ui.geometry.Offset(0f, size.height * (1f - progress)),
+                end = androidx.compose.ui.geometry.Offset(size.width, size.height * (0.4f - progress)),
+            ),
+            alpha = 0.22f * strength,
+            blendMode = androidx.compose.ui.graphics.BlendMode.Screen,
+        )
     }
 }

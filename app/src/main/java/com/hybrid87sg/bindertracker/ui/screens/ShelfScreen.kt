@@ -127,6 +127,10 @@ fun ShelfScreen(
     onEditShelf: (() -> Unit)? = null,
     // Hold a binder: opens Edit binder (only for binders you can edit).
     onEditBinder: (Binder) -> Unit = {},
+    // Each binder's first page, by binder ID: the 3D binder opens onto it.
+    firstPages: Map<String, com.hybrid87sg.bindertracker.ui.three.SheetLook> = emptyMap(),
+    // A 3D binder opened onto its first page (binder, page ID). Null: open the binder as usual.
+    onOpenPage: ((Binder, String) -> Unit)? = null,
 ) {
     val coverBitmaps = rememberCoverBitmaps(covers)
     // Real 3D binders, when switched on and this phone can run the 3D engine.
@@ -266,6 +270,7 @@ fun ShelfScreen(
         )
 
         if (use3D) {
+            val cardBack = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current.choice
             val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
             val looks = binders.map { b ->
                 val c = covers[b.id]
@@ -279,13 +284,19 @@ fun ShelfScreen(
                     picturePath = c?.path,
                     pictureVersion = c?.version ?: 0L,
                     placement = c?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
+                    sheet = firstPages[b.id],
+                    back = cardBack,
                 )
             }
             com.hybrid87sg.bindertracker.ui.three.Shelf3D(
                 binders = looks,
                 look = look,
                 colors = com.hybrid87sg.bindertracker.ui.three.ShelfColors(AppColors.Wood, AppColors.ShelfBackground, AppColors.Paper),
-                onOpen = { id -> binders.firstOrNull { it.id == id }?.let(onOpenBinder) },
+                onOpen = { id, pageId ->
+                    binders.firstOrNull { it.id == id }?.let { b ->
+                        if (pageId != null && onOpenPage != null) onOpenPage(b, pageId) else onOpenBinder(b)
+                    }
+                },
                 onEdit = { id -> binders.firstOrNull { it.id == id }?.let { if (it.canEdit) onEditBinder(it) else onOpenBinder(it) } },
                 onOpening = { opening = it },
                 modifier = Modifier.weight(1f).fillMaxWidth(),

@@ -39,7 +39,17 @@ import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import com.hybrid87sg.bindertracker.data.OfflineArt
+import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.data.ShelfLook
+import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.toBitmap
+import android.graphics.Bitmap
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
@@ -69,7 +79,9 @@ data class ShelfColors(val wood: Color, val panel: Color, val paper: Color)
  * The My binders shelf with real 3D binders.
  *
  * Tap a binder: it comes off the shelf, turns to face you and its cover
- * swings open (towards the side the shelf is turned to), then [onOpen].
+ * swings open (towards the side the shelf is turned to). If it has pages, the
+ * camera then glides into its first page, which shows the real cards, and
+ * [onOpen] gets that page's ID; otherwise the page ID is null.
  * Hold a binder: [onEdit]. [onOpening] reports how far the opening has got
  * (0 to 1), so the screen can fade its title out.
  */
@@ -78,7 +90,7 @@ fun Shelf3D(
     binders: List<BinderLook3D>,
     look: ShelfLook,
     colors: ShelfColors,
-    onOpen: (String) -> Unit,
+    onOpen: (binderId: String, pageId: String?) -> Unit,
     onEdit: (String) -> Unit,
     onOpening: (Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -89,7 +101,7 @@ fun Shelf3D(
     val progress by rememberUpdatedState(onOpening)
     val stage = remember {
         ShelfStage(context, object : ShelfStage.Listener {
-            override fun onOpen(id: String) = open(id)
+            override fun onOpen(id: String, pageId: String?) = open(id, pageId)
             override fun onEdit(id: String) = edit(id)
             override fun onOpening(p: Float) = progress(p)
         })
@@ -97,31 +109,85 @@ fun Shelf3D(
     DisposableEffect(stage) { onDispose { stage.destroy() } }
     LaunchedEffect(binders, look, colors) {
         // Paint and build each binder away from the main thread, then show them.
-        val built = withContext(Dispatchers.Default) {
-            binders.map { b ->
-                b to (GlbCache.binders.get(b) ?: run {
-                    val picture = b.picturePath?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
-                    val color = BinderPaint.parse(b.colorHex)
-                    val glb = BinderModel.build(
-                        b.dir,
-                        floatArrayOf(BinderModel.lin(android.graphics.Color.red(color)), BinderModel.lin(android.graphics.Color.green(color)), BinderModel.lin(android.graphics.Color.blue(color))),
-                        BinderPaint.pictures(b, picture),
-                    )
-                    picture?.recycle()
-                    GlbCache.binders.put(b, glb)
-                    glb
-                })
-            }
+        // First with only the card pictures already on the phone, so the shelf
+        // appears straight away; then again for any page still missing a picture,
+        // this time fetching it from the internet.
+        val first = withContext(Dispatchers.Default) { binders.map { b -> build(context, b, online = false) } }
+        stage.show(first.map { it.first to it.second }, look, colors)
+        if (first.all { it.third }) return@LaunchedEffect
+        val second = withContext(Dispatchers.Default) {
+            first.map { (b, glb, complete) -> if (complete) b to glb else build(context, b, online = true).let { it.first to it.second } }
         }
-        stage.show(built, look, colors)
+        stage.show(second, look, colors)
     }
     AndroidView(factory = { stage.textureView }, modifier = modifier)
 }
 
+/**
+ * Builds one binder's 3D file (or takes it from the cache). The third value
+ * is false when a card picture on its first page couldn't be found yet.
+ */
+private suspend fun build(context: Context, b: BinderLook3D, online: Boolean): Triple<BinderLook3D, ByteArray, Boolean> {
+    GlbCache.binders.get(b)?.let { return Triple(b, it, true) }
+    val picture = b.picturePath?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+    val cards = HashMap<Int, Bitmap>()
+    var complete = true
+    b.sheet?.pockets?.forEach { p ->
+        if (p.kind != SheetPocket.Kind.Card && p.kind != SheetPocket.Kind.Missing) return@forEach
+        val art = cardPicture(context, p, online)
+        if (art != null) cards[p.position] = art else complete = false
+    }
+    // Your own card back picture, for the empty pockets on the page.
+    val backPicture = if (b.sheet != null && b.back.style == com.hybrid87sg.bindertracker.data.CardBackStyle.Own) b.back.picturePath?.let { decodeSmall(File(it)) } else null
+    val color = BinderPaint.parse(b.colorHex)
+    val glb = BinderModel.build(
+        b.dir,
+        floatArrayOf(BinderModel.lin(android.graphics.Color.red(color)), BinderModel.lin(android.graphics.Color.green(color)), BinderModel.lin(android.graphics.Color.blue(color))),
+        BinderPaint.pictures(b, picture, cards, backPicture),
+    )
+    picture?.recycle()
+    backPicture?.recycle()
+    // Only remember it once every picture is in, so a missing one gets another go next time.
+    if (complete || online) GlbCache.binders.put(b, glb)
+    return Triple(b, glb, complete)
+}
+
+/**
+ * One card's small picture for the 3D page, from the same places as the page
+ * screen: the copy saved on the phone, then TCGdex, then the backup site
+ * (through the app's picture cache), then your own photo of the card.
+ */
+private suspend fun cardPicture(context: Context, p: SheetPocket, online: Boolean): Bitmap? {
+    OfflineArt.find(context, p.cardId)?.let { f -> decodeSmall(f)?.let { return it } }
+    val loader = SingletonImageLoader.get(context)
+    for (url in listOfNotNull(p.url, p.backupUrl)) {
+        val request = ImageRequest.Builder(context)
+            .data(url)
+            .size(CARD_PX, CARD_PX * 88 / 63)
+            .allowHardware(false)
+            .networkCachePolicy(if (online) CachePolicy.ENABLED else CachePolicy.DISABLED)
+            .build()
+        val result = runCatching { loader.execute(request) }.getOrNull()
+        if (result is SuccessResult) return runCatching { result.image.toBitmap() }.getOrNull()
+    }
+    return OwnPhotos.find(context, p.cardId)?.let { decodeSmall(it) }
+}
+
+private const val CARD_PX = 240
+
+/** Reads a picture file at about the size the 3D page needs. */
+private fun decodeSmall(file: File): Bitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.path, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= CARD_PX) sample *= 2
+    BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
+
 /** Runs the 3D engine for the shelf: the binders, the light, the camera and touches. */
 internal class ShelfStage(context: Context, private val listener: Listener) : UiHelper.RendererCallback {
     interface Listener {
-        fun onOpen(id: String)
+        fun onOpen(id: String, pageId: String?)
         fun onEdit(id: String)
         fun onOpening(p: Float)
     }
@@ -170,7 +236,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     private var openSent = false
     private var openPlan: OpenPlan? = null
 
-    private class OpenPlan(val start: Vec3, val turn: Float, val closed: Vec3, val open: Vec3, val eye0: Vec3, val look0: Vec3, val eyeEnd: Vec3, val lookEnd: Vec3, val dir: Int)
+    private class OpenPlan(val start: Vec3, val turn: Float, val closed: Vec3, val open: Vec3, val eye0: Vec3, val look0: Vec3, val eyeEnd: Vec3, val lookEnd: Vec3, val dir: Int, val toPage: Boolean)
 
     init {
         renderer.setClearOptions(Renderer.ClearOptions().apply { clear = true; setClearColor(0.0, 0.0, 0.0, 0.0) })
@@ -211,7 +277,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         if (destroyed || opening != null) return
         // Keep binders that haven't changed, swap the rest.
         val old = items.associateBy { it.look }
-        val next = built.mapNotNull { (b, glb) -> old[b] ?: load(b, glb) }
+        val next = built.mapNotNull { (b, glb) -> old[b]?.takeIf { it.glb === glb } ?: load(b, glb) }
         items.filter { it !in next }.forEach { remove(it.asset) }
         items = next
         val l = ShelfLayout(items.size, look.angle, look.coversOnRight)
@@ -421,13 +487,18 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val C = BinderModel.COVER
         val closed = Vec3(centre.x - d * C / 2f, centre.y - H / 2f, centre.z)
         val open = Vec3(centre.x, centre.y - H / 2f, centre.z)
-        val eyeEnd = Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
+        // With pages: end looking straight at the first page, so it fills the screen
+        // (where the page screen takes over). Without: a view of the open binder.
+        val toPage = item.look.sheet != null
+        val page = Vec3(open.x + d * (C / 2f + 0.07f), open.y + H / 2f, open.z - 0.129f)
+        val pageDist = max(SheetGrid.WIDTH / (0.94f * 2f * tanH * aspect), SheetGrid.HEIGHT / (0.86f * 2f * tanH))
+        val eyeEnd = if (toPage) page + Vec3(0f, 0f, pageDist) else Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
         openPlan = OpenPlan(
             start = item.spot + Vec3(0f, item.lift * 0.25f, item.lift),
             turn = l.turn, closed = closed, open = open,
             eye0 = cam.eye, look0 = cam.target,
-            eyeEnd = eyeEnd, lookEnd = Vec3(eyeEnd.x, centre.y, centre.z),
-            dir = l.dir,
+            eyeEnd = eyeEnd, lookEnd = if (toPage) page else Vec3(eyeEnd.x, centre.y, centre.z),
+            dir = l.dir, toPage = toPage,
         )
         // Draw it over the fade.
         scene.removeEntities(item.asset.entities)
@@ -441,8 +512,11 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     private fun stepOpening(now: Long) {
         val item = opening ?: return
         val plan = openPlan ?: return
-        val t = ((now - openStart) / 1e6f / OPEN_MILLIS).coerceIn(0f, 1f)
-        val p1 = out(seg(t, 0f, 0.14f)); val p2 = ease(seg(t, 0.1f, 0.5f)); val p3 = ease(seg(t, 0.46f, 0.84f)); val p4 = ease(seg(t, 0.8f, 1f))
+        val t = ((now - openStart) / 1e6f / (if (plan.toPage) PAGE_MILLIS else OPEN_MILLIS)).coerceIn(0f, 1f)
+        val p1 = out(seg(t, 0f, 0.14f)); val p2 = ease(seg(t, 0.1f, 0.5f))
+        // Going to the page: the cover opens a little sooner, then the camera glides into the page.
+        val p3 = if (plan.toPage) ease(seg(t, 0.42f, 0.8f)) else ease(seg(t, 0.46f, 0.84f))
+        val p4 = if (plan.toPage) ease(seg(t, 0.6f, 0.95f)) else ease(seg(t, 0.8f, 1f))
         var pos = plan.start + Vec3(0f, 0.12f * p1, 0.8f * p1)
         pos = mix(pos, plan.closed, p2)
         pos = mix(pos, plan.open, p3)
@@ -456,9 +530,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         placeDim(cam)
         setDim(0.9f * ease(seg(t, 0.05f, 0.45f)), dimColor)
         listener.onOpening(t)
-        if (!openSent && t >= 0.86f) {
+        if (!openSent && t >= (if (plan.toPage) 0.93f else 0.86f)) {
             openSent = true
-            listener.onOpen(item.look.id)
+            listener.onOpen(item.look.id, item.look.sheet?.pageId)
         }
         if (t >= 1f) finishOpening()
     }
@@ -602,6 +676,8 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     companion object {
         const val OPEN_MILLIS = 1500f
+        /** Opening onto the first page takes a little longer (the glide into the page). */
+        const val PAGE_MILLIS = 1800f
         private fun seg(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
         private fun ease(t: Float) = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).pow(3) / 2f
         private fun out(t: Float) = 1f - (1f - t).pow(3)

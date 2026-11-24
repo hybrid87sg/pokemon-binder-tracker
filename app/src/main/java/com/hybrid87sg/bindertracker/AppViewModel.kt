@@ -66,6 +66,11 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.hybrid87sg.bindertracker.data.CardPictures
+import com.hybrid87sg.bindertracker.ui.three.SheetLook
+import com.hybrid87sg.bindertracker.ui.three.SheetPocket
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -107,6 +112,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Copies a picked photo for the cover editor. Returns its temporary path, or null. */
     suspend fun importCover(uri: android.net.Uri): String? = coverPictures.importDraft(uri)
+
+    // ---- Card back (Me > Card back): this phone's own setting ----
+
+    private val cardBackPrefs = com.hybrid87sg.bindertracker.data.CardBackPrefs(app)
+    val cardBack: StateFlow<com.hybrid87sg.bindertracker.data.CardBackChoice> = cardBackPrefs.choice
+
+    fun setCardBackStyle(style: com.hybrid87sg.bindertracker.data.CardBackStyle) = cardBackPrefs.setStyle(style)
+
+    /** Saves your own card back picture ([path] from [importCover]) and uses it. */
+    fun saveCardBackPicture(path: String, placement: com.hybrid87sg.bindertracker.data.CoverPlacement) {
+        viewModelScope.launch { cardBackPrefs.savePicture(path, placement) }
+    }
+
+    fun removeCardBackPicture() {
+        viewModelScope.launch { cardBackPrefs.removePicture() }
+    }
 
     fun discardCoverDraft(path: String?) = coverPictures.discardDraft(path)
 
@@ -508,6 +529,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun page(pageId: String): Flow<Page?> = pageDao.observePage(pageId)
+
+    /**
+     * Each binder's first page as the 3D shelf shows it inside the binder
+     * (the binder opens onto it): its cards, grey missing cards and empty
+     * pockets, by binder ID. Binders with no pages aren't listed.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val firstPages: StateFlow<Map<String, SheetLook>> = binders
+        .flatMapLatest { list ->
+            if (list.isEmpty()) flowOf(emptyMap())
+            else combine(list.map { b -> firstPage(b.id).map { b.id to it } }) { pairs ->
+                pairs.mapNotNull { (id, sheet) -> sheet?.let { id to it } }.toMap()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    private fun firstPage(binderId: String): Flow<SheetLook?> =
+        combine(pageDao.observeBinderPockets(binderId), checklist(binderId)) { pockets, d ->
+            val pageId = pockets.firstOrNull()?.pageId ?: return@combine null
+            val b = d?.binder ?: return@combine null
+            // The grey missing cards on this page, worked out just like the page screen does.
+            val ghosts = if (b.followedSetIds.isEmpty()) emptyMap() else {
+                val entries = Checklist.entries(d.cards, b.followedSetIds, d.owned, b.countSecretRares)
+                Checklist.ghosts(entries, d.pockets).filterKeys { it.first == pageId }.mapKeys { it.key.second }
+            }
+            SheetLook(
+                pageId = pageId,
+                columns = b.columns,
+                rows = b.rows,
+                pockets = pockets.filter { it.pageId == pageId }.map { p ->
+                    val ghost = ghosts[p.position]
+                    when {
+                        ghost != null -> SheetPocket(p.position, SheetPocket.Kind.Missing, ghost.id, ghost.thumbnailUrl, CardPictures.backupUrl(ghost.id, large = false))
+                        p.isEmpty -> SheetPocket(p.position, SheetPocket.Kind.Empty)
+                        p.cardId != null -> SheetPocket(p.position, SheetPocket.Kind.Card, p.cardId, p.imageUrl?.let { "$it/low.webp" }, CardPictures.backupUrl(p.cardId, large = false))
+                        else -> SheetPocket(p.position, SheetPocket.Kind.Unknown)
+                    }
+                },
+            )
+        }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
     fun pockets(pageId: String): Flow<List<PocketWithCard>> = pageDao.observePockets(pageId)
 

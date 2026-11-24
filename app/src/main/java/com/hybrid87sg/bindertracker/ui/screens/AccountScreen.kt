@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
@@ -106,6 +109,8 @@ fun AccountScreen(
     onSaveMissingArt: (Boolean) -> Unit = {},
     onArtOnMobileData: (Boolean) -> Unit = {},
     onDownloadArtAgain: () -> Unit = {},
+    // Opens Me > Card back. Null hides the row.
+    onOpenCardBack: (() -> Unit)? = null,
 ) {
     // Android's own "Save to" and "Open" screens. The person picks where the
     // file goes (Google Drive, Downloads, ...); we get back a link to it.
@@ -202,6 +207,7 @@ fun AccountScreen(
                 )
                 // Your own app colours and background glitter (opens the colour sheet).
                 AppColourRow()
+                onOpenCardBack?.let { open -> CardBackRow(open) }
             }
 
             HorizontalDivider(color = AppColors.Border)
@@ -431,5 +437,27 @@ private fun ThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** "Card back": which back face-down cards show. Opens the Card back screen. */
+@Composable
+private fun CardBackRow(onOpen: () -> Unit) {
+    val setting = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)
+            .clickable(role = Role.Button, onClick = onOpen).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        com.hybrid87sg.bindertracker.ui.components.CardBack(
+            Modifier.width(30.dp).aspectRatio(63f / 88f).clip(RoundedCornerShape(3.dp)),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Card back", style = MaterialTheme.typography.titleSmall)
+            Text(setting.choice.style.title, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+        }
+        Text("›", fontSize = 22.sp, color = AppColors.Muted)
     }
 }
