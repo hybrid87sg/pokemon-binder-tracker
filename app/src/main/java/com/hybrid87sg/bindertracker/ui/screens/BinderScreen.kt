@@ -38,6 +38,8 @@ import com.hybrid87sg.bindertracker.ui.components.arrive
 import com.hybrid87sg.bindertracker.ui.components.pressSquish
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -76,6 +78,8 @@ fun BinderScreen(
     onOpenPage: (PageSummary) -> Unit,
     // Opens the Share screen (your own binders only).
     onShare: () -> Unit = {},
+    // Your cover picture, shown as a mini cover next to the name. Null = plain colour.
+    coverPicture: androidx.compose.ui.graphics.ImageBitmap? = null,
     // Missing cards: progress if the binder collects an expansion, else null.
     progress: ChecklistProgress? = null,
     // The names of the expansions it collects, e.g. "Base Set + 151".
@@ -120,11 +124,31 @@ fun BinderScreen(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.width(34.dp).height(56.dp)
-                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
-                    .background(colorFromHex(binder.colorHex)),
-            )
+            if (coverPicture != null) {
+                // A tiny cover: your picture with a darker strip down the hinge side.
+                Box(
+                    Modifier.width(48.dp).height(62.dp)
+                        .clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 7.dp, bottomEnd = 7.dp))
+                        .background(colorFromHex(binder.colorHex))
+                        .semantics { contentDescription = "Cover picture" },
+                ) {
+                    androidx.compose.foundation.Image(
+                        bitmap = coverPicture,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Box(Modifier.matchParentSize().drawBehind {
+                        drawRect(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.28f), size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height))
+                    })
+                }
+            } else {
+                Box(
+                    Modifier.width(34.dp).height(56.dp)
+                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
+                        .background(colorFromHex(binder.colorHex)),
+                )
+            }
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(binder.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

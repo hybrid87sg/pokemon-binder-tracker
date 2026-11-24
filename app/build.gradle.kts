@@ -149,6 +149,9 @@ dependencies {
     // Coil: loads card pictures from the internet.
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // Real 3D binders on the shelf (see ui/three).
+    implementation(libs.filament.android)
+    implementation(libs.gltfio.android)
 
     // Firebase sign-in with a Google account.
     implementation(platform(libs.firebase.bom))

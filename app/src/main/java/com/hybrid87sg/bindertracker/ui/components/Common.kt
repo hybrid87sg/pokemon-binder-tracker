@@ -2,6 +2,8 @@ package com.hybrid87sg.bindertracker.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,6 +90,8 @@ fun SpineArt(
     modifier: Modifier = Modifier,
     // How full the binder is, 0 to 1, shown as a small bar. Null hides the bar.
     fill: Float? = null,
+    // Your cover picture, shown small in a cream "window" above the label.
+    picture: androidx.compose.ui.graphics.ImageBitmap? = null,
 ) {
     val pale = ColorMath.isLight(color.toArgb())
     Column(
@@ -102,11 +106,29 @@ fun SpineArt(
             .leatherCover(pale),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        if (picture != null) {
+            // The window: a cream frame with the picture cropped to a square.
+            Box(
+                Modifier.padding(start = 8.dp, end = 8.dp, top = 12.dp).fillMaxWidth().aspectRatio(1f)
+                    .shadow(1.5.dp, RoundedCornerShape(5.dp))
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(SpineLabel)
+                    .padding(3.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+            ) {
+                androidx.compose.foundation.Image(
+                    bitmap = picture,
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(start = 9.dp, end = 9.dp, top = 14.dp, bottom = 8.dp)
+                .padding(start = 9.dp, end = 9.dp, top = if (picture != null) 8.dp else 14.dp, bottom = 8.dp)
                 .shadow(1.5.dp, RoundedCornerShape(4.dp))
                 .clip(RoundedCornerShape(4.dp))
                 // The paper label stays pale in dark mode too, like a real binder.

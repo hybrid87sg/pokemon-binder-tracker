@@ -27,8 +27,12 @@ coil = "3.6.3"
 robolectric = "4.18.1"
 roborazzi = "1.79.0"
 androidxTestCore = "1.7.0"
+# Filament: Google's 3D engine for Android (the real 3D binders on the shelf).
+filament = "1.81.0"
 
 [libraries]
+filament-android = { module = "com.google.android.filament:filament-android", version.ref = "filament" }
+gltfio-android = { module = "com.google.android.filament:gltfio-android", version.ref = "filament" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

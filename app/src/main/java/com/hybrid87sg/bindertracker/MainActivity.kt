@@ -304,6 +304,8 @@ private fun App(
                 notice = movedNotice,
                 onDismissNotice = vm::dismissMovedBindersNotice,
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
+                // Hold a binder: Edit binder (name, colour, size, cover picture).
+                onEditBinder = { nav.navigate("edit/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
                 // Search and Me are tabs now.
@@ -354,9 +356,12 @@ private fun App(
             val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
             val missing by vm.missingCounts.collectAsStateWithLifecycle()
             val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
+            val covers by vm.covers.collectAsStateWithLifecycle()
+            val coverPics = com.hybrid87sg.bindertracker.ui.components.rememberCoverBitmaps(covers.filterKeys { it == id })
             binder?.let { b ->
                 BinderScreen(
                     binder = b,
+                    coverPicture = coverPics[b.id],
                     pages = pages,
                     progress = missing[b.id],
                     collectingLabel = b.followedSetIds.joinToString(" + ") { sid -> expansions.firstOrNull { it.id == sid }?.name ?: sid },

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -136,6 +137,23 @@ fun EditShelfScreen(
                         onChange(look.copy(coversOnRight = true))
                     }
                 }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Real 3D binders", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Binders with real depth, light and shadows, and a cover that swings open. Turn off for the flat drawn shelf.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppColors.Muted,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.material3.Switch(
+                    checked = look.threeD,
+                    onCheckedChange = { onChange(look.copy(threeD = it)) },
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = AppColors.Accent),
+                )
             }
 
             Text(
