@@ -53,6 +53,17 @@ jobs:
       - name: Build and test
         run: ./gradlew assembleDebug lintDebug testDebugUnitTest -PbuildNumber=${{ github.run_number }} -PversionLabel=$VERSION
 
+      # The screen pictures the tests draw (app/build/outputs/roborazzi), kept
+      # for a few days so layouts can be checked without a phone.
+      - name: Keep screen pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: app/build/outputs/roborazzi
+          retention-days: 3
+          if-no-files-found: ignore
+
       # Replace the previous "Latest debug build" pre-release with this one.
       # It holds the app (named with its version) and latest.json, the small
       # file the app reads to find out whether a newer version exists.

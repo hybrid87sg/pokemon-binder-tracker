@@ -292,8 +292,13 @@ private fun App(
             val fill by vm.binderFill.collectAsStateWithLifecycle()
             val movedNotice by vm.movedBindersNotice.collectAsStateWithLifecycle()
             val missing by vm.missingCounts.collectAsStateWithLifecycle()
+            val look by vm.shelfLook.collectAsStateWithLifecycle()
+            val covers by vm.covers.collectAsStateWithLifecycle()
             ShelfScreen(
                 missing = missing,
+                look = look,
+                covers = covers,
+                onEditShelf = { nav.navigate("shelf-edit") },
                 binders = binders,
                 fill = fill,
                 notice = movedNotice,
@@ -305,6 +310,33 @@ private fun App(
                 onOpenAccount = null,
                 onSearch = null,
                 onJoin = if (current.isLocalOnly || !vm.auth.isFirebaseConfigured) null else { { nav.navigate("join") } },
+            )
+        }
+        // Edit shelf: how the binders stand (angle and side). Opened from the pencil on My binders.
+        composable("shelf-edit") {
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            val look by vm.shelfLook.collectAsStateWithLifecycle()
+            val covers by vm.covers.collectAsStateWithLifecycle()
+            val fill by vm.binderFill.collectAsStateWithLifecycle()
+            val pictures = com.hybrid87sg.bindertracker.ui.components.rememberCoverBitmaps(covers)
+            // Your first three binders, topped up with sample ones so the preview is never empty.
+            val samples = listOf(
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Main Collection", "9-pocket", "#4B36D1", 0.7f),
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Trade Binder", "9-pocket", "#B4262F", 0.45f),
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Holos", "4-pocket", "#1F6B57", 0.85f),
+            )
+            val mine = binders.take(3).map { b ->
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder(
+                    b.name, if (b.isShared) "Shared" else b.sizeLabel, b.colorHex, fill[b.id]?.fraction ?: 0f,
+                    picture = pictures[b.id],
+                    placement = covers[b.id]?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
+                )
+            }
+            com.hybrid87sg.bindertracker.ui.screens.EditShelfScreen(
+                look = look,
+                preview = mine + samples.drop(mine.size),
+                onChange = vm::setShelfLook,
+                onDone = { nav.popBackStack() },
             )
         }
         composable("new") {
@@ -384,6 +416,11 @@ private fun App(
                     filledPositions = filled,
                     onCancel = { nav.popBackStack() },
                     expansions = expansions,
+                    cover = vm.covers.collectAsStateWithLifecycle().value[b.id],
+                    look = vm.shelfLook.collectAsStateWithLifecycle().value,
+                    importCover = vm::importCover,
+                    onSaveCover = { path, placement -> vm.setCover(b.id, path, placement) },
+                    discardCoverDraft = vm::discardCoverDraft,
                     onSave = { name, colorHex, size, collecting, secret ->
                         vm.updateBinder(b, name, colorHex, size, collecting, secret)
                         nav.popBackStack()
