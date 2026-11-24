@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -306,10 +307,15 @@ internal fun MovePicker(
             }
         }
         if (chosen != null) {
-            Text("Then the pocket", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
+            Text("Then tap a pocket to move it there", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
             val shape = RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = 12.dp, bottomEnd = 12.dp)
+            // Kept small enough (about 260dp tall) that the Move button below stays on screen.
+            val cols = columns.coerceAtLeast(1)
+            val rows = ((chosen.pockets.size + cols - 1) / cols).coerceAtLeast(1)
+            val cardHeight = (260f - 8f * (rows - 1)) / rows
+            val gridWidth = (cardHeight * CARD_ASPECT * cols + 8f * (cols - 1) + 30f).dp
             Column(
-                Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)
+                Modifier.align(Alignment.CenterHorizontally).widthIn(max = gridWidth).fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)
                     .padding(start = 20.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -320,7 +326,8 @@ internal fun MovePicker(
                             Box(
                                 Modifier.weight(1f).aspectRatio(CARD_ASPECT).clip(RoundedCornerShape(6.dp))
                                     .then(if (on) Modifier.border(3.dp, AppColors.AccentText, RoundedCornerShape(6.dp)) else Modifier)
-                                    .clickable(onClickLabel = "Put it in pocket ${pocket.position + 1}") { slot = pocket.position },
+                                    // One tap moves the card there (the message bar has Undo).
+                                    .clickable(onClickLabel = "Put it in pocket ${pocket.position + 1}") { slot = pocket.position; onMove(chosen.id, pocket.position) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 PocketPicture(pocket, Modifier.fillMaxSize())
