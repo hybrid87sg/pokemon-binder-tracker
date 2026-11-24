@@ -1,6 +1,7 @@
 package com.hybrid87sg.bindertracker
 
 import com.hybrid87sg.bindertracker.scan.RingCodeReader
+import com.hybrid87sg.bindertracker.scan.RingGuide
 import com.hybrid87sg.bindertracker.sync.InviteCodes
 import com.hybrid87sg.bindertracker.sync.RingCode
 import org.junit.Assert.assertEquals
@@ -74,11 +75,42 @@ class RingCodeTest {
     }
 
     @Test
+    fun saysWhereTheCodeIs() {
+        val random = Random(6)
+        var found = 0
+        val tries = 12
+        repeat(tries) {
+            val code = InviteCodes.newCode(random)
+            val camera = PretendCamera(random)
+            val radius = 120.0 + random.nextDouble() * 200
+            val picture = camera.picture(RingCode.encode(code), turn = random.nextDouble() * 2 * PI, tiltX = 0.0, tiltY = 0.0, radius = radius, darkRoom = false)
+            val seen = RingCodeReader.look(picture, PretendCamera.W, PretendCamera.H) ?: return@repeat
+            found++
+            // The middle within a few pixels, and the size (with the white edge) close.
+            assertTrue("x ${seen.x} vs ${camera.centreX}", abs(seen.x - camera.centreX) < 8)
+            assertTrue("y ${seen.y} vs ${camera.centreY}", abs(seen.y - camera.centreY) < 8)
+            assertTrue("radius ${seen.radius} vs ${radius * RingCode.HALO_RADIUS}", abs(seen.radius / (radius * RingCode.HALO_RADIUS) - 1) < 0.08)
+        }
+        assertTrue("Found $found of $tries", found >= tries - 1)
+    }
+
+    @Test
+    fun ringTurnsRedOrGreen() {
+        val ring = 100f
+        assertEquals(RingGuide.State.LinedUp, RingGuide.judge(0f, 0f, 70f, ring).state)
+        assertEquals(RingGuide.State.LinedUp, RingGuide.judge(20f, -10f, 75f, ring).state)
+        assertEquals(RingGuide.Tip.IntoRing, RingGuide.judge(90f, 40f, 60f, ring).tip)
+        assertEquals(RingGuide.Tip.Closer, RingGuide.judge(0f, 0f, 25f, ring).tip)
+        assertEquals(RingGuide.Tip.Back, RingGuide.judge(0f, 0f, 130f, ring).tip)
+    }
+
+    @Test
     fun emptyPicturesHaveNoCode() {
         val random = Random(5)
         repeat(10) {
             val noise = IntArray(PretendCamera.W * PretendCamera.H) { 80 + random.nextInt(120) }
             assertNull(RingCodeReader.read(noise, PretendCamera.W, PretendCamera.H))
+            assertNull(RingCodeReader.look(noise, PretendCamera.W, PretendCamera.H))
         }
     }
 }
@@ -89,6 +121,10 @@ private class PretendCamera(val random: Random) {
         const val W = 1280
         const val H = 960
     }
+
+    // Where the code's middle ended up in the last picture.
+    var centreX = 0.0
+    var centreY = 0.0
 
     private val disc = 40 + 0.0
     private val track = disc + (255 - disc) * 0.16
@@ -132,6 +168,8 @@ private class PretendCamera(val random: Random) {
         val r2 = rot(0.0, 1.0)
         val shiftX = (random.nextDouble() - 0.5) * 0.3 * W
         val shiftY = (random.nextDouble() - 0.5) * 0.3 * H
+        centreX = W / 2.0 + shiftX
+        centreY = H / 2.0 + shiftY
         val m = arrayOf(
             doubleArrayOf(focal * r1[0] + (W / 2.0 + shiftX) * r1[2], focal * r2[0] + (W / 2.0 + shiftX) * r2[2], (W / 2.0 + shiftX) * distance),
             doubleArrayOf(focal * r1[1] + (H / 2.0 + shiftY) * r1[2], focal * r2[1] + (H / 2.0 + shiftY) * r2[2], (H / 2.0 + shiftY) * distance),

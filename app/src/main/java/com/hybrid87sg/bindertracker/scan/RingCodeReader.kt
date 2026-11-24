@@ -52,20 +52,41 @@ object RingCodeReader {
         }
     }
 
+    /**
+     * A ring code the camera spotted. [x], [y] and [radius] are in pixels of
+     * the picture (radius includes the white edge). [code] is null when the
+     * disc was seen but couldn't be read yet (too small, blurry, half hidden).
+     */
+    class Sighting(val x: Float, val y: Float, val radius: Float, val code: String?)
+
     /** The share code in the picture, or null. [gray] holds 0 to 255 per pixel, row by row. */
-    fun read(gray: IntArray, width: Int, height: Int): String? {
+    fun read(gray: IntArray, width: Int, height: Int): String? = look(gray, width, height)?.code
+
+    /**
+     * Where a ring code is in the picture, and its code if it can be read.
+     * Null when there's no ring code to be seen at all.
+     */
+    fun look(gray: IntArray, width: Int, height: Int): Sighting? {
         val factor = max(1, ceil(max(width, height) / MAX_SIDE.toDouble()).toInt())
         val w = width / factor
         val h = height / factor
         if (w < 32 || h < 32) return null
         val img = if (factor == 1) gray else shrink(gray, width, w, h, factor)
+        fun sighting(d: Disc, code: String?) = Sighting(
+            ((d.mx + 0.5) * factor).toFloat(),
+            ((d.my + 0.5) * factor).toFloat(),
+            (d.size * RingCode.HALO_RADIUS * factor).toFloat(),
+            code,
+        )
+        var seen: Disc? = null
         val split = otsu(img)
         for (threshold in intArrayOf(split, (split * 0.8).toInt(), minOf(250, (split * 1.15).toInt()))) {
             for (disc in findDiscs(img, w, h, threshold)) {
-                readDisc(img, w, h, disc)?.let { return it }
+                if (seen == null) seen = disc
+                readDisc(img, w, h, disc)?.let { return sighting(disc, it) }
             }
         }
-        return null
+        return seen?.let { sighting(it, null) }
     }
 
     private fun shrink(gray: IntArray, width: Int, w: Int, h: Int, f: Int): IntArray {

@@ -100,8 +100,8 @@ import com.hybrid87sg.bindertracker.ui.screens.ShelfScreen
 import com.hybrid87sg.bindertracker.ui.screens.SignInScreen
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.BinderTrackerTheme
-import com.hybrid87sg.bindertracker.ui.theme.DarkPalette
-import com.hybrid87sg.bindertracker.ui.theme.LightPalette
+import com.hybrid87sg.bindertracker.ui.theme.AppColourSetting
+import com.hybrid87sg.bindertracker.ui.theme.paletteFor
 import com.hybrid87sg.bindertracker.ui.theme.ThemeSetting
 
 /** The app's single Activity (window). Every screen is drawn inside it. */
@@ -128,8 +128,9 @@ class MainActivity : ComponentActivity() {
         // Light or dark: read the saved choice and pick the colours before
         // anything is drawn, so the first frame already has the right ones.
         ThemeSetting.load(this)
+        AppColourSetting.load(this)
         val startDark = ThemeSetting.isDark(ThemeSetting.mode, ThemeSetting.phoneIsDark(this))
-        AppColors.palette = if (startDark) DarkPalette else LightPalette
+        AppColors.palette = paletteFor(startDark)
         drawBehindSystemBars(startDark)
         setContent {
             val dark = ThemeSetting.isDark(ThemeSetting.mode, isSystemInDarkTheme())
@@ -291,19 +292,53 @@ private fun App(
             val fill by vm.binderFill.collectAsStateWithLifecycle()
             val movedNotice by vm.movedBindersNotice.collectAsStateWithLifecycle()
             val missing by vm.missingCounts.collectAsStateWithLifecycle()
+            val look by vm.shelfLook.collectAsStateWithLifecycle()
+            val covers by vm.covers.collectAsStateWithLifecycle()
             ShelfScreen(
                 missing = missing,
+                look = look,
+                covers = covers,
+                onEditShelf = { nav.navigate("shelf-edit") },
                 binders = binders,
                 fill = fill,
                 notice = movedNotice,
                 onDismissNotice = vm::dismissMovedBindersNotice,
                 onOpenBinder = { nav.navigate("binder/${it.id}") },
+                // Hold a binder: Edit binder (name, colour, size, cover picture).
+                onEditBinder = { nav.navigate("edit/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
                 onAddBinder = { nav.navigate("new") },
                 // Search and Me are tabs now.
                 onOpenAccount = null,
                 onSearch = null,
                 onJoin = if (current.isLocalOnly || !vm.auth.isFirebaseConfigured) null else { { nav.navigate("join") } },
+            )
+        }
+        // Edit shelf: how the binders stand (angle and side). Opened from the pencil on My binders.
+        composable("shelf-edit") {
+            val binders by vm.binders.collectAsStateWithLifecycle()
+            val look by vm.shelfLook.collectAsStateWithLifecycle()
+            val covers by vm.covers.collectAsStateWithLifecycle()
+            val fill by vm.binderFill.collectAsStateWithLifecycle()
+            val pictures = com.hybrid87sg.bindertracker.ui.components.rememberCoverBitmaps(covers)
+            // Your first three binders, topped up with sample ones so the preview is never empty.
+            val samples = listOf(
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Main Collection", "9-pocket", "#4B36D1", 0.7f),
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Trade Binder", "9-pocket", "#B4262F", 0.45f),
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder("Holos", "4-pocket", "#1F6B57", 0.85f),
+            )
+            val mine = binders.take(3).map { b ->
+                com.hybrid87sg.bindertracker.ui.screens.PreviewBinder(
+                    b.name, if (b.isShared) "Shared" else b.sizeLabel, b.colorHex, fill[b.id]?.fraction ?: 0f,
+                    picture = pictures[b.id],
+                    placement = covers[b.id]?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
+                )
+            }
+            com.hybrid87sg.bindertracker.ui.screens.EditShelfScreen(
+                look = look,
+                preview = mine + samples.drop(mine.size),
+                onChange = vm::setShelfLook,
+                onDone = { nav.popBackStack() },
             )
         }
         composable("new") {
@@ -321,9 +356,12 @@ private fun App(
             val pages by remember(id) { vm.pages(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
             val missing by vm.missingCounts.collectAsStateWithLifecycle()
             val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
+            val covers by vm.covers.collectAsStateWithLifecycle()
+            val coverPics = com.hybrid87sg.bindertracker.ui.components.rememberCoverBitmaps(covers.filterKeys { it == id })
             binder?.let { b ->
                 BinderScreen(
                     binder = b,
+                    coverPicture = coverPics[b.id],
                     pages = pages,
                     progress = missing[b.id],
                     collectingLabel = b.followedSetIds.joinToString(" + ") { sid -> expansions.firstOrNull { it.id == sid }?.name ?: sid },
@@ -383,6 +421,11 @@ private fun App(
                     filledPositions = filled,
                     onCancel = { nav.popBackStack() },
                     expansions = expansions,
+                    cover = vm.covers.collectAsStateWithLifecycle().value[b.id],
+                    look = vm.shelfLook.collectAsStateWithLifecycle().value,
+                    importCover = vm::importCover,
+                    onSaveCover = { path, placement -> vm.setCover(b.id, path, placement) },
+                    discardCoverDraft = vm::discardCoverDraft,
                     onSave = { name, colorHex, size, collecting, secret ->
                         vm.updateBinder(b, name, colorHex, size, collecting, secret)
                         nav.popBackStack()
@@ -533,6 +576,17 @@ private fun App(
                 // Every page's pockets, for the "Move to another page" picker.
                 val allPockets by remember(p.binderId) { vm.binderPockets(p.binderId) }
                     .collectAsStateWithLifecycle(initialValue = emptyMap())
+                // A binder collecting expansions: its missing cards, greyed out in the free
+                // pockets in set order (this phone's Main/Master set choice decides which count).
+                val checklist by remember(p.binderId) { vm.checklist(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
+                val ghosts = remember(checklist) {
+                    checklist?.takeIf { it.binder.followedSetIds.isNotEmpty() }?.let { d ->
+                        val entries = Checklist.entries(d.cards, d.binder.followedSetIds, d.owned, d.binder.countSecretRares)
+                        Checklist.ghosts(entries, d.pockets).entries
+                            .groupBy({ it.key.first }, { it.key.second to it.value })
+                            .mapValues { it.value.toMap() }
+                    }.orEmpty()
+                }
                 binder?.let { b ->
                     CompositionLocalProvider(LocalScreenAnimationScope provides this) {
                     PageScreen(
@@ -547,17 +601,22 @@ private fun App(
                         onBack = { nav.popBackStack() },
                         onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
                         onViewCard = { atPage, atPosition ->
-                            // Every card in the binder in pocket order, so the card screen can swipe through them.
+                            // Every card in the binder in pocket order, so the card screen can swipe through them
+                            // (the grey missing cards too, so it reads like the whole set).
                             val items = siblings.withIndex().flatMap { (i, s) ->
-                                (pocketsById[s.id] ?: allPockets[s.id]).orEmpty().filter { it.cardId != null }.sortedBy { it.position }.map { pk ->
-                                    BrowseItem(pk.cardId!!, CardFlight.pocketKey(s.id, pk.position), "Page ${i + 1}, pocket ${pk.position + 1}", s.id)
+                                (pocketsById[s.id] ?: allPockets[s.id]).orEmpty().sortedBy { it.position }.mapNotNull { pk ->
+                                    val id = pk.cardId ?: ghosts[s.id]?.get(pk.position)?.id ?: return@mapNotNull null
+                                    BrowseItem(id, CardFlight.pocketKey(s.id, pk.position), "Page ${i + 1}, pocket ${pk.position + 1}", s.id)
                                 }
                             }
                             val start = items.indexOfFirst { it.flightKey == CardFlight.pocketKey(atPage, atPosition) }
                             val cardId = items.getOrNull(start)?.cardId
                                 ?: (pocketsById[atPage] ?: allPockets[atPage])?.firstOrNull { it.position == atPosition }?.cardId
+                                ?: ghosts[atPage]?.get(atPosition)?.id
                             if (cardId != null) {
-                                vm.browse = if (start >= 0) CardBrowse(items, start, "in ${b.name}") else null
+                                // A collecting binder: the card screen says which cards are missing, with "Put it in".
+                                val checklistId = b.id.takeIf { ghosts.isNotEmpty() }
+                                vm.browse = if (start >= 0) CardBrowse(items, start, "in ${b.name}", checklistBinderId = checklistId) else null
                                 nav.navigate("card/${Uri.encode(cardId)}")
                             }
                         },
@@ -589,6 +648,7 @@ private fun App(
                         spreadPockets = pocketsById,
                         coverColor = colorFromHex(b.colorHex),
                         onAddPage = { vm.addPages(b, 1) },
+                        ghosts = ghosts,
                     )
                     }
                 }

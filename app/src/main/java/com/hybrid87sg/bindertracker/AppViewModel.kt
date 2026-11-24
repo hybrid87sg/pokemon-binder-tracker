@@ -95,6 +95,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** View choices kept on this phone only, like Main set / Master set (see ViewPrefs). */
     private val viewPrefs = ViewPrefs(app)
 
+    /** How the binders stand on the shelf (Edit shelf), kept on this phone only. */
+    private val shelfPrefs = com.hybrid87sg.bindertracker.data.ShelfPrefs(app)
+    val shelfLook: StateFlow<com.hybrid87sg.bindertracker.data.ShelfLook> = shelfPrefs.look
+
+    fun setShelfLook(look: com.hybrid87sg.bindertracker.data.ShelfLook) = shelfPrefs.set(look)
+
+    /** Your own binder cover pictures, kept on this phone only. */
+    private val coverPictures = com.hybrid87sg.bindertracker.data.CoverPictures(app)
+    val covers: StateFlow<Map<String, com.hybrid87sg.bindertracker.data.CoverPicture>> = coverPictures.all
+
+    /** Copies a picked photo for the cover editor. Returns its temporary path, or null. */
+    suspend fun importCover(uri: android.net.Uri): String? = coverPictures.importDraft(uri)
+
+    fun discardCoverDraft(path: String?) = coverPictures.discardDraft(path)
+
+    /** Saves (path + placement) or removes (null path) a binder's cover picture. */
+    fun setCover(binderId: String, path: String?, placement: com.hybrid87sg.bindertracker.data.CoverPlacement) {
+        viewModelScope.launch {
+            if (path == null) coverPictures.remove(binderId) else coverPictures.save(binderId, path, placement)
+        }
+    }
+
     /** The signed-in person's binders. Switches automatically when the user changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val binders: StateFlow<List<Binder>> = user

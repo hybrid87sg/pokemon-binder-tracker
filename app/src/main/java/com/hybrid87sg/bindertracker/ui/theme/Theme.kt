@@ -54,7 +54,15 @@ class Palette(
     val cardBackSpark: Color,   // little star in the middle
     // The rainbow "holo foil" colours, left to right.
     val holo: List<Color>,
+    // The app's background gradient, top-left to bottom-right (always 5 colours, see Backdrop.kt).
+    val background: List<Color>,
+    // The soft glow in the background's top-right corner.
+    val glow: Color,
 )
+
+/** Spreads gradient colours into exactly 5, so any two backgrounds can fade into each other. */
+private fun fiveStops(vararg c: Long): List<Color> =
+    AppColourMath.resample(c.map { it.toInt() }).map { Color(it) }
 
 /**
  * "Holo Foil": soft violet paper with a rainbow foil shine.
@@ -87,6 +95,8 @@ val LightPalette = Palette(
     cardBackSwirl = Color(0xFF8EA4FF),
     cardBackSpark = Color(0xFFFFFFFF),
     holo = listOf(Color(0xFFFF9AD5), Color(0xFFFFD36E), Color(0xFF8CF0C8), Color(0xFF7FB7FF), Color(0xFFC59BFF)),
+    background = fiveStops(0xFFF8F6FE, 0xFFECE6FB, 0xFFDFE6FA),
+    glow = Color(0x59FFC496),
 )
 
 /** Deep indigo night, so the foil colours glow. */
@@ -119,7 +129,30 @@ val DarkPalette = Palette(
     cardBackSwirl = Color(0xFF5F79E8),
     cardBackSpark = Color(0xFFDDE4FF),
     holo = listOf(Color(0xFFE77BC0), Color(0xFFE9B84C), Color(0xFF5FD3A6), Color(0xFF5C93F0), Color(0xFFA77BF0)),
+    background = fiveStops(0xFF1C1834, 0xFF14112A, 0xFF0C1024),
+    glow = Color(0x477850C8),
 )
+
+/**
+ * The colours to show: the original light or dark set, or, when the person
+ * picked their own colours on the Me tab, a set built from those picks.
+ * Wood, card backs, greens, reds and the rainbow foil always stay the same.
+ */
+fun paletteFor(dark: Boolean, choices: List<ColourChoice>? = AppColourSetting.colours): Palette {
+    val base = if (dark) DarkPalette else LightPalette
+    if (AppColourMath.isClassic(choices)) return base
+    val b = AppColourMath.build(choices!!, dark)
+    return Palette(
+        paper = Color(b.paper), shelfBackground = Color(b.shelfBackground), surface = Color(b.surface),
+        surface2 = Color(b.surface2), ink = Color(b.ink), muted = Color(b.muted), border = Color(b.border),
+        borderStrong = Color(b.borderStrong), dashedBorder = Color(b.dashedBorder), accent = Color(b.accent),
+        accentText = Color(b.accentText), wood = base.wood, woodDark = base.woodDark, disabled = Color(b.disabled),
+        onDisabled = Color(b.onDisabled), danger = base.danger, success = base.success, successText = base.successText,
+        check = base.check, checkFill = base.checkFill, cardBack = base.cardBack, cardBackDeep = base.cardBackDeep,
+        cardBackFrame = base.cardBackFrame, cardBackSwirl = base.cardBackSwirl, cardBackSpark = base.cardBackSpark,
+        holo = base.holo, background = b.background.map { Color(it) }, glow = Color(b.glow),
+    )
+}
 
 /**
  * The colours every screen uses, e.g. `AppColors.Paper`.
@@ -132,7 +165,7 @@ val DarkPalette = Palette(
 object AppColors {
     var palette by mutableStateOf(LightPalette)
     /** True when the dark colours are showing (also while fading into them). */
-    val isDark: Boolean get() = palette.paper.luminance() < 0.5f
+    val isDark: Boolean get() = palette.paper.luminance() < 0.3f
 
     val Paper get() = palette.paper
     val ShelfBackground get() = palette.shelfBackground
@@ -170,12 +203,10 @@ object AppColors {
     val SleeveShine get() = if (isDark) Color(0x12FFFFFF) else Color(0x8CFFFFFF)
     /** Inside an empty-looking sleeve: the background with a little violet-grey. */
     val PocketFill get() = androidx.compose.ui.graphics.lerp(palette.paper, Color(0xFF8A82B8), 0.15f)
-    /** The app's background gradient, top-left to bottom-right. */
-    val BackgroundStops: List<Color>
-        get() = if (isDark) listOf(Color(0xFF1C1834), Color(0xFF14112A), Color(0xFF0C1024))
-        else listOf(Color(0xFFF8F6FE), Color(0xFFECE6FB), Color(0xFFDFE6FA))
+    /** The app's background gradient, top-left to bottom-right. Follows the person's app colours. */
+    val BackgroundStops: List<Color> get() = palette.background
     /** The soft glow in the background's top-right corner. */
-    val BackgroundGlow get() = if (isDark) Color(0x477850C8) else Color(0x59FFC496)
+    val BackgroundGlow get() = palette.glow
 
     /** Always white, in both modes: for text and icons on blue buttons and coloured spines. */
     val White = Color(0xFFFFFFFF)
@@ -255,6 +286,8 @@ private fun animatedPalette(target: Palette): Palette {
         checkFill = a(target.checkFill), cardBack = a(target.cardBack), cardBackDeep = a(target.cardBackDeep),
         cardBackFrame = a(target.cardBackFrame), cardBackSwirl = a(target.cardBackSwirl),
         cardBackSpark = a(target.cardBackSpark), holo = target.holo,
+        // Always 5 colours, so this loop calls a() the same number of times every frame.
+        background = target.background.map { a(it) }, glow = a(target.glow),
     )
 }
 
@@ -265,7 +298,8 @@ private fun animatedPalette(target: Palette): Palette {
  */
 @Composable
 fun BinderTrackerTheme(dark: Boolean, content: @Composable () -> Unit) {
-    val palette = animatedPalette(if (dark) DarkPalette else LightPalette)
+    // Follows both light/dark and the person's own app colours (AppColourSetting).
+    val palette = animatedPalette(paletteFor(dark))
     // Swap the colour set after this frame is drawn. MainActivity also sets it
     // once before the first frame, so the app never flashes the wrong colours.
     SideEffect { AppColors.palette = palette }
