@@ -12,6 +12,7 @@ import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -94,6 +95,8 @@ fun Shelf3D(
     onEdit: (String) -> Unit,
     onOpening: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    // Where the screen's title ends, in window pixels: binders stay below it.
+    headerBottom: Float = 0f,
 ) {
     val context = LocalContext.current
     val open by rememberUpdatedState(onOpen)
@@ -101,12 +104,17 @@ fun Shelf3D(
     val progress by rememberUpdatedState(onOpening)
     val stage = remember {
         ShelfStage(context, object : ShelfStage.Listener {
-            override fun onOpen(id: String, pageId: String?) = open(id, pageId)
+            override fun onOpen(id: String, pageId: String?) {
+                // The cards are already where the page screen draws them, so they don't pop in again.
+                if (pageId != null) PageLanding.arrive()
+                open(id, pageId)
+            }
             override fun onEdit(id: String) = edit(id)
             override fun onOpening(p: Float) = progress(p)
         })
     }
     DisposableEffect(stage) { onDispose { stage.destroy() } }
+    SideEffect { stage.headerBottom = headerBottom }
     LaunchedEffect(binders, look, colors) {
         // Paint and build each binder away from the main thread, then show them.
         // First with only the card pictures already on the phone, so the shelf
@@ -229,6 +237,33 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     private var worldPerPx = 0.01f
     private var destroyed = false
     private var dirty = true
+
+    /** Where the screen's title ends, in window pixels. The binders stay below it. */
+    var headerBottom = 0f
+        set(value) {
+            if (field == value) return
+            field = value
+            if (opening == null) { fit(); clipTo(topInset()) }
+            dirty = true
+        }
+
+    /** How far down this view the title reaches, in its own pixels. */
+    private fun topInset(): Float {
+        if (headerBottom <= 0f) return 0f
+        val at = IntArray(2)
+        textureView.getLocationInWindow(at)
+        return (headerBottom - at[1]).coerceIn(0f, height * 0.6f)
+    }
+
+    private var clipTop = -1
+
+    /** Hides whatever is above [top] (binders dragged up under the title). */
+    private fun clipTo(top: Float) {
+        val t = top.toInt()
+        if (t == clipTop) return
+        clipTop = t
+        textureView.clipBounds = if (t <= 0 || width == 0) null else android.graphics.Rect(0, t, width, height)
+    }
 
     // The opening animation.
     private var opening: Item? = null
@@ -362,8 +397,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val pts = listOf(l.min.x, l.max.x).flatMap { x -> listOf(l.min.y, l.max.y).flatMap { y -> listOf(l.min.z, l.max.z).map { z -> Vec3(x, y, z) } } }
         val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
         val margin = 12f * textureView.resources.displayMetrics.density
+        val inset = topInset()
         val tw = width - 2 * margin
-        val th = height - 2 * margin
+        val th = height - inset - 2 * margin
         var cx = (l.min.x + l.max.x) / 2f
         var cy = (l.min.y + l.max.y) / 2f
         var d = (l.max.x - l.min.x) / (2f * tanH * aspect) * 1.1f
@@ -379,7 +415,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
             val k = d * 2f * tanH / height
             cx -= (width / 2f - (lft + rgt) / 2f) * k
             // Top aligned when it's tall (you can drag to see more), centred when it fits.
-            val wantTop = if ((bot - top) / scale <= th) (height - (bot - top) / scale) / 2f else margin
+            val wantTop = inset + if ((bot - top) / scale <= th) (height - inset - (bot - top) / scale) / 2f else margin
             cy += (wantTop - top) * k
             d *= scale
         }
@@ -456,6 +492,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     private fun pick(x: Float, y: Float): Item? {
         val l = layout ?: return null
         if (width == 0) return null
+        if (y < topInset()) return null
         val cam = currentCam()
         val ray = cam.ray(x / width, y / height)
         val (lo, hi) = BinderModel.bounds(l.dir)
@@ -492,12 +529,22 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val toPage = item.look.sheet != null
         val page = Vec3(open.x + d * (C / 2f + 0.07f), open.y + H / 2f, open.z - 0.129f)
         val pageDist = max(SheetGrid.WIDTH / (0.94f * 2f * tanH * aspect), SheetGrid.HEIGHT / (0.86f * 2f * tanH))
-        val eyeEnd = if (toPage) page + Vec3(0f, 0f, pageDist) else Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
+        // Better still: if we know where the page screen draws these cards, stop with
+        // every card in exactly that spot, so the page screen can take over unnoticed.
+        val landing = if (toPage) item.look.sheet?.landing?.let { SheetGrid.fromScreen(it) } else null
+        val aim = if (landing != null) {
+            val at = IntArray(2)
+            textureView.getLocationInWindow(at)
+            val s = landing.worldPerPx
+            Vec3(-(landing.centreX - at[0] - width / 2f) * s, (landing.centreY - at[1] - height / 2f) * s, 0f)
+        } else Vec3(0f, 0f, 0f)
+        val landDist = landing?.let { it.worldPerPx * height / (2f * tanH) } ?: pageDist
+        val eyeEnd = if (toPage) page + aim + Vec3(0f, 0f, landDist) else Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
         openPlan = OpenPlan(
             start = item.spot + Vec3(0f, item.lift * 0.25f, item.lift),
             turn = l.turn, closed = closed, open = open,
             eye0 = cam.eye, look0 = cam.target,
-            eyeEnd = eyeEnd, lookEnd = if (toPage) page else Vec3(eyeEnd.x, centre.y, centre.z),
+            eyeEnd = eyeEnd, lookEnd = if (toPage) page + aim else Vec3(eyeEnd.x, centre.y, centre.z),
             dir = l.dir, toPage = toPage,
         )
         // Draw it over the fade.
@@ -529,12 +576,18 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         // The fade sheet sits just in front of the camera.
         placeDim(cam)
         setDim(0.9f * ease(seg(t, 0.05f, 0.45f)), dimColor)
+        // The title fades away, so the binder may now rise above where it was.
+        clipTo(topInset() * (1f - seg(t, 0.2f, 0.45f)))
         listener.onOpening(t)
         if (!openSent && t >= (if (plan.toPage) 0.93f else 0.86f)) {
             openSent = true
             listener.onOpen(item.look.id, item.look.sheet?.pageId)
         }
-        if (t >= 1f) finishOpening()
+        // Onto a page: stay on the last picture while the page screen fades in over it
+        // (jumping back to the shelf here showed through the fade). The screen goes
+        // away by itself; this is only in case it doesn't.
+        val hold = if (plan.toPage) HOLD_MILLIS else 0f
+        if ((now - openStart) / 1e6f >= (if (plan.toPage) PAGE_MILLIS else OPEN_MILLIS) + hold) finishOpening()
     }
 
     private fun finishOpening() {
@@ -545,6 +598,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         opening = null
         setDim(0f, dimColor)
         placeCamera(currentCam())
+        clipTo(topInset())
         listener.onOpening(0f)
         dirty = true
     }
@@ -643,6 +697,8 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         view.setViewport(Viewport(0, 0, width, height))
         frontView.setViewport(Viewport(0, 0, width, height))
         fit()
+        clipTop = -1
+        if (opening == null) clipTo(topInset())
         dirty = true
     }
 
@@ -678,6 +734,8 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         const val OPEN_MILLIS = 1500f
         /** Opening onto the first page takes a little longer (the glide into the page). */
         const val PAGE_MILLIS = 1800f
+        /** How long the last picture stays while the page screen fades in. */
+        const val HOLD_MILLIS = 1500f
         private fun seg(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
         private fun ease(t: Float) = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).pow(3) / 2f
         private fun out(t: Float) = 1f - (1f - t).pow(3)

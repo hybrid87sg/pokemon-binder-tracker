@@ -35,7 +35,16 @@ data class BinderLook3D(
 )
 
 /** The first page of a binder, as the 3D binder shows it when it opens. */
-data class SheetLook(val pageId: String, val columns: Int, val rows: Int, val pockets: List<SheetPocket>)
+data class SheetLook(
+    val pageId: String,
+    val columns: Int,
+    val rows: Int,
+    val pockets: List<SheetPocket>,
+    /** Where the page screen shows these cards (see PageLanding), or null to lay them out evenly. */
+    val landing: List<Float>? = null,
+    /** The page's colour, the same as the page screen's (light or dark mode). */
+    val surface: Int = 0xFFF8F8FB.toInt(),
+)
 
 /**
  * One pocket of that page. [url] and [backupUrl] are the small card pictures
@@ -190,10 +199,13 @@ object BinderPaint {
         val h = (SHEET_PX * SheetGrid.HEIGHT / SheetGrid.WIDTH).toInt()
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        c.drawColor(0xFFF8F8FB.toInt())
+        c.drawColor(s.surface or 0xFF000000.toInt())
         val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val byPosition = s.pockets.associateBy { it.position }
-        SheetGrid.cards(s.columns, s.rows).forEachIndexed { position, f ->
+        // Where the page screen puts each card, if we've seen it; otherwise an even grid.
+        val spots = s.landing?.let { SheetGrid.fromScreen(it)?.cards }?.takeIf { it.size == s.columns * s.rows }
+            ?: SheetGrid.cards(s.columns, s.rows)
+        spots.forEachIndexed { position, f ->
             val r = RectF(f[0] * w, f[1] * h, f[2] * w, f[3] * h)
             val corner = r.width() * 0.05f
             // The plastic sleeve, a little bigger than the card.

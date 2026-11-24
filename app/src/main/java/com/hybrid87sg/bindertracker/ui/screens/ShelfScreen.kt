@@ -33,6 +33,9 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.hybrid87sg.bindertracker.data.BinderFill
 import com.hybrid87sg.bindertracker.data.ChecklistProgress
 import com.hybrid87sg.bindertracker.ui.components.holoBrush
@@ -147,7 +150,54 @@ fun ShelfScreen(
     val items: List<ShelfItem> = binders.map { ShelfItem.BinderItem(it) } + ShelfItem.AddItem
     val rows = items.chunked(SPINES_PER_ROW)
 
-    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
+    // Where the title and totals end (in the window), so the 3D shelf keeps its binders below them.
+    var headerBottom by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    Box(Modifier.fillMaxSize().appBackground()) {
+        if (use3D) {
+            val cardBack = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current.choice
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val screen = androidx.compose.ui.platform.LocalConfiguration.current
+            val sheetColor = AppColors.Surface.toArgb()
+            val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
+            val looks = binders.map { b ->
+                val c = covers[b.id]
+                com.hybrid87sg.bindertracker.ui.three.BinderLook3D(
+                    id = b.id,
+                    name = b.name,
+                    tag = if (b.isShared) "Shared" else b.sizeLabel,
+                    colorHex = b.colorHex,
+                    fill = fill[b.id]?.fraction ?: 0f,
+                    dir = dir,
+                    picturePath = c?.path,
+                    pictureVersion = c?.version ?: 0L,
+                    placement = c?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
+                    // Drawn where the page screen will show its cards (see PageLanding),
+                    // so the camera lands on them exactly and the page screen takes over seamlessly.
+                    sheet = firstPages[b.id]?.let { s ->
+                        val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.key(s.columns, s.rows, screen.screenWidthDp, screen.screenHeightDp)
+                        s.copy(landing = com.hybrid87sg.bindertracker.ui.three.PageLanding.get(context, key), surface = sheetColor)
+                    },
+                    back = cardBack,
+                )
+            }
+            com.hybrid87sg.bindertracker.ui.three.Shelf3D(
+                binders = looks,
+                look = look,
+                colors = com.hybrid87sg.bindertracker.ui.three.ShelfColors(AppColors.Wood, AppColors.ShelfBackground, AppColors.Paper),
+                onOpen = { id, pageId ->
+                    binders.firstOrNull { it.id == id }?.let { b ->
+                        if (pageId != null && onOpenPage != null) onOpenPage(b, pageId) else onOpenBinder(b)
+                    }
+                },
+                onEdit = { id -> binders.firstOrNull { it.id == id }?.let { if (it.canEdit) onEditBinder(it) else onOpenBinder(it) } },
+                onOpening = { opening = it },
+                // The whole screen, behind the title (binders stay below it), so the
+                // opening binder can glide right up to where the page screen draws its page.
+                headerBottom = headerBottom,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
             headerFade.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Top,
@@ -266,42 +316,11 @@ fun ShelfScreen(
             if (binders.isEmpty()) "No binders yet · add your first one" else "Tap to open, hold to edit",
             style = MaterialTheme.typography.bodyMedium,
             color = AppColors.Muted,
-            modifier = headerFade.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+            modifier = headerFade.padding(start = 20.dp, end = 20.dp, top = 6.dp)
+                .onGloballyPositioned { headerBottom = it.boundsInWindow().bottom },
         )
 
-        if (use3D) {
-            val cardBack = com.hybrid87sg.bindertracker.ui.components.LocalCardBack.current.choice
-            val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
-            val looks = binders.map { b ->
-                val c = covers[b.id]
-                com.hybrid87sg.bindertracker.ui.three.BinderLook3D(
-                    id = b.id,
-                    name = b.name,
-                    tag = if (b.isShared) "Shared" else b.sizeLabel,
-                    colorHex = b.colorHex,
-                    fill = fill[b.id]?.fraction ?: 0f,
-                    dir = dir,
-                    picturePath = c?.path,
-                    pictureVersion = c?.version ?: 0L,
-                    placement = c?.placement ?: com.hybrid87sg.bindertracker.data.CoverPlacement(),
-                    sheet = firstPages[b.id],
-                    back = cardBack,
-                )
-            }
-            com.hybrid87sg.bindertracker.ui.three.Shelf3D(
-                binders = looks,
-                look = look,
-                colors = com.hybrid87sg.bindertracker.ui.three.ShelfColors(AppColors.Wood, AppColors.ShelfBackground, AppColors.Paper),
-                onOpen = { id, pageId ->
-                    binders.firstOrNull { it.id == id }?.let { b ->
-                        if (pageId != null && onOpenPage != null) onOpenPage(b, pageId) else onOpenBinder(b)
-                    }
-                },
-                onEdit = { id -> binders.firstOrNull { it.id == id }?.let { if (it.canEdit) onEditBinder(it) else onOpenBinder(it) } },
-                onOpening = { opening = it },
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-            )
-        } else {
+        if (!use3D) {
         // LazyColumn only builds the rows that are on screen, so a shelf
         // with many binders still scrolls smoothly.
         LazyColumn(
@@ -377,6 +396,7 @@ fun ShelfScreen(
             }
         }
         }
+    }
     }
 }
 

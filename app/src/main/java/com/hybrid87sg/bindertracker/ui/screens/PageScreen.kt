@@ -103,6 +103,7 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import com.hybrid87sg.bindertracker.ui.components.CardFlight
 import com.hybrid87sg.bindertracker.ui.components.cardFlight
 import kotlin.math.roundToInt
@@ -290,6 +291,32 @@ fun PageScreen(
     val config = LocalConfiguration.current
     val here = pageIds.indexOf(pageId)
     val open = config.screenWidthDp >= 600 && config.screenHeightDp >= 480 && here >= 0
+
+    // Note where this page's cards sit on the screen once it has settled, so the
+    // 3D binder on the shelf can open with its cards in exactly these spots and
+    // hand over to this screen without a jump (see PageLanding). Folded, every
+    // page sits in the same place; unfolded, only the first page is the one it opens onto.
+    val landingContext = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open) {
+        if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
+        lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
+        delay(1200)
+        if (turnState.direction != 0 || drag.origin != null) return@LaunchedEffect
+        val count = columns * rows
+        if (count <= 0 || pockets.size != count) return@LaunchedEffect
+        val screen = drag.screen?.takeIf { it.isAttached } ?: return@LaunchedEffect
+        val o = screen.localToWindow(Offset.Zero)
+        val rects = (0 until count).flatMap { k ->
+            val r = drag.cardRects[k] ?: return@LaunchedEffect
+            listOf(r.left + o.x, r.top + o.y, r.right + o.x, r.bottom + o.y)
+        }
+        com.hybrid87sg.bindertracker.ui.three.PageLanding.record(
+            landingContext,
+            com.hybrid87sg.bindertracker.ui.three.PageLanding.key(columns, rows, config.screenWidthDp, config.screenHeightDp),
+            rects,
+        )
+    }
     // While a card is being dragged, the pages can turn under it (hold it at the
     // binder's edge) without leaving the page it came from: this is then the
     // left page of the pair on show. Null = the pair of the page you're on.
@@ -1295,7 +1322,12 @@ private fun PocketTile(
     )
     // Cards pop into their pockets one after another when the page opens
     // (not when you come back from the card screen: then they're simply there).
-    val popIn = arrive(play = live && !CardFlight.closing, delayMillis = 80 + order * 45, durationMillis = 340)
+    // (Nor when the 3D binder has just opened onto the page: its cards are already in place.)
+    val popIn = arrive(
+        play = live && !CardFlight.closing && !com.hybrid87sg.bindertracker.ui.three.PageLanding.arriving,
+        delayMillis = 80 + order * 45,
+        durationMillis = 340,
+    )
 
     // Sliding in from another pocket after a move (see [Arrival]).
     val arriveAt = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
