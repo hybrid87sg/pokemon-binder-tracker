@@ -90,6 +90,10 @@ import com.hybrid87sg.bindertracker.tcgdex.CardDetails
 import com.hybrid87sg.bindertracker.tcgdex.MarketPrice
 import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.CardImage
+import com.hybrid87sg.bindertracker.ui.components.holoTilt
+import com.hybrid87sg.bindertracker.ui.components.isShinyRarity
+import com.hybrid87sg.bindertracker.ui.components.rememberTouchTilt
+import com.hybrid87sg.bindertracker.ui.components.touchTilt
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
 import com.hybrid87sg.bindertracker.ui.components.cardFlight
@@ -299,18 +303,31 @@ fun CardScreen(
     }
     // Halfway round you see the card's back.
     val showingBack by remember { derivedStateOf { (spin.value * 360f).let { it > 90f && it < 270f } } }
+    // Touch the card and drag to tilt it (up to 25°), once any spin-in is over.
+    // Shiny cards also get the holo rainbow, following your finger.
+    val tilt = rememberTouchTilt(card.id)
+    val tiltState = tilt.asState()
+    val tiltReady by remember { derivedStateOf { spin.value >= 1f } }
+    val shiny = isShinyRarity(card.rarity.ifBlank { details?.rarity })
     val picture = @Composable { modifier: Modifier ->
         Box(
             modifier.cardFlight(flightKey).graphicsLayer {
                 rotationY = spin.value * 360f
                 // Far enough away that the turn looks natural, not stretched.
                 cameraDistance = 16f * density
-            },
+            }.touchTilt(tilt, scope, enabled = tiltReady),
         ) {
             CardImage(
                 card.largeImageUrl,
                 contentDescription = "${card.name} card",
                 modifier = Modifier.fillMaxWidth()
+                    .then(
+                        if (tiltReady) {
+                            Modifier.holoTilt(tiltState, maxDegrees = TOUCH_TILT_DEGREES, scale = 1f, shape = RoundedCornerShape(10.dp), shine = shiny)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .graphicsLayer { alpha = if (showingBack) 0f else 1f }
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(onClickLabel = "Show the card full screen") { fullScreen = true },
@@ -674,6 +691,8 @@ private fun FullScreenCard(card: Card, fitHeight: Boolean = false, onClose: () -
 }
 
 private const val MAX_ZOOM = 5f
+// The most the card view's card tilts under your finger, in any direction.
+private const val TOUCH_TILT_DEGREES = 25f
 private const val DOUBLE_TAP_ZOOM = 2.5f
 
 @Composable

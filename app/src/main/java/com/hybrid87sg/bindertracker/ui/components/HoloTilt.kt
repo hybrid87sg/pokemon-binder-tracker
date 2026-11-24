@@ -19,6 +19,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -104,18 +105,34 @@ private val RestingTilt = Offset(0.35f, -0.25f)
 /**
  * A shiny card: it tilts with the phone (up to 15 degrees), with a rainbow
  * shine and a white glare that move with the tilt.
+ *
+ * The card view uses it too, tilted by your finger instead: there it leans
+ * up to [maxDegrees], is cut to [shape] (so the shine stays inside the
+ * card's rounded corners), and normal cards get the lean without the
+ * rainbow ([shine] false).
  */
-fun Modifier.holoTilt(tilt: State<Offset>): Modifier = this
+fun Modifier.holoTilt(
+    tilt: State<Offset>,
+    maxDegrees: Float = 15f,
+    scale: Float = 1.02f,
+    shape: Shape? = null,
+    shine: Boolean = true,
+): Modifier = this
     .graphicsLayer {
         val t = tilt.value
-        rotationY = t.x * 15f
-        rotationX = -t.y * 15f
+        rotationY = t.x * maxDegrees
+        rotationX = -t.y * maxDegrees
         cameraDistance = 8f * density
-        scaleX = 1.02f
-        scaleY = 1.02f
+        scaleX = scale
+        scaleY = scale
+        if (shape != null) {
+            this.shape = shape
+            clip = true
+        }
     }
     .drawWithContent {
         drawContent()
+        if (!shine) return@drawWithContent
         val t = tilt.value
         val w = size.width
         val h = size.height
