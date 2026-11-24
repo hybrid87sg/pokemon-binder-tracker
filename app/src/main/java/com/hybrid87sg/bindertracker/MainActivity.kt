@@ -32,6 +32,7 @@ import com.hybrid87sg.bindertracker.data.Checklist
 import com.hybrid87sg.bindertracker.ui.components.CardFlight
 import com.hybrid87sg.bindertracker.ui.components.LocalScreenAnimationScope
 import com.hybrid87sg.bindertracker.ui.components.LocalSharedTransitionScope
+import com.hybrid87sg.bindertracker.ui.screens.GlossaryPopup
 import com.hybrid87sg.bindertracker.ui.screens.BrowseItem
 import com.hybrid87sg.bindertracker.ui.screens.CardBrowse
 import com.hybrid87sg.bindertracker.ui.screens.missingStatus
@@ -67,6 +68,7 @@ import com.hybrid87sg.bindertracker.ui.components.LocalBinderColor
 import com.hybrid87sg.bindertracker.ui.components.LocalCardBack
 import com.hybrid87sg.bindertracker.data.ExpansionCount
 import com.hybrid87sg.bindertracker.data.ExpansionOption
+import androidx.activity.compose.BackHandler
 import com.hybrid87sg.bindertracker.ui.screens.MissingCardsScreen
 import com.hybrid87sg.bindertracker.data.Card
 import com.hybrid87sg.bindertracker.ui.components.rememberPagePhoto
@@ -313,12 +315,9 @@ private fun App(
             val firstPages by vm.firstPages.collectAsStateWithLifecycle()
             ShelfScreen(
                 firstPages = firstPages,
-                // The 3D binder opened onto its first page: the binder's page list goes
-                // underneath, so Back from the page goes to the list like before.
-                onOpenPage = { binder, pageId ->
-                    nav.navigate("binder/${binder.id}")
-                    nav.navigate("page/$pageId")
-                },
+                // The 3D binder opens onto its first page. The page list is now the
+                // Glossary pop-up on the page itself, so Back goes straight to the shelf.
+                onOpenPage = { _, pageId -> nav.navigate("page/$pageId") },
                 missing = missing,
                 look = look,
                 covers = covers,
@@ -327,7 +326,12 @@ private fun App(
                 fill = fill,
                 notice = movedNotice,
                 onDismissNotice = vm::dismissMovedBindersNotice,
-                onOpenBinder = { nav.navigate("binder/${it.id}") },
+                // A binder with pages opens on page 1 (its Glossary lists the rest);
+                // an empty binder opens its page list, which has Add pages.
+                onOpenBinder = { b ->
+                    val first = firstPages[b.id]?.pageId
+                    if (first != null) nav.navigate("page/$first") else nav.navigate("binder/${b.id}")
+                },
                 // Hold a binder: Edit binder (name, colour, size, cover picture).
                 onEditBinder = { nav.navigate("edit/${it.id}") },
                 onChangeColor = { binder, hex -> vm.setBinderColor(binder, hex) },
@@ -588,6 +592,10 @@ private fun App(
                 key(id) { LaunchedEffect(id) { vm.pockets(id).collect { pocketsById[id] = it } } }
             }
             val pockets = pocketsById[pageId].orEmpty()
+            // Back from a page goes straight to the shelf (the page list is the Glossary pop-up now).
+            val backToShelf = { if (!nav.popBackStack("shelf", inclusive = false)) nav.popBackStack() }
+            BackHandler { backToShelf() }
+            var showGlossary by rememberSaveable { mutableStateOf(false) }
             page?.let { p ->
                 val binder by remember(p.binderId) { vm.binder(p.binderId) }.collectAsStateWithLifecycle(initialValue = null)
                 val number by produceState(0, p.id) { value = vm.pageNumber(p) }
@@ -623,7 +631,7 @@ private fun App(
                         photo = photo,
                         guide = GuideRect(p.guideLeft, p.guideTop, p.guideRight, p.guideBottom),
                         readingStatus = reading[p.id],
-                        onBack = { nav.popBackStack() },
+                        onBack = { backToShelf() },
                         onChooseCard = { position -> nav.navigate("pick/$pageId/$position") },
                         onViewCard = { atPage, atPosition ->
                             // Every card in the binder in pocket order, so the card screen can swipe through them
@@ -674,7 +682,31 @@ private fun App(
                         coverColor = colorFromHex(b.colorHex),
                         onAddPage = { vm.addPages(b, 1) },
                         ghosts = ghosts,
+                        onOpenGlossary = { showGlossary = true },
                     )
+                    if (showGlossary) {
+                        val missing by vm.missingCounts.collectAsStateWithLifecycle()
+                        val expansions by produceState(emptyList<ExpansionOption>(), cardCount) { value = vm.expansionList() }
+                        GlossaryPopup(
+                            binder = b,
+                            pages = siblings,
+                            pockets = allPockets + pocketsById,
+                            currentPageId = pageId,
+                            progress = missing[b.id],
+                            collectingLabel = b.followedSetIds.joinToString(" + ") { sid -> expansions.firstOrNull { it.id == sid }?.name ?: sid },
+                            onDismiss = { showGlossary = false },
+                            onJump = { id -> showGlossary = false; pageId = id },
+                            onShare = { showGlossary = false; nav.navigate("share/${b.id}") },
+                            onEdit = { showGlossary = false; nav.navigate("edit/${b.id}") },
+                            onAddPages = { count -> vm.addPages(b, count) },
+                            onOpenMissing = { showGlossary = false; nav.navigate("missing/${b.id}") },
+                            onDelete = {
+                                showGlossary = false
+                                vm.deleteBinder(b)
+                                backToShelf()
+                            },
+                        )
+                    }
                     }
                 }
             }

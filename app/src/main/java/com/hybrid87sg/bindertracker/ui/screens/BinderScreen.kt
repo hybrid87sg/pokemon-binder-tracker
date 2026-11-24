@@ -250,34 +250,40 @@ fun BinderScreen(
     }
 
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text(if (binder.isOwner) "Delete “${binder.name}”?" else "Leave “${binder.name}”?") },
-            text = {
-                Text(
-                    when {
-                        !binder.isOwner -> "This takes the binder off your shelf. It stays on ${binder.ownerName ?: "the owner"}'s shelf, and they can invite you again."
-                        binder.memberCount > 1 -> "This removes the binder from your shelf, and from the shelf of everyone you shared it with. You can't undo this."
-                        else -> "This removes the binder from your shelf. You can't undo this."
-                    },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { confirmDelete = false; onDelete() },
-                    colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Danger),
-                ) { Text(if (binder.isOwner) "Delete binder" else "Leave binder") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Keep binder") }
-            },
-        )
+        DeleteBinderDialog(binder, onDismiss = { confirmDelete = false }, onConfirm = { confirmDelete = false; onDelete() })
     }
+}
+
+/** "Delete this binder?" for the owner, "Leave this binder?" for someone it's shared with. */
+@Composable
+internal fun DeleteBinderDialog(binder: Binder, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (binder.isOwner) "Delete “${binder.name}”?" else "Leave “${binder.name}”?") },
+        text = {
+            Text(
+                when {
+                    !binder.isOwner -> "This takes the binder off your shelf. It stays on ${binder.ownerName ?: "the owner"}'s shelf, and they can invite you again."
+                    binder.memberCount > 1 -> "This removes the binder from your shelf, and from the shelf of everyone you shared it with. You can't undo this."
+                    else -> "This removes the binder from your shelf. You can't undo this."
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = AppColors.Danger),
+            ) { Text(if (binder.isOwner) "Delete binder" else "Leave binder") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Keep binder") }
+        },
+    )
 }
 
 /** "38 cards missing · 64% of Base Set + 151", or an invitation to start tracking. */
 @Composable
-private fun MissingStrip(progress: ChecklistProgress?, collectingLabel: String, onClick: () -> Unit) {
+internal fun MissingStrip(progress: ChecklistProgress?, collectingLabel: String, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     Surface(
         onClick = onClick,
@@ -323,7 +329,7 @@ private fun MissingStrip(progress: ChecklistProgress?, collectingLabel: String, 
 
 /** Asks how many empty pages to add, from 1 to [MAX_NEW_PAGES]. */
 @Composable
-private fun AddPagesDialog(onDismiss: () -> Unit, onAdd: (Int) -> Unit) {
+internal fun AddPagesDialog(onDismiss: () -> Unit, onAdd: (Int) -> Unit) {
     var count by remember { mutableIntStateOf(1) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -360,7 +366,7 @@ private fun AddPagesDialog(onDismiss: () -> Unit, onAdd: (Int) -> Unit) {
 private const val MAX_NEW_PAGES = 50
 
 /** "Shared by Alex · You can edit", "Shared with 2 people", or null when not shared. */
-private fun sharedLabel(binder: Binder): String? = when {
+internal fun sharedLabel(binder: Binder): String? = when {
     binder.role == Binder.ROLE_EDITOR -> "Shared by ${binder.ownerName ?: "a friend"} · You can edit"
     binder.role == Binder.ROLE_VIEWER -> "Shared by ${binder.ownerName ?: "a friend"} · View only"
     binder.memberCount > 1 -> "Shared with ${binder.memberCount - 1} ${if (binder.memberCount == 2) "person" else "people"}"
