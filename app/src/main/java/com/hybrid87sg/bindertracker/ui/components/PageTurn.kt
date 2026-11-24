@@ -45,6 +45,7 @@ import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -138,6 +139,15 @@ fun PageTurnStage(
 ) {
     val scope = rememberCoroutineScope()
     val layer = rememberGraphicsLayer()
+    // The back of the turning sheet shows the card back picked in Me > Card back
+    // in every pocket. It's painted once into a picture and reused while turning.
+    val backSetting = LocalCardBack.current
+    val binderColor = (LocalBinderColor.current ?: AppColors.Accent).toArgb()
+    val blue = CardBackArt.Blue(
+        AppColors.CardBack.toArgb(), AppColors.CardBackDeep.toArgb(), AppColors.CardBackFrame.toArgb(),
+        AppColors.CardBackSwirl.toArgb(), AppColors.CardBackSpark.toArgb(),
+    )
+    val backCache = remember { SheetBackCache() }
     val turned by rememberUpdatedState(onTurned)
     val okPrev by rememberUpdatedState(canPrev)
     val okNext by rememberUpdatedState(canNext)
@@ -246,17 +256,22 @@ fun PageTurnStage(
 
         if (d != 0) {
             val sheetColor = AppColors.Surface
-            val backPocket = AppColors.CardBack
             val holeColor = AppColors.Paper
             Canvas(Modifier.matchParentSize()) {
                 val picture = state.picture
+                val back = if (picture == null) null else backCache.get(
+                    size.width, size.height,
+                    listOf(columns, rows, sheetColor, holeColor, backSetting, binderColor, blue.top, blue.frame),
+                ) { canvas, w, h ->
+                    drawSheetBack(canvas, w, h, sheetColor, holeColor, columns, rows, backSetting, binderColor, blue)
+                }
                 if (picture == null) {
                     // Picture not taken yet (a frame or two): show the sheet flat.
                     if (d > 0) drawLayer(layer)
                 } else {
                     // The rings are drawn in the middle of the curl: over the flat part of
                     // the sheet, but under the part that lifts up as it turns.
-                    drawCurl(picture, state.progress, sheetColor, backPocket, holeColor, columns, rows)
+                    drawCurl(picture, back!!, state.progress)
                 }
                 if (picture == null) drawRings()
             }
@@ -318,12 +333,8 @@ private fun DrawScope.drawRings() {
 /** Draws the turning sheet bent round its fold, plus the shadow it casts on the page below. */
 private fun DrawScope.drawCurl(
     picture: ImageBitmap,
+    back: android.graphics.Bitmap,
     progress: Float,
-    sheetColor: Color,
-    backPocket: Color,
-    holeColor: Color,
-    columns: Int,
-    rows: Int,
 ) {
     val width = size.width
     val height = size.height
@@ -385,7 +396,7 @@ private fun DrawScope.drawCurl(
             if (front) {
                 canvas.drawBitmap(bitmap, 0f, 0f, paint)
             } else {
-                drawSheetBack(canvas, width, height, fill, sheetColor, backPocket, holeColor, columns, rows)
+                canvas.drawBitmap(back, 0f, 0f, paint)
             }
             // Darker where the sheet is tilted away from the light.
             val shade = sin(mid) * if (front) 0.42f else 0.3f
@@ -399,18 +410,49 @@ private fun DrawScope.drawCurl(
     }
 }
 
-/** The back of a sheet: the reverse pockets seen through the plastic, holes on the right. */
+/**
+ * Keeps the painted back of a sheet, so it is only painted again when something
+ * it shows changes (size, layout, colours or the chosen card back).
+ */
+private class SheetBackCache {
+    private var key: Any? = null
+    private var bitmap: android.graphics.Bitmap? = null
+
+    fun get(
+        width: Float,
+        height: Float,
+        what: Any,
+        paint: (android.graphics.Canvas, Float, Float) -> Unit,
+    ): android.graphics.Bitmap {
+        val w = ceil(width).toInt().coerceAtLeast(1)
+        val h = ceil(height).toInt().coerceAtLeast(1)
+        val wanted = listOf(w, h, what)
+        bitmap?.let { if (key == wanted) return it }
+        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        paint(android.graphics.Canvas(bmp), width, height)
+        bitmap = bmp
+        key = wanted
+        return bmp
+    }
+}
+
+/**
+ * The back of a sheet: the backs of the cards seen through the plastic, holes
+ * on the right. Every pocket shows this phone's card back (Me > Card back).
+ */
 private fun DrawScope.drawSheetBack(
     canvas: android.graphics.Canvas,
     width: Float,
     height: Float,
-    fill: Paint,
     sheetColor: Color,
-    pocket: Color,
     hole: Color,
     columns: Int,
     rows: Int,
+    back: CardBackSetting,
+    binderColor: Int,
+    blue: CardBackArt.Blue,
 ) {
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     fill.color = sheetColor.toArgb()
     canvas.drawRoundRect(RectF(0f, 0f, width, height), 14.dp.toPx(), 14.dp.toPx(), fill)
     // The same spacing as the front of the sheet (see BinderSheet), mirrored:
@@ -426,11 +468,19 @@ private fun DrawScope.drawSheetBack(
     // Each row's share of the height (a pocket plus its card name underneath).
     val rowH = (height - 2 * pad - gapY * (rowCount - 1)) / rowCount
     val pocketH = min(cellH, rowH)
-    fill.color = pocket.copy(alpha = 0.45f).toArgb()
+    val corner = 6.dp.toPx()
+    // A thin film of the sheet's colour over each card: the plastic of the pocket.
+    val plastic = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = sheetColor.copy(alpha = 0.16f).toArgb() }
     for (r in 0 until rowCount) for (col in 0 until cols) {
         val left = pad + col * (cellW + gapX)
         val top = pad + r * (rowH + gapY)
-        canvas.drawRoundRect(RectF(left, top, left + cellW, top + pocketH), 6.dp.toPx(), 6.dp.toPx(), fill)
+        val pocket = RectF(left, top, left + cellW, top + pocketH)
+        canvas.save()
+        canvas.clipPath(android.graphics.Path().apply { addRoundRect(pocket, corner, corner, android.graphics.Path.Direction.CW) })
+        canvas.translate(left, top)
+        CardBackArt.draw(canvas, cellW, pocketH, back.style, binderColor, back.picture, back.choice.placement, blue)
+        canvas.restore()
+        canvas.drawRoundRect(pocket, corner, corner, plastic)
     }
     fill.color = hole.toArgb()
     RingSpots.forEach { f -> canvas.drawCircle(width - 12.dp.toPx(), height * f, 4.5.dp.toPx(), fill) }

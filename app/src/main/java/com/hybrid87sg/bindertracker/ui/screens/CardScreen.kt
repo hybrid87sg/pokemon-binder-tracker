@@ -317,7 +317,8 @@ fun CardScreen(
                 corner = 10.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
-                grey = missing?.owned == false,
+                // Missing cards are grey in lists and pockets, but here, in the
+                // card view, you see them in full colour.
             )
             if (showingBack) {
                 // Seen from behind the picture would be mirrored, so flip it back.
@@ -376,7 +377,7 @@ fun CardScreen(
             }
         }
     }
-    if (fullScreen) FullScreenCard(card, fitHeight = open, grey = missing?.owned == false) { fullScreen = false }
+    if (fullScreen) FullScreenCard(card, fitHeight = open) { fullScreen = false }
 }
 
 /** A round arrow button beside the card. Faded at the first or last card. */
@@ -542,7 +543,7 @@ private fun RateNote(prices: List<MarketPrice>, rates: SgdRates?) {
  * Back zooms out first, and ✕ always closes.
  */
 @Composable
-private fun FullScreenCard(card: Card, fitHeight: Boolean = false, grey: Boolean = false, onClose: () -> Unit) {
+private fun FullScreenCard(card: Card, fitHeight: Boolean = false, onClose: () -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var dragY by remember { mutableFloatStateOf(0f) }
@@ -659,7 +660,6 @@ private fun FullScreenCard(card: Card, fitHeight: Boolean = false, grey: Boolean
                 corner = 14.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
-                grey = grey,
             )
             Box(
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
