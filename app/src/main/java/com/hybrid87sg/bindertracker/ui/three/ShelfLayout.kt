@@ -107,3 +107,36 @@ fun hitBox(origin: Vec3, dir: Vec3, lo: Vec3, hi: Vec3): Float? {
     }
     return if (tMax < 0f) null else max(tMin, 0f)
 }
+
+/**
+ * Where each card goes on the first page inside the 3D binder, laid out
+ * like the page screen: [columns] x [rows] pockets, row by row.
+ * Each entry is left, top, right, bottom as fractions of the page (0..1).
+ */
+object SheetGrid {
+    /** The page's size inside the 3D binder (same as BinderModel's sheet). */
+    const val WIDTH = BinderModel.COVER - 0.26f
+    const val HEIGHT = BinderModel.HEIGHT - 0.22f
+    private const val CARD = 63f / 88f
+
+    fun cards(columns: Int, rows: Int): List<FloatArray> {
+        val cols = columns.coerceAtLeast(1); val rws = rows.coerceAtLeast(1)
+        // Work in page units so the cards keep their real shape.
+        val pad = WIDTH * 0.06f
+        val gap = WIDTH * 0.035f
+        val cellW = (WIDTH - 2 * pad - (cols - 1) * gap) / cols
+        val cellH = (HEIGHT - 2 * pad - (rws - 1) * gap) / rws
+        val w = min(cellW, cellH * CARD)
+        val h = w / CARD
+        // Centre the whole grid on the page.
+        val gridW = cols * w + (cols - 1) * gap
+        val gridH = rws * h + (rws - 1) * gap
+        val x0 = (WIDTH - gridW) / 2f
+        val y0 = (HEIGHT - gridH) / 2f
+        return (0 until cols * rws).map { i ->
+            val x = x0 + (i % cols) * (w + gap)
+            val y = y0 + (i / cols) * (h + gap)
+            floatArrayOf(x / WIDTH, y / HEIGHT, (x + w) / WIDTH, (y + h) / HEIGHT)
+        }
+    }
+}

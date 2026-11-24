@@ -3,6 +3,8 @@ package com.hybrid87sg.bindertracker.ui.three
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -26,20 +28,49 @@ data class BinderLook3D(
     val picturePath: String?,
     val pictureVersion: Long,
     val placement: CoverPlacement,
+    /** The binder's first page, shown inside it. Null: the binder has no pages yet. */
+    val sheet: SheetLook? = null,
 )
+
+/** The first page of a binder, as the 3D binder shows it when it opens. */
+data class SheetLook(val pageId: String, val columns: Int, val rows: Int, val pockets: List<SheetPocket>)
+
+/**
+ * One pocket of that page. [url] and [backupUrl] are the small card pictures
+ * (TCGdex, then pokemontcg.io), tried after the copy saved on the phone.
+ */
+data class SheetPocket(
+    val position: Int,
+    val kind: Kind,
+    val cardId: String? = null,
+    val url: String? = null,
+    val backupUrl: String? = null,
+) {
+    enum class Kind {
+        /** A card you have. */
+        Card,
+        /** A card you're missing from the binder's expansions: shown grey. */
+        Missing,
+        /** Marked empty: our blue card back. */
+        Empty,
+        /** Something there we don't know yet: a dashed outline. */
+        Unknown,
+    }
+}
 
 /**
  * Paints the pictures that go on a 3D binder: the cover, the spine label,
  * the inside of the cover and the first pocket page. Runs off the main thread.
  */
 object BinderPaint {
-    fun pictures(look: BinderLook3D, picture: Bitmap?): BinderModel.Pictures {
+    /** [cards] are the card pictures for the first page, by pocket position. */
+    fun pictures(look: BinderLook3D, picture: Bitmap?, cards: Map<Int, Bitmap> = emptyMap()): BinderModel.Pictures {
         val color = parse(look.colorHex)
         return BinderModel.Pictures(
             cover = jpeg(cover(look, color, picture)),
             spine = jpeg(spine(look, color, picture)),
             lining = jpeg(lining(color)),
-            sheet = sheet,
+            sheet = look.sheet?.let { jpeg(firstPage(it, cards)) } ?: sheet,
             grain = grain,
         )
     }
@@ -143,6 +174,102 @@ object BinderPaint {
         c.drawRoundRect(RectF(44f, 44f, w - 44f, h - 44f), 16f, 16f, p)
         return bmp
     }
+
+    /**
+     * The binder's real first page: each pocket in its place, like the page
+     * screen. Cards you have, grey missing cards, blue card backs for empty
+     * pockets, and a dashed outline where we don't know the card yet.
+     */
+    private fun firstPage(s: SheetLook, cards: Map<Int, Bitmap>): Bitmap {
+        val w = SHEET_PX
+        val h = (SHEET_PX * SheetGrid.HEIGHT / SheetGrid.WIDTH).toInt()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawColor(0xFFF8F8FB.toInt())
+        val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val byPosition = s.pockets.associateBy { it.position }
+        SheetGrid.cards(s.columns, s.rows).forEachIndexed { position, f ->
+            val r = RectF(f[0] * w, f[1] * h, f[2] * w, f[3] * h)
+            val corner = r.width() * 0.05f
+            // The plastic sleeve, a little bigger than the card.
+            val sleeve = RectF(r.left - 5f, r.top - 5f, r.right + 5f, r.bottom + 5f)
+            p.style = Paint.Style.FILL; p.color = 0xFFFFFFFF.toInt(); c.drawRoundRect(sleeve, corner + 4f, corner + 4f, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 2f; p.color = 0x1A000000; c.drawRoundRect(sleeve, corner + 4f, corner + 4f, p)
+            p.style = Paint.Style.FILL
+            val pocket = byPosition[position]
+            when (pocket?.kind) {
+                SheetPocket.Kind.Card, SheetPocket.Kind.Missing -> {
+                    val art = cards[position]
+                    val missing = pocket.kind == SheetPocket.Kind.Missing
+                    if (art != null) {
+                        c.save()
+                        c.clipPath(android.graphics.Path().apply { addRoundRect(r, corner, corner, android.graphics.Path.Direction.CW) })
+                        p.colorFilter = if (missing) greyFilter else null
+                        p.alpha = if (missing) 204 else 255
+                        // Fill the pocket, cropping a little if the picture's shape is different.
+                        val scale = max(r.width() / art.width, r.height() / art.height)
+                        val dw = art.width * scale; val dh = art.height * scale
+                        c.drawBitmap(art, null, RectF(r.centerX() - dw / 2f, r.centerY() - dh / 2f, r.centerX() + dw / 2f, r.centerY() + dh / 2f), p)
+                        p.colorFilter = null; p.alpha = 255
+                        c.restore()
+                    } else if (missing) {
+                        cardBack(c, r, corner, p)
+                    } else {
+                        // No picture anywhere: a plain blank card, like the page screen.
+                        p.color = 0xFFE7E6EE.toInt(); c.drawRoundRect(r, corner, corner, p)
+                    }
+                }
+                SheetPocket.Kind.Empty -> cardBack(c, r, corner, p)
+                else -> {
+                    p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.color = 0xFFB4B0C8.toInt()
+                    p.pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
+                    c.drawRoundRect(r, corner, corner, p)
+                    p.pathEffect = null; p.style = Paint.Style.FILL
+                    if (pocket != null) {
+                        p.color = 0xFFB4B0C8.toInt(); p.textSize = r.width() * 0.3f; p.typeface = Typeface.DEFAULT_BOLD; p.textAlign = Paint.Align.CENTER
+                        c.drawText("?", r.centerX(), r.centerY() + p.textSize * 0.35f, p)
+                    }
+                }
+            }
+            // A soft shine across the sleeve.
+            p.shader = LinearGradient(sleeve.left, sleeve.top, sleeve.right, sleeve.bottom,
+                intArrayOf(0x00FFFFFF, 0x2EFFFFFF, 0x00FFFFFF), floatArrayOf(0.25f, 0.4f, 0.55f), Shader.TileMode.CLAMP)
+            c.drawRoundRect(sleeve, corner + 4f, corner + 4f, p)
+            p.shader = null
+        }
+        return bmp
+    }
+
+    /** Our own blue card back (see CardBack.kt), simplified for the 3D page. */
+    private fun cardBack(c: Canvas, r: RectF, corner: Float, p: Paint) {
+        p.shader = LinearGradient(r.left, r.top, r.right, r.bottom, 0xFF23379A.toInt(), 0xFF1A2A78.toInt(), Shader.TileMode.CLAMP)
+        c.drawRoundRect(r, corner, corner, p)
+        p.shader = null
+        val u = r.width() / 63f
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f * u; p.color = 0xD9C9D2F5.toInt()
+        c.drawRoundRect(RectF(r.left + 3.5f * u, r.top + 3.5f * u, r.right - 3.5f * u, r.bottom - 3.5f * u), 3f * u, 3f * u, p)
+        p.color = 0xFF8EA4FF.toInt()
+        for ((radius, width) in listOf(21f to 2.2f, 15f to 2.6f, 9f to 2.8f)) {
+            p.strokeWidth = width * u
+            val o = RectF(r.centerX() - radius * u, r.centerY() - radius * u, r.centerX() + radius * u, r.centerY() + radius * u)
+            c.drawArc(o, radius * 9f, 140f, false, p)
+            c.drawArc(o, radius * 9f + 180f, 140f, false, p)
+        }
+        p.style = Paint.Style.FILL
+    }
+
+    /** Grey and a little faded, like missing cards on the page screen. */
+    private val greyFilter by lazy {
+        val k = 0.62f
+        ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+            0.2126f * k, 0.7152f * k, 0.0722f * k, 0f, 0f,
+            0.2126f * k, 0.7152f * k, 0.0722f * k, 0f, 0f,
+            0.2126f * k, 0.7152f * k, 0.0722f * k, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f,
+        )))
+    }
+
+    private const val SHEET_PX = 768
 
     /** The first pocket page: nine soft-coloured cards. Same for every binder. */
     private val sheet: ByteArray by lazy {

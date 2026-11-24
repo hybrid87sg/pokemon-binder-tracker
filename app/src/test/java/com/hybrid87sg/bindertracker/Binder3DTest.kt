@@ -2,6 +2,7 @@ package com.hybrid87sg.bindertracker
 
 import com.hybrid87sg.bindertracker.ui.three.BinderModel
 import com.hybrid87sg.bindertracker.ui.three.Cam
+import com.hybrid87sg.bindertracker.ui.three.SheetGrid
 import com.hybrid87sg.bindertracker.ui.three.ShelfLayout
 import com.hybrid87sg.bindertracker.ui.three.Vec3
 import com.hybrid87sg.bindertracker.ui.three.hitBox
@@ -76,5 +77,25 @@ class Binder3DTest {
         assertEquals(0.5f, y, 0.0001f)
         val r = cam.ray(0.5f, 0.5f)
         assertEquals(-1f, r.z, 0.0001f)
+    }
+
+    @Test
+    fun firstPageGridMatchesTheBinderSize() {
+        for ((cols, rows) in listOf(3 to 3, 2 to 2, 4 to 3, 3 to 4)) {
+            val cells = SheetGrid.cards(cols, rows)
+            assertEquals(cols * rows, cells.size)
+            for (c in cells) {
+                // Inside the page, and shaped like a real card (63 x 88).
+                assertTrue(c[0] >= 0f && c[1] >= 0f && c[2] <= 1f && c[3] <= 1f)
+                val w = (c[2] - c[0]) * SheetGrid.WIDTH
+                val h = (c[3] - c[1]) * SheetGrid.HEIGHT
+                assertEquals(63f / 88f, w / h, 0.001f)
+            }
+            // Row by row: position 1 is to the right of position 0, the next row is below.
+            assertTrue(cells[1][0] > cells[0][2])
+            assertTrue(cells[cols][1] > cells[0][3])
+            // The grid is centred.
+            assertEquals(1f - cells[cols - 1][2], cells[0][0], 0.001f)
+        }
     }
 }
