@@ -298,13 +298,15 @@ fun PageScreen(
     // page sits in the same place; unfolded, only the first page is the one it opens onto.
     val landingContext = androidx.compose.ui.platform.LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    // (The pockets can arrive after the screen first appears, so read the latest ones.)
+    val latestPockets by rememberUpdatedState(pockets)
     LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
         if (turnState.direction != 0 || drag.origin != null) return@LaunchedEffect
         val count = columns * rows
-        if (count <= 0 || pockets.size != count) return@LaunchedEffect
+        if (count <= 0 || latestPockets.size != count) return@LaunchedEffect
         val screen = drag.screen?.takeIf { it.isAttached } ?: return@LaunchedEffect
         val o = screen.localToWindow(Offset.Zero)
         val rects = (0 until count).flatMap { k ->

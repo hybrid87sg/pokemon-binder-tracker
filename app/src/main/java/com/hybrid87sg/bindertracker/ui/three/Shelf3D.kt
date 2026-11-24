@@ -271,7 +271,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     private var openSent = false
     private var openPlan: OpenPlan? = null
 
-    private class OpenPlan(val start: Vec3, val turn: Float, val closed: Vec3, val open: Vec3, val eye0: Vec3, val look0: Vec3, val eyeEnd: Vec3, val lookEnd: Vec3, val dir: Int, val toPage: Boolean)
+    private class OpenPlan(val start: Vec3, val turn: Float, val closed: Vec3, val open: Vec3, val eye0: Vec3, val look0: Vec3, val eyeEnd: Vec3, val lookEnd: Vec3, val dir: Int, val toPage: Boolean, val page: Vec3 = Vec3(0f, 0f, 0f), val landing: SheetGrid.Landing? = null)
 
     init {
         renderer.setClearOptions(Renderer.ClearOptions().apply { clear = true; setClearColor(0.0, 0.0, 0.0, 0.0) })
@@ -531,21 +531,16 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val pageDist = max(SheetGrid.WIDTH / (0.94f * 2f * tanH * aspect), SheetGrid.HEIGHT / (0.86f * 2f * tanH))
         // Better still: if we know where the page screen draws these cards, stop with
         // every card in exactly that spot, so the page screen can take over unnoticed.
+        // (Worked out again every frame in landingCam, as this view can change size on the way.)
         val landing = if (toPage) item.look.sheet?.landing?.let { SheetGrid.fromScreen(it) } else null
-        val aim = if (landing != null) {
-            val at = IntArray(2)
-            textureView.getLocationInWindow(at)
-            val s = landing.worldPerPx
-            Vec3(-(landing.centreX - at[0] - width / 2f) * s, (landing.centreY - at[1] - height / 2f) * s, 0f)
-        } else Vec3(0f, 0f, 0f)
-        val landDist = landing?.let { it.worldPerPx * height / (2f * tanH) } ?: pageDist
-        val eyeEnd = if (toPage) page + aim + Vec3(0f, 0f, landDist) else Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
+        val landed = landing?.let { landingCam(page, it) }
+        val eyeEnd = landed?.first ?: if (toPage) page + Vec3(0f, 0f, pageDist) else Vec3(centre.x + d * C * 0.52f, centre.y, centre.z + H * 1.05f)
         openPlan = OpenPlan(
             start = item.spot + Vec3(0f, item.lift * 0.25f, item.lift),
             turn = l.turn, closed = closed, open = open,
             eye0 = cam.eye, look0 = cam.target,
-            eyeEnd = eyeEnd, lookEnd = if (toPage) page + aim else Vec3(eyeEnd.x, centre.y, centre.z),
-            dir = l.dir, toPage = toPage,
+            eyeEnd = eyeEnd, lookEnd = landed?.second ?: if (toPage) page else Vec3(eyeEnd.x, centre.y, centre.z),
+            dir = l.dir, toPage = toPage, page = page, landing = landing,
         )
         // Draw it over the fade.
         scene.removeEntities(item.asset.entities)
@@ -554,6 +549,19 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         openSent = false
         openStart = System.nanoTime()
         dirty = true
+    }
+
+    /**
+     * The camera (eye, target) that shows the 3D page's cards exactly where the
+     * page screen drew them, for this view's size and place on the screen right now.
+     */
+    private fun landingCam(page: Vec3, landing: SheetGrid.Landing): Pair<Vec3, Vec3> {
+        val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
+        val at = IntArray(2)
+        textureView.getLocationInWindow(at)
+        val s = landing.worldPerPx
+        val aim = Vec3(-(landing.centreX - at[0] - width / 2f) * s, (landing.centreY - at[1] - height / 2f) * s, 0f)
+        return Pair(page + aim + Vec3(0f, 0f, s * height / (2f * tanH)), page + aim)
     }
 
     private fun stepOpening(now: Long) {
@@ -569,8 +577,11 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         pos = mix(pos, plan.open, p3)
         setBinder(item, pos, plan.turn * (1f - p2), -0.05f * sin(p2 * PI.toFloat()))
         setHinge(item, -plan.dir * 176f * p3)
-        val eye = mix(plan.eye0, plan.eyeEnd, p4)
-        val target = mix(plan.look0, plan.lookEnd, p4)
+        // The bottom tab bar goes away as the page screen comes in, so this view can
+        // grow on the way: aim for where the cards are now, not where they were at the start.
+        val end = plan.landing?.let { landingCam(plan.page, it) }
+        val eye = mix(plan.eye0, end?.first ?: plan.eyeEnd, p4)
+        val target = mix(plan.look0, end?.second ?: plan.lookEnd, p4)
         val cam = Cam(eye, target, fovY, width.toFloat() / height)
         placeCamera(cam)
         // The fade sheet sits just in front of the camera.
