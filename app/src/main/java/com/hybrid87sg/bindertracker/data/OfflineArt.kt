@@ -78,10 +78,12 @@ object OfflineArt {
     }
 
     /** A picture was just saved as [name]. */
-    internal fun noteSaved(name: String) { saved?.add(name) }
+    internal fun noteSaved(name: String) = synchronized(this) { saved?.add(name); Unit }
 
-    /** Pictures were deleted: read the folder again next time. */
-    internal fun noteChanged() { saved = null }
+    /** Pictures were deleted: read the folder again next time.
+     *  Both notes take the same lock as [savedNames], so a change that
+     *  happens while the folder is being read isn't lost. */
+    internal fun noteChanged() = synchronized(this) { saved = null }
 
     /**
      * Card ids can hold characters a file name can't, so keep only safe ones.
