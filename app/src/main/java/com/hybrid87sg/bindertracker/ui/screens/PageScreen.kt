@@ -300,7 +300,7 @@ fun PageScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     // (The pockets can arrive after the screen first appears, so read the latest ones.)
     val landingPockets by rememberUpdatedState(pockets)
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open) {
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
@@ -311,7 +311,8 @@ fun PageScreen(
         var rects: List<Float>? = null
         for (attempt in 0 until 30) {
             if (attempt > 0) delay(300)
-            if (turnState.direction != 0 || drag.origin != null || landingPockets.size != count) continue
+            // (Not while editing: the Delete page bar makes the page smaller.)
+            if (editing || turnState.direction != 0 || drag.origin != null || landingPockets.size != count) continue
             val screen = drag.screen?.takeIf { it.isAttached } ?: continue
             val o = screen.localToWindow(Offset.Zero)
             val cards = (0 until count).map { drag.cardRects[it] }
