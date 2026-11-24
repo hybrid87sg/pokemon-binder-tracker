@@ -304,15 +304,22 @@ fun PageScreen(
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
-        if (turnState.direction != 0 || drag.origin != null) return@LaunchedEffect
         val count = columns * rows
-        if (count <= 0 || landingPockets.size != count) return@LaunchedEffect
-        val screen = drag.screen?.takeIf { it.isAttached } ?: return@LaunchedEffect
-        val o = screen.localToWindow(Offset.Zero)
-        val rects = (0 until count).flatMap { k ->
-            val r = drag.cardRects[k] ?: return@LaunchedEffect
-            listOf(r.left + o.x, r.top + o.y, r.right + o.x, r.bottom + o.y)
+        if (count <= 0) return@LaunchedEffect
+        // The pockets (and so the cards' places) can still be loading: keep looking
+        // for a little while, and note the spots once the page is ready and still.
+        var rects: List<Float>? = null
+        for (attempt in 0 until 30) {
+            if (attempt > 0) delay(300)
+            if (turnState.direction != 0 || drag.origin != null || landingPockets.size != count) continue
+            val screen = drag.screen?.takeIf { it.isAttached } ?: continue
+            val o = screen.localToWindow(Offset.Zero)
+            val cards = (0 until count).map { drag.cardRects[it] }
+            if (cards.any { it == null }) continue
+            rects = cards.filterNotNull().flatMap { r -> listOf(r.left + o.x, r.top + o.y, r.right + o.x, r.bottom + o.y) }
+            break
         }
+        if (rects == null) return@LaunchedEffect
         com.hybrid87sg.bindertracker.ui.three.PageLanding.record(
             landingContext,
             com.hybrid87sg.bindertracker.ui.three.PageLanding.key(columns, rows, config.screenWidthDp, config.screenHeightDp),
