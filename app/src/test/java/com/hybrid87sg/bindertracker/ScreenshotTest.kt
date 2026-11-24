@@ -177,6 +177,28 @@ class ScreenshotTest {
         )
     }
 
+    @Test fun shelfTurnedRight() = shoot("2f-shelf-turned-right") {
+        ShelfScreen(
+            binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = null, onSearch = null,
+            look = com.hybrid87sg.bindertracker.data.ShelfLook(25, coversOnRight = true), onEditShelf = {},
+        )
+    }
+
+    @Test fun shelfTurnedLeft() = shoot("2g-shelf-turned-left") {
+        ShelfScreen(
+            binders = sample, onOpenBinder = {}, onChangeColor = { _, _ -> }, onAddBinder = {}, onOpenAccount = null, onSearch = null,
+            look = com.hybrid87sg.bindertracker.data.ShelfLook(35, coversOnRight = false), onEditShelf = {},
+        )
+    }
+
+    @Test fun editShelf() = shoot("2h-edit-shelf") {
+        com.hybrid87sg.bindertracker.ui.screens.EditShelfScreen(
+            look = com.hybrid87sg.bindertracker.data.ShelfLook(20, coversOnRight = true),
+            preview = sample.take(3).map { com.hybrid87sg.bindertracker.ui.screens.PreviewBinder(it.name, it.sizeLabel, it.colorHex, 0.5f) },
+            onChange = {}, onDone = {},
+        )
+    }
+
     @Test fun binderWithMissingStrip() = shoot("4c-binder-missing") {
         BinderScreen(
             binder = kanto, pages = emptyList(), onBack = {}, onDelete = {}, onAddPages = {}, onEdit = {}, onOpenPage = {},
