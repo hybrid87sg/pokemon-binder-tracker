@@ -12,6 +12,7 @@ import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -202,7 +203,6 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         uiHelper.attachTo(textureView)
         textureView.isOpaque = false
         setUpTouches()
-        Choreographer.getInstance().postFrameCallback(frame)
     }
 
     // ---- Showing the binders ----
@@ -541,6 +541,11 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
             }
         }
     } }
+
+    init {
+        // Start drawing once everything above is set up.
+        Choreographer.getInstance().postFrameCallback(frame)
+    }
 
     // ---- The surface we draw on ----
 
