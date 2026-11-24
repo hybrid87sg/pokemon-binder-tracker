@@ -466,7 +466,7 @@ internal fun coverLook(name: String, colorHex: String, picture: ImageBitmap?, sa
 )
 
 /** A pretend binder for the previews on Edit shelf and Edit binder. */
-internal class PreviewBinder(val name: String, val tag: String, val colorHex: String, val fill: Float?, val picture: ImageBitmap? = null, val placement: com.hybrid87sg.bindertracker.data.CoverPlacement = com.hybrid87sg.bindertracker.data.CoverPlacement())
+class PreviewBinder(val name: String, val tag: String, val colorHex: String, val fill: Float?, val picture: ImageBitmap? = null, val placement: com.hybrid87sg.bindertracker.data.CoverPlacement = com.hybrid87sg.bindertracker.data.CoverPlacement())
 
 /**
  * A small shelf showing [binders] standing the way [look] says, for previews.
