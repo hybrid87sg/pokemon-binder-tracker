@@ -104,9 +104,10 @@ fun Shelf3D(
     val progress by rememberUpdatedState(onOpening)
     val stage = remember {
         ShelfStage(context, object : ShelfStage.Listener {
-            override fun onOpen(id: String, pageId: String?) {
-                // The cards are already where the page screen draws them, so they don't pop in again.
-                if (pageId != null) PageLanding.arrive()
+            override fun onOpen(id: String, pageId: String?, revealMillis: Long) {
+                // The cards are already where the page screen draws them, so they don't pop in
+                // again. (And the page screen waits, hidden, until the binder has landed.)
+                if (pageId != null) PageLanding.arrive(revealMillis)
                 open(id, pageId)
             }
             override fun onEdit(id: String) = edit(id)
@@ -114,7 +115,14 @@ fun Shelf3D(
         })
     }
     DisposableEffect(stage) { onDispose { stage.destroy() } }
-    SideEffect { stage.headerBottom = headerBottom }
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val dark = com.hybrid87sg.bindertracker.ui.theme.AppColors.isDark
+    SideEffect {
+        stage.headerBottom = headerBottom
+        // The picture each binder's first page left of itself, for this screen size (see PageLanding).
+        val w = config.screenWidthDp; val h = config.screenHeightDp
+        stage.shotFor = { id -> PageLanding.shot(context, PageLanding.shotKey(id, w, h, dark)) }
+    }
     LaunchedEffect(binders, look, colors) {
         // Paint and build each binder away from the main thread, then show them.
         // First with only the card pictures already on the phone, so the shelf
@@ -128,7 +136,7 @@ fun Shelf3D(
         }
         stage.show(second, look, colors)
     }
-    AndroidView(factory = { stage.textureView }, modifier = modifier)
+    AndroidView(factory = { stage.container }, modifier = modifier)
 }
 
 /**
@@ -195,14 +203,35 @@ private fun decodeSmall(file: File): Bitmap? = runCatching {
 /** Runs the 3D engine for the shelf: the binders, the light, the camera and touches. */
 internal class ShelfStage(context: Context, private val listener: Listener) : UiHelper.RendererCallback {
     interface Listener {
-        fun onOpen(id: String, pageId: String?)
+        /** [revealMillis]: how long until the binder has landed on the page (0: now). */
+        fun onOpen(id: String, pageId: String?, revealMillis: Long)
         fun onEdit(id: String)
         fun onOpening(p: Float)
     }
 
+    /**
+     * Two see-through surfaces on top of each other: the room (shelves and
+     * binders) at the back, and the binder that's opening in front. Landing on
+     * a page, the room fades away to show the app's background behind it, while
+     * the binder stays.
+     */
     val textureView = TextureView(context)
+    private val frontTexture = TextureView(context)
+    val container = android.widget.FrameLayout(context).apply {
+        val fill = android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        addView(textureView, android.widget.FrameLayout.LayoutParams(fill, fill))
+        addView(frontTexture, android.widget.FrameLayout.LayoutParams(fill, fill))
+    }
     private val engine = Engine.create()
     private val renderer = engine.createRenderer()
+    private val frontRenderer = engine.createRenderer()
+    private val frontHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
+    private var frontChain: SwapChain? = null
+    private var frontClear = false
+    private val landingResources = ResourceLoader(engine)
+
+    /** The picture of a binder's first page (see PageLanding), or null if there isn't one yet. */
+    var shotFor: (String) -> PageLanding.Shot? = { null }
     private val scene = engine.createScene()
     private val frontScene = engine.createScene() // the binder that's opening, drawn over the fade
     private val view = engine.createView()
@@ -273,9 +302,15 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     private class OpenPlan(val start: Vec3, val turn: Float, val closed: Vec3, val open: Vec3, val eye0: Vec3, val look0: Vec3, val eyeEnd: Vec3, val lookEnd: Vec3, val dir: Int, val toPage: Boolean, val page: Vec3 = Vec3(0f, 0f, 0f), val landing: SheetGrid.Landing? = null)
 
+    private val grading = ColorGrading.Builder().toneMapper(PBRNeutralToneMapper()).build(engine)
+    // Landing on a page: colours exactly as they are, so the picture of the page
+    // looks just like the page screen.
+    private val exact = ColorGrading.Builder().toneMapper(com.google.android.filament.ToneMapper.Linear()).build(engine)
+
     init {
-        renderer.setClearOptions(Renderer.ClearOptions().apply { clear = true; setClearColor(0.0, 0.0, 0.0, 0.0) })
-        val grading = ColorGrading.Builder().toneMapper(PBRNeutralToneMapper()).build(engine)
+        for (r in listOf(renderer, frontRenderer)) {
+            r.setClearOptions(Renderer.ClearOptions().apply { clear = true; setClearColor(0.0, 0.0, 0.0, 0.0) })
+        }
         for (v in listOf(view, frontView)) {
             v.setCamera(camera)
             v.setBlendMode(View.BlendMode.TRANSLUCENT)
@@ -303,6 +338,27 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         uiHelper.setRenderCallback(this)
         uiHelper.attachTo(textureView)
         textureView.isOpaque = false
+        frontHelper.setOpaque(false)
+        frontHelper.setRenderCallback(object : UiHelper.RendererCallback {
+            override fun onNativeWindowChanged(surface: android.view.Surface) {
+                frontChain?.let { engine.destroySwapChain(it) }
+                frontChain = engine.createSwapChain(surface, frontHelper.swapChainFlags)
+                frontClear = true
+            }
+            override fun onDetachedFromSurface() {
+                frontChain?.let {
+                    engine.destroySwapChain(it)
+                    engine.flushAndWait()
+                    frontChain = null
+                }
+            }
+            override fun onResized(width: Int, height: Int) {
+                frontView.setViewport(Viewport(0, 0, width, height))
+                frontClear = true
+            }
+        })
+        frontHelper.attachTo(frontTexture)
+        frontTexture.isOpaque = false
         setUpTouches()
     }
 
@@ -514,6 +570,11 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val l = layout ?: return
         val cam = currentCam()
         item.liftTarget = 0f
+        // The first page has left a picture of itself: land on that.
+        if (item.look.sheet != null && width > 0 && height > 0) {
+            val shot = runCatching { shotFor(item.look.id) }.getOrNull()
+            if (shot != null && startLanding(item, shot, cam)) return
+        }
         // Where the closed binder sits in front of you: the open spread fills the width.
         val aspect = width.toFloat() / height
         val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
@@ -566,6 +627,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     private fun stepOpening(now: Long) {
         val item = opening ?: return
+        landing?.let { stepLanding(it, now); return }
         val plan = openPlan ?: return
         val t = ((now - openStart) / 1e6f / (if (plan.toPage) PAGE_MILLIS else OPEN_MILLIS)).coerceIn(0f, 1f)
         val p1 = out(seg(t, 0f, 0.14f)); val p2 = ease(seg(t, 0.1f, 0.5f))
@@ -592,7 +654,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         listener.onOpening(t)
         if (!openSent && t >= (if (plan.toPage) 0.93f else 0.86f)) {
             openSent = true
-            listener.onOpen(item.look.id, item.look.sheet?.pageId)
+            listener.onOpen(item.look.id, item.look.sheet?.pageId, 0L)
         }
         // Onto a page: stay on the last picture while the page screen fades in over it
         // (jumping back to the shelf here showed through the fade). The screen goes
@@ -603,6 +665,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     private fun finishOpening() {
         val item = opening ?: return
+        if (landing != null) { finishLanding(item); return }
         frontScene.removeEntities(item.asset.entities)
         scene.addEntities(item.asset.entities)
         setHinge(item, 0f)
@@ -611,7 +674,267 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         placeCamera(currentCam())
         clipTo(topInset())
         listener.onOpening(0f)
+        frontClear = true
         dirty = true
+    }
+
+    // ---- Landing on a picture of the page ----
+
+    /**
+     * The binder lands on its first page as the page screen draws it. A picture
+     * of the page screen's binder area (cover, rings, cards and names) is
+     * painted inside a binder built in exactly that shape. The binder glides in
+     * one smooth move until the picture sits exactly where the page screen
+     * shows it, while the room fades into the app's background; then the page
+     * screen appears in its place, looking the same.
+     *
+     * Folded, the whole picture is on the back cover and the front cover swings
+     * right round behind. Unfolded (a two-page spread), half the picture is on
+     * the inside of the front cover and half on the back, meeting at the spine,
+     * and the cover opens flat.
+     */
+    private class Landing(
+        val item: Item,
+        val shot: PageLanding.Shot,
+        val height: Float, // how tall the binder is, so its inside has the page's shape
+        val spread: Boolean,
+        val dir: Int,
+        val start: Vec3, val turn: Float,
+        val root: Vec3, // where the binder ends up
+        val centre: Vec3, // the middle of the picture, in the binder's own space
+        val eye0: Vec3, val look0: Vec3,
+    ) {
+        @Volatile var glb: ByteArray? = null
+        @Volatile var failed = false
+        var asset: FilamentAsset? = null
+        var ready = false
+        var hinge = 0
+        var spine = 0
+        var elapsed = 0f // milliseconds (it waits, if need be, for the binder to be built)
+        var waited = 0f
+        var last = 0L
+        var sent = false
+    }
+
+    private var landing: Landing? = null
+
+    /** Starts landing [item] on [shot]. False if the picture can't be used (then it opens the old way). */
+    private fun startLanding(item: Item, shot: PageLanding.Shot, cam: Cam): Boolean {
+        val l = layout ?: return false
+        if (shot.rect.size != 4) return false
+        val fw = shot.rect[2] - shot.rect[0]
+        val fh = shot.rect[3] - shot.rect[1]
+        if (fw < 2f || fh < 2f) return false
+        val C = BinderModel.COVER
+        val spread = shot.spread
+        val dir = item.look.dir
+        val h = (if (spread) 2f * C else C) * fh / fw
+        // In front of you, about where the open binder used to stop.
+        val aspect = width.toFloat() / height
+        val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
+        val dist = max(2f * C * 1.04f / (2f * tanH * aspect), h * 1.1f / (2f * tanH))
+        val middle = cam.eye + cam.forward * dist
+        val centre = Vec3(if (spread) 0f else dir * C / 2f, h / 2f, BinderModel.SHOT_Z)
+        val plan = Landing(
+            item, shot, h, spread, dir,
+            start = item.spot + Vec3(0f, item.lift * 0.25f, item.lift), turn = l.turn,
+            root = middle - centre, centre = centre,
+            eye0 = cam.eye, look0 = cam.target,
+        )
+        // Build the landing binder away from the main thread.
+        val look = item.look
+        Thread {
+            try {
+                val bytes = shot.file.readBytes()
+                val cover = look.picturePath?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+                val pictures = BinderPaint.pictures(look.copy(sheet = null), cover)
+                cover?.recycle()
+                val c = BinderPaint.parse(look.colorHex)
+                plan.glb = BinderModel.buildLanding(
+                    dir,
+                    floatArrayOf(BinderModel.lin(android.graphics.Color.red(c)), BinderModel.lin(android.graphics.Color.green(c)), BinderModel.lin(android.graphics.Color.blue(c))),
+                    pictures, bytes, h, spread,
+                )
+            } catch (e: Throwable) {
+                plan.failed = true
+            }
+        }.start()
+        // Draw it in front, over the fading room. Colours exactly as they are, and
+        // no smoothing, so the picture is as sharp as the page screen.
+        scene.removeEntities(item.asset.entities)
+        frontScene.addEntities(item.asset.entities)
+        frontView.setColorGrading(exact)
+        frontView.setAntiAliasing(View.AntiAliasing.NONE)
+        frontView.setDithering(View.Dithering.NONE)
+        landing = plan
+        opening = item
+        openPlan = null
+        openSent = false
+        openStart = System.nanoTime()
+        dirty = true
+        return true
+    }
+
+    /** Loads the landing binder once it's built, a little each frame, then swaps it in. */
+    private fun loadLanding(plan: Landing) {
+        if (plan.ready || plan.failed) return
+        val asset = plan.asset
+        if (asset == null) {
+            val glb = plan.glb ?: return
+            val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
+            buffer.flip()
+            val a = loader.createAsset(buffer)
+            if (a == null || !landingResources.asyncBeginLoad(a)) {
+                a?.let { loader.destroyAsset(it) }
+                plan.failed = true
+                return
+            }
+            plan.asset = a
+            plan.glb = null
+            return
+        }
+        landingResources.asyncUpdateLoad()
+        if (landingResources.asyncGetLoadProgress() < 1f) return
+        asset.releaseSourceData()
+        val rm = engine.renderableManager
+        for (e in asset.renderableEntities) {
+            val i = rm.getInstance(e)
+            rm.setCastShadows(i, false)
+            rm.setReceiveShadows(i, false)
+        }
+        plan.hinge = asset.getFirstEntityByName("hinge")
+        plan.spine = asset.getFirstEntityByName("spine")
+        frontScene.removeEntities(plan.item.asset.entities)
+        frontScene.addEntities(asset.entities)
+        plan.ready = true
+    }
+
+    private fun stepLanding(plan: Landing, now: Long) {
+        val item = plan.item
+        val dt = if (plan.last == 0L) 0f else ((now - plan.last) / 1e6f).coerceIn(0f, 50f)
+        plan.last = now
+        loadLanding(plan)
+        // Just before the cover opens, wait for the landing binder if it isn't ready
+        // yet (a second at most; after that, carry on with the shelf's own binder).
+        val waiting = !plan.ready && !plan.failed && plan.elapsed >= 0.3f * PAGE_MILLIS
+        if (waiting) {
+            plan.waited += dt
+            if (plan.waited > 1000f) plan.failed = true
+        } else {
+            plan.elapsed += dt
+        }
+        val t = (plan.elapsed / PAGE_MILLIS).coerceIn(0f, 1f)
+
+        // Out of the shelf, then over to where it lands, turning to face you and
+        // stretching to the page's shape on the way.
+        val p1 = out(seg(t, 0f, 0.12f))
+        val pf = ease(seg(t, 0.06f, 0.55f))
+        var pos = plan.start + Vec3(0f, 0.12f * p1, 0.8f * p1)
+        pos = mix(pos, plan.root, pf)
+        val visualH = BinderModel.HEIGHT + (plan.height - BinderModel.HEIGHT) * pf
+        val asset = if (plan.ready) plan.asset!! else item.asset
+        val assetH = if (plan.ready) plan.height else BinderModel.HEIGHT
+        place(asset.root, pos, plan.turn * (1f - pf), -0.05f * sin(pf * PI.toFloat()), visualH / assetH)
+
+        // The cover opens: flat for a spread, right round behind when folded.
+        val po = ease(seg(t, 0.34f, if (plan.spread) 0.86f else 0.94f))
+        var angle = po * (if (plan.spread) 180f else 360f)
+        if (plan.ready) {
+            val d = plan.dir.toFloat()
+            val flat = smooth(seg(angle, 90f, 180f))
+            var tz = flat * (BinderModel.SHOT_Z - BinderModel.BOARD - 0.003f)
+            var tx = 0f
+            if (!plan.spread) {
+                val behind = smooth(seg(angle, 180f, 300f))
+                tz += (-BinderModel.THICK - 0.02f - tz) * behind
+                tx = -d * (BinderModel.BOARD + 0.02f) * behind
+            }
+            transform(plan.hinge) { m ->
+                Matrix.translateM(m, 0, tx, 0f, tz)
+                Matrix.rotateM(m, 0, -d * angle, 0f, 1f, 0f)
+            }
+            // The spine slides back out of the way.
+            val back = -0.9f * smooth(seg(t, 0.45f, 0.8f))
+            transform(plan.spine) { m -> Matrix.translateM(m, 0, 0f, 0f, back) }
+        } else {
+            angle = min(angle, 176f)
+            setHinge(item, -plan.dir * angle)
+        }
+
+        // One smooth glide of the camera, ending with the picture exactly where
+        // the page screen draws it.
+        val (eyeEnd, lookEnd) = landingView(plan)
+        val g = glide(seg(t, 0.1f, 1f))
+        placeCamera(Cam(mix(plan.eye0, eyeEnd, g), mix(plan.look0, lookEnd, g), fovY, width.toFloat() / height))
+
+        // The room fades away into the app's background (the screen behind it).
+        textureView.alpha = 1f - smooth(seg(t, 0.04f, 0.42f))
+        clipTo(topInset() * (1f - seg(t, 0.2f, 0.45f)))
+        listener.onOpening(t)
+        if (!plan.sent && t >= 0.6f) {
+            plan.sent = true
+            listener.onOpen(item.look.id, item.look.sheet?.pageId, ((1f - t) * PAGE_MILLIS).toLong())
+        }
+        if (plan.elapsed >= PAGE_MILLIS + HOLD_MILLIS) finishOpening()
+    }
+
+    /**
+     * The camera (eye, target) that shows the picture exactly where the page
+     * screen drew it, for this view's size and place on the screen right now.
+     */
+    private fun landingView(plan: Landing): Pair<Vec3, Vec3> {
+        val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
+        val at = IntArray(2)
+        frontTexture.getLocationInWindow(at)
+        val r = plan.shot.rect
+        val s = plan.height / (r[3] - r[1]) // world units per pixel
+        val dist = s * height / (2f * tanH)
+        val p = plan.root + plan.centre
+        val cx = (r[0] + r[2]) / 2f - at[0]
+        val cy = (r[1] + r[3]) / 2f - at[1]
+        val eye = p + Vec3(-(cx - width / 2f) * s, (cy - height / 2f) * s, dist)
+        return Pair(eye, eye - Vec3(0f, 0f, dist))
+    }
+
+    private fun finishLanding(item: Item) {
+        val plan = landing ?: return
+        plan.asset?.let { a ->
+            frontScene.removeEntities(a.entities)
+            if (!plan.ready) landingResources.asyncCancelLoad()
+            loader.destroyAsset(a)
+        }
+        plan.asset = null
+        landing = null
+        frontScene.removeEntities(item.asset.entities)
+        scene.addEntities(item.asset.entities)
+        setHinge(item, 0f)
+        frontView.setColorGrading(grading)
+        frontView.setAntiAliasing(View.AntiAliasing.FXAA)
+        frontView.setDithering(View.Dithering.TEMPORAL)
+        textureView.alpha = 1f
+        opening = null
+        placeCamera(currentCam())
+        clipTo(topInset())
+        listener.onOpening(0f)
+        frontClear = true
+        dirty = true
+    }
+
+    /** Sets an entity's transform to what [build] makes of an empty matrix. */
+    private inline fun transform(entity: Int, build: (FloatArray) -> Unit) {
+        if (entity == 0) return
+        val m = FloatArray(16)
+        Matrix.setIdentityM(m, 0)
+        build(m)
+        val tm = engine.transformManager
+        tm.setTransform(tm.getInstance(entity), m)
+    }
+
+    private fun place(root: Int, pos: Vec3, turn: Float, tilt: Float, stretch: Float) = transform(root) { m ->
+        Matrix.translateM(m, 0, pos.x, pos.y, pos.z)
+        Matrix.rotateM(m, 0, Math.toDegrees(turn.toDouble()).toFloat(), 0f, 1f, 0f)
+        Matrix.rotateM(m, 0, Math.toDegrees(tilt.toDouble()).toFloat(), 1f, 0f, 0f)
+        Matrix.scaleM(m, 0, 1f, stretch, 1f)
     }
 
     private fun placeDim(cam: Cam) {
@@ -669,12 +992,20 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
                     }
                 }
             }
+            // The opening binder, on its own surface in front (cleared once it's done).
+            if (opening != null || frontClear) {
+                val front = frontChain
+                if (front != null && frontHelper.isReadyToRender && frontRenderer.beginFrame(front, now)) {
+                    frontRenderer.render(frontView)
+                    frontRenderer.endFrame()
+                    if (opening == null) frontClear = false
+                }
+            }
             if (!dirty) return
             val chain = swapChain ?: return
             if (!uiHelper.isReadyToRender) return
             if (renderer.beginFrame(chain, now)) {
                 renderer.render(view)
-                if (opening != null) renderer.render(frontView)
                 renderer.endFrame()
                 dirty = opening != null
             }
@@ -718,11 +1049,19 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         destroyed = true
         Choreographer.getInstance().removeFrameCallback(frame)
         uiHelper.detach()
+        frontHelper.detach()
+        landing?.asset?.let { a ->
+            frontScene.removeEntities(a.entities)
+            if (landing?.ready != true) landingResources.asyncCancelLoad()
+            loader.destroyAsset(a)
+        }
+        landing = null
         items.forEach { remove(it.asset) }
         items = emptyList()
         shelfAsset?.let { remove(it) }
         shelfAsset = null
         resources.destroy()
+        landingResources.destroy()
         loader.destroy()
         materials.destroyMaterials()
         materials.destroy()
@@ -730,6 +1069,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         engine.destroyEntity(fill)
         engine.destroyIndirectLight(ambient)
         engine.destroyRenderer(renderer)
+        engine.destroyRenderer(frontRenderer)
+        engine.destroyColorGrading(grading)
+        engine.destroyColorGrading(exact)
         engine.destroyView(view)
         engine.destroyView(frontView)
         engine.destroyScene(scene)
@@ -751,5 +1093,22 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         private fun ease(t: Float) = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).pow(3) / 2f
         private fun out(t: Float) = 1f - (1f - t).pow(3)
         private fun mix(a: Vec3, b: Vec3, t: Float) = a + (b - a) * t
+        private fun smooth(t: Float) = t * t * (3f - 2f * t)
+
+        /**
+         * The camera's glide: starts gently, keeps going, and settles very softly
+         * (a cubic-bezier(0.42, 0, 0.1, 1) curve, the same as the mockup).
+         */
+        private fun glide(t: Float): Float {
+            if (t <= 0f) return 0f
+            if (t >= 1f) return 1f
+            val x1 = 0.42f; val x2 = 0.1f; val y1 = 0f; val y2 = 1f
+            fun bx(u: Float) = 3f * (1 - u) * (1 - u) * u * x1 + 3f * (1 - u) * u * u * x2 + u * u * u
+            fun by(u: Float) = 3f * (1 - u) * (1 - u) * u * y1 + 3f * (1 - u) * u * u * y2 + u * u * u
+            // Find where the curve is at t across (it only goes forward, so halving works).
+            var lo = 0f; var hi = 1f
+            repeat(24) { val mid = (lo + hi) / 2f; if (bx(mid) < t) lo = mid else hi = mid }
+            return by((lo + hi) / 2f)
+        }
     }
 }

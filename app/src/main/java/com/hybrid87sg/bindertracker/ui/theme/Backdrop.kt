@@ -13,6 +13,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -34,7 +43,16 @@ import com.hybrid87sg.bindertracker.ui.components.rememberPhoneTilt
  * mode), a glow in the top-right corner, and, if they turned it on, a
  * glittering holo foil layer. Used instead of a flat colour on every screen.
  */
-fun Modifier.appBackground(): Modifier = composed {
+fun Modifier.appBackground(): Modifier = backdrop(window = false)
+
+/**
+ * The same background, drawn as if it filled the whole window: this element
+ * shows just its own piece of it. Used behind the 3D binder as it opens, so
+ * the room fades into exactly the background the card page has.
+ */
+fun Modifier.windowBackground(): Modifier = backdrop(window = true)
+
+private fun Modifier.backdrop(window: Boolean): Modifier = composed {
     val glitter = AppColourSetting.glitter
     // A clock in seconds that only runs while there is glitter to twinkle.
     val time: State<Float> = if (glitter > 0f) {
@@ -50,24 +68,36 @@ fun Modifier.appBackground(): Modifier = composed {
     val reaction = AppColourSetting.tiltReaction
     val tiltOn = glitter > 0f && reaction > 0f
     val tilt = rememberPhoneTilt(enabled = tiltOn)
+    // Window mode: where this element sits in the window, and how big the window is.
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val windowSize = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
 
-    drawBehind {
-        // 165 degrees: from the top (a little left) to the bottom (a little right).
-        val angle = Math.toRadians(165.0)
-        val dx = sin(angle).toFloat()
-        val dy = (-cos(angle)).toFloat()
-        val half = (abs(size.width * dx) + abs(size.height * dy)) / 2f
-        val c = center
-        drawRect(Brush.linearGradient(AppColors.BackgroundStops, start = Offset(c.x - dx * half, c.y - dy * half), end = Offset(c.x + dx * half, c.y + dy * half)))
-        drawRect(
-            Brush.radialGradient(
-                0f to AppColors.BackgroundGlow,
-                0.6f to Color.Transparent,
-                center = Offset(size.width, 0f),
-                radius = size.width * 1.2f,
-            ),
-        )
-        if (glitter > 0f) drawGlitter(glitter, time.value, AppColors.isDark, if (tiltOn) tilt.value else Offset.Zero, if (tiltOn) reaction else 0f)
+    (if (window) Modifier.onGloballyPositioned { origin = it.positionInWindow() } else Modifier).drawBehind {
+        val area = if (window && windowSize.width > 0) Size(windowSize.width.toFloat(), windowSize.height.toFloat()) else size
+        val at = if (window) origin else Offset.Zero
+        translate(-at.x, -at.y) {
+            // The part of the whole background this element shows.
+            val part = Rect(at, size)
+            clipRect(part.left, part.top, part.right, part.bottom) {
+            // 165 degrees: from the top (a little left) to the bottom (a little right).
+            val angle = Math.toRadians(165.0)
+            val dx = sin(angle).toFloat()
+            val dy = (-cos(angle)).toFloat()
+            val half = (abs(area.width * dx) + abs(area.height * dy)) / 2f
+            val c = Offset(area.width / 2f, area.height / 2f)
+            drawRect(Brush.linearGradient(AppColors.BackgroundStops, start = Offset(c.x - dx * half, c.y - dy * half), end = Offset(c.x + dx * half, c.y + dy * half)), topLeft = part.topLeft, size = part.size)
+            drawRect(
+                Brush.radialGradient(
+                    0f to AppColors.BackgroundGlow,
+                    0.6f to Color.Transparent,
+                    center = Offset(area.width, 0f),
+                    radius = area.width * 1.2f,
+                ),
+                topLeft = part.topLeft, size = part.size,
+            )
+            if (glitter > 0f) drawGlitter(glitter, time.value, AppColors.isDark, if (tiltOn) tilt.value else Offset.Zero, if (tiltOn) reaction else 0f, area, part)
+            }
+        }
     }
         // Everything on top of the background (lists, cards, text) goes in its own
         // layer. The glitter redraws every frame; without this, the whole screen's
@@ -109,17 +139,18 @@ private val SHEEN = listOf(Color(0xFFFF9AD5), Color(0xFFFFD36E), Color(0xFF8CF0C
  * background, with small twinkling sparkles and four-point stars on top.
  * [amount] is 0 to 1; [seconds] is the clock that makes it move.
  */
-private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean, tilt: Offset, reaction: Float) {
+private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean, tilt: Offset, reaction: Float, area: Size, part: Rect) {
     // Tilting slides the shine the opposite way, like light moving across a holo card.
     val lean = Offset(-tilt.x, -tilt.y) * (70.dp.toPx() * reaction)
     // The foil shine: rainbow bands at an angle, gently sliding back and forth.
-    val band = size.width * 0.9f
-    val drift = sin(seconds / 14f * PI.toFloat()) * size.width * 0.5f
+    val band = area.width * 0.9f
+    val drift = sin(seconds / 14f * PI.toFloat()) * area.width * 0.5f
     val a = Math.toRadians(115.0)
     val start = Offset(drift, 0f) + lean
     val end = Offset(drift + band * cos(a).toFloat(), band * sin(a).toFloat())
     drawRect(
         Brush.linearGradient(SHEEN, start = start, end = end, tileMode = TileMode.Mirror),
+        topLeft = part.topLeft, size = part.size,
         alpha = amount * if (dark) 0.5f else 0.32f,
         blendMode = if (dark) BlendMode.Softlight else BlendMode.Multiply,
     )
@@ -138,7 +169,7 @@ private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean, 
         val alpha = ((twinkle * (1f - 0.5f * reaction) + flash * 1.6f) * strength).coerceAtMost(1f)
         if (alpha < 0.03f) continue
         // Near sparkles move a bit more than far ones, for a little depth.
-        val p = Offset(s.x * size.width, s.y * size.height) + tilt * (14.dp.toPx() * reaction * s.depth)
+        val p = Offset(s.x * area.width, s.y * area.height) + tilt * (14.dp.toPx() * reaction * s.depth)
         val r = s.radius * density
         if (s.radius > 1.5f || flash > 0.5f) {
             // A little four-point star with a white centre.
