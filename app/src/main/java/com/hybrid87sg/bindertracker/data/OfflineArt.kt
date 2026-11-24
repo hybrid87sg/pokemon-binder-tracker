@@ -53,21 +53,42 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object OfflineArt {
     private const val FOLDER = "card-art"
+    private val UNSAFE = Regex("[^A-Za-z0-9._-]")
 
     /** Where a card's saved picture is kept. */
     fun file(context: Context, cardId: String): File =
         File(File(context.filesDir, FOLDER), fileName(cardId))
 
     /** The card's saved picture, or null if it isn't saved (yet). */
-    fun find(context: Context, cardId: String?): File? =
-        cardId?.let { file(context, it) }?.takeIf { it.isFile }
+    fun find(context: Context, cardId: String?): File? {
+        val id = cardId ?: return null
+        return if (fileName(id) in savedNames(context)) file(context, id) else null
+    }
+
+    // The names of the saved pictures, read from the folder once and then kept
+    // up to date, so scrolling a long list doesn't ask the phone's storage
+    // about every card as it comes into view.
+    @Volatile private var saved: MutableSet<String>? = null
+
+    private fun savedNames(context: Context): Set<String> = saved ?: synchronized(this) {
+        saved ?: java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { names ->
+            folder(context).list()?.let { names.addAll(it) }
+            saved = names
+        }
+    }
+
+    /** A picture was just saved as [name]. */
+    internal fun noteSaved(name: String) { saved?.add(name) }
+
+    /** Pictures were deleted: read the folder again next time. */
+    internal fun noteChanged() { saved = null }
 
     /**
      * Card ids can hold characters a file name can't, so keep only safe ones.
      * The ".img" ending is on purpose: pictures come as WebP or PNG, and the
      * picture loader works out which by looking inside the file.
      */
-    fun fileName(cardId: String): String = cardId.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".img"
+    fun fileName(cardId: String): String = cardId.replace(UNSAFE, "_") + ".img"
 
     /**
      * What to save. Binder cards always; cards from collected expansions that
@@ -174,6 +195,7 @@ class OfflineArtSaver(
                     if (inputs.restart != lastRestart) {
                         lastRestart = inputs.restart
                         OfflineArt.folder(context).deleteRecursively()
+                        OfflineArt.noteChanged()
                     }
                     savePass(inputs)
                 }
@@ -189,6 +211,7 @@ class OfflineArtSaver(
         if (inputs.cardListReady) {
             val keepNames = plan.keep.mapTo(HashSet()) { OfflineArt.fileName(it) }
             folder.listFiles()?.forEach { f -> if (f.name !in keepNames) f.delete() }
+            OfflineArt.noteChanged()
         }
 
         fun saved(c: CardArt) = OfflineArt.file(context, c.id).isFile
@@ -281,6 +304,7 @@ class OfflineArtSaver(
                 temp.delete()
                 continue
             }
+            OfflineArt.noteSaved(target.name)
             return data.size.toLong()
         }
         return null

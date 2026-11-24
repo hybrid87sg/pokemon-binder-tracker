@@ -43,6 +43,7 @@ import com.hybrid87sg.bindertracker.data.BinderMissing
 import com.hybrid87sg.bindertracker.data.Checklist
 import com.hybrid87sg.bindertracker.ui.components.Eyebrow
 import com.hybrid87sg.bindertracker.ui.components.holoBrush
+import com.hybrid87sg.bindertracker.ui.components.openingMoment
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.appBackground
 
@@ -63,6 +64,7 @@ fun MissingTabScreen(
     val config = LocalConfiguration.current
     val unfolded = config.screenWidthDp >= 600 && config.screenHeightDp >= 480
     val grid = rememberLazyGridState()
+    val opening = openingMoment()
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -106,8 +108,8 @@ fun MissingTabScreen(
                         Text("Complete! Nothing missing.", fontWeight = FontWeight.SemiBold, color = AppColors.SuccessText)
                     }
                 }
-                items(b.entries, key = { "${b.binder.id}/${it.card.id}" }) { e: Checklist.Entry ->
-                    Tile(e) { onOpenCard(b, b.entries.indexOf(e)) }
+                items(b.entries, key = { "${b.binder.id}/${it.card.id}" }, contentType = { "card" }) { e: Checklist.Entry ->
+                    Tile(e, pop = opening) { onOpenCard(b, b.entries.indexOf(e)) }
                 }
             }
         }
