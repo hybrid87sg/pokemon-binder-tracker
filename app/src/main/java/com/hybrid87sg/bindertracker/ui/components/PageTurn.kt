@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.nativeCanvas
@@ -269,26 +270,48 @@ fun PageTurnStage(
 /** Where the three ring holes sit down the sheet, as fractions of its height. */
 val RingSpots = listOf(0.17f, 0.5f, 0.83f)
 
+/**
+ * The strip of binder cover left of a folded page, drawn like the right half of the
+ * open binder's spine. The rings come in from its edge.
+ */
+val FoldedSpine = 22.dp
+
+/**
+ * The rings of a folded binder: the right halves of the open binder's rings
+ * (same size), coming in from the cover's left edge into the page's holes, as if
+ * the left page is folded away behind.
+ */
 private fun DrawScope.drawRings() {
-    val w = 16.dp.toPx()
-    val h = 18.dp.toPx()
-    val left = -6.dp.toPx()
-    RingSpots.forEach { f ->
-        val top = size.height * f - h / 2
-        drawRoundRect(
-            color = Color(0xFF8D90A0),
-            topLeft = Offset(left, top),
-            size = Size(w, h),
-            cornerRadius = CornerRadius(h / 2),
-            style = Stroke(3.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color(0xFFD5D7E0),
-            topLeft = Offset(left + 4.dp.toPx(), top + 1.dp.toPx()),
-            size = Size(w - 6.dp.toPx(), h - 2.dp.toPx()),
-            cornerRadius = CornerRadius(h / 2),
-            style = Stroke(1.dp.toPx()),
-        )
+    val w = 46.dp.toPx()
+    val h = 16.dp.toPx()
+    // The hole is 12 in from the sheet's edge; the ring ends just past it.
+    val right = 15.dp.toPx()
+    val left = right - w
+    clipRect(left = -FoldedSpine.toPx(), top = -h, right = right + 4.dp.toPx(), bottom = size.height + h) {
+        RingSpots.forEach { f ->
+            val top = size.height * f - h / 2
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.18f),
+                topLeft = Offset(left, top + 2.dp.toPx()),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(h / 2),
+                style = Stroke(3.dp.toPx()),
+            )
+            drawRoundRect(
+                color = Color(0xFF8D90A0),
+                topLeft = Offset(left, top),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(h / 2),
+                style = Stroke(3.dp.toPx()),
+            )
+            drawRoundRect(
+                color = Color(0xFFD5D7E0),
+                topLeft = Offset(left + 3.dp.toPx(), top + 1.dp.toPx()),
+                size = Size(w - 6.dp.toPx(), h - 2.dp.toPx()),
+                cornerRadius = CornerRadius(h / 2),
+                style = Stroke(1.dp.toPx()),
+            )
+        }
     }
 }
 

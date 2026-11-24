@@ -108,6 +108,16 @@ object AppColourMath {
         }
     }
 
+    val TILT_STEPS = listOf("Off", "Subtle", "Medium", "Strong")
+
+    /** How strongly the glitter reacts to tilting the phone, as a word. */
+    fun tiltWord(reaction: Float): String = when {
+        reaction <= 0f -> "Off"
+        reaction < 0.35f -> "Subtle"
+        reaction < 0.70f -> "Medium"
+        else -> "Strong"
+    }
+
     /** Whether these picks are just the original violet, so the app shows its original colours. */
     fun isClassic(choices: List<ColourChoice>?): Boolean = choices == null || choices == listOf(CLASSIC)
 

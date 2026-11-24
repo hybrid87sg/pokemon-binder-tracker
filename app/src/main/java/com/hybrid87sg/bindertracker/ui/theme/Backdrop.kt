@@ -18,12 +18,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
+import com.hybrid87sg.bindertracker.ui.components.rememberPhoneTilt
 
 /**
  * The app's background: a soft gradient built from the person's app colours
@@ -42,6 +44,11 @@ fun Modifier.appBackground(): Modifier = composed {
             label = "glitterClock",
         )
     } else remember { mutableFloatStateOf(0f) }
+    // Tilting the phone moves the glitter. The motion sensor is only used
+    // while the app is open on screen and the glitter and tilt are both on.
+    val reaction = AppColourSetting.tiltReaction
+    val tiltOn = glitter > 0f && reaction > 0f
+    val tilt = rememberPhoneTilt(enabled = tiltOn)
 
     drawBehind {
         // 165 degrees: from the top (a little left) to the bottom (a little right).
@@ -59,12 +66,19 @@ fun Modifier.appBackground(): Modifier = composed {
                 radius = size.width * 1.2f,
             ),
         )
-        if (glitter > 0f) drawGlitter(glitter, time.value, AppColors.isDark)
+        if (glitter > 0f) drawGlitter(glitter, time.value, AppColors.isDark, if (tiltOn) tilt.value else Offset.Zero, if (tiltOn) reaction else 0f)
     }
 }
 
-/** One sparkle: where it sits (as a fraction of the screen), its size, colour and how it twinkles. */
-private class Spark(val x: Float, val y: Float, val radius: Float, val colour: Int, val phase: Float, val speed: Float)
+/**
+ * One sparkle: where it sits (as a fraction of the screen), its size, colour
+ * and how it twinkles. [faceX]/[faceY] (-1 to 1) is the tilt that makes it
+ * catch the light and flash; [depth] is how far it moves when you tilt.
+ */
+private class Spark(
+    val x: Float, val y: Float, val radius: Float, val colour: Int, val phase: Float, val speed: Float,
+    val faceX: Float, val faceY: Float, val depth: Float,
+)
 
 /** Always the same sparkles in the same places, so they don't jump around between screens. */
 private val SPARKS: List<Spark> = Random(87).let { r ->
@@ -74,6 +88,7 @@ private val SPARKS: List<Spark> = Random(87).let { r ->
             x = r.nextFloat(), y = r.nextFloat(),
             radius = if (big) 1.6f + r.nextFloat() * 1.8f else 0.5f + r.nextFloat() * 0.9f,
             colour = r.nextInt(6), phase = r.nextFloat() * 2f * PI.toFloat(), speed = 0.6f + r.nextFloat() * 2.2f,
+            faceX = r.nextFloat() * 2f - 1f, faceY = r.nextFloat() * 2f - 1f, depth = if (r.nextBoolean()) 0.4f else 1f,
         )
     }
 }
@@ -89,12 +104,14 @@ private val SHEEN = listOf(Color(0xFFFF9AD5), Color(0xFFFFD36E), Color(0xFF8CF0C
  * background, with small twinkling sparkles and four-point stars on top.
  * [amount] is 0 to 1; [seconds] is the clock that makes it move.
  */
-private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean) {
+private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean, tilt: Offset, reaction: Float) {
+    // Tilting slides the shine the opposite way, like light moving across a holo card.
+    val lean = Offset(-tilt.x, -tilt.y) * (70.dp.toPx() * reaction)
     // The foil shine: rainbow bands at an angle, gently sliding back and forth.
     val band = size.width * 0.9f
     val drift = sin(seconds / 14f * PI.toFloat()) * size.width * 0.5f
     val a = Math.toRadians(115.0)
-    val start = Offset(drift, 0f)
+    val start = Offset(drift, 0f) + lean
     val end = Offset(drift + band * cos(a).toFloat(), band * sin(a).toFloat())
     drawRect(
         Brush.linearGradient(SHEEN, start = start, end = end, tileMode = TileMode.Mirror),
@@ -110,17 +127,21 @@ private fun DrawScope.drawGlitter(amount: Float, seconds: Float, dark: Boolean) 
     for (i in 0 until count) {
         val s = SPARKS[i]
         val twinkle = (0.5f + 0.5f * sin(seconds * s.speed + s.phase)).pow(3)
-        val alpha = twinkle * strength
+        // Catching the light: bright when the tilt points the way this sparkle faces.
+        val d = Offset(tilt.x - s.faceX, tilt.y - s.faceY).getDistance()
+        val flash = (1f - d / 0.35f).coerceAtLeast(0f).pow(2) * reaction
+        val alpha = ((twinkle * (1f - 0.5f * reaction) + flash * 1.6f) * strength).coerceAtMost(1f)
         if (alpha < 0.03f) continue
-        val p = Offset(s.x * size.width, s.y * size.height)
+        // Near sparkles move a bit more than far ones, for a little depth.
+        val p = Offset(s.x * size.width, s.y * size.height) + tilt * (14.dp.toPx() * reaction * s.depth)
         val r = s.radius * density
-        if (s.radius > 1.5f) {
+        if (s.radius > 1.5f || flash > 0.5f) {
             // A little four-point star with a white centre.
-            val arm = r * (2.2f + 2f * twinkle)
+            val arm = r * (2.2f + 2f * twinkle + 4f * flash)
             val col = colours[s.colour].copy(alpha = alpha)
             drawLine(col, Offset(p.x - arm, p.y), Offset(p.x + arm, p.y), strokeWidth = density * 0.9f, blendMode = blend)
             drawLine(col, Offset(p.x, p.y - arm), Offset(p.x, p.y + arm), strokeWidth = density * 0.9f, blendMode = blend)
-            drawCircle(Color.White.copy(alpha = alpha), radius = r * 0.7f, center = p, blendMode = blend)
+            drawCircle(Color.White.copy(alpha = alpha), radius = r * 0.7f + flash * density, center = p, blendMode = blend)
         } else {
             drawCircle(colours[s.colour].copy(alpha = alpha), radius = r, center = p, blendMode = blend)
         }

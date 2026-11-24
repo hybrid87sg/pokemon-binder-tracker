@@ -15,6 +15,8 @@ object AppColourSetting {
     private const val FILE = "settings"
     private const val KEY_COLOURS = "app_colours"
     private const val KEY_GLITTER = "glitter"
+    private const val KEY_TILT = "glitter_tilt"
+    const val DEFAULT_TILT = 0.6f
 
     /** The colours showing right now. null = the app's original violet colours. */
     var colours by mutableStateOf<List<ColourChoice>?>(null)
@@ -24,25 +26,32 @@ object AppColourSetting {
     var glitter by mutableFloatStateOf(0f)
         private set
 
+    /** How strongly the glitter reacts to tilting the phone, 0 (off) to 1 (strong). */
+    var tiltReaction by mutableFloatStateOf(DEFAULT_TILT)
+        private set
+
     /** Reads the saved choice. Called once when the app opens, before anything is drawn. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         colours = AppColourMath.decode(prefs.getString(KEY_COLOURS, null)).takeUnless { AppColourMath.isClassic(it) }
         glitter = prefs.getFloat(KEY_GLITTER, 0f).coerceIn(0f, 1f)
+        tiltReaction = prefs.getFloat(KEY_TILT, DEFAULT_TILT).coerceIn(0f, 1f)
     }
 
     /** Shows colours straight away without saving them (the sheet's live preview, and Cancel). */
-    fun show(newColours: List<ColourChoice>?, newGlitter: Float) {
+    fun show(newColours: List<ColourChoice>?, newGlitter: Float, newTilt: Float = tiltReaction) {
         colours = newColours?.takeUnless { AppColourMath.isClassic(it) }
         glitter = newGlitter.coerceIn(0f, 1f)
+        tiltReaction = newTilt.coerceIn(0f, 1f)
     }
 
     /** Shows and saves. */
-    fun save(context: Context, newColours: List<ColourChoice>?, newGlitter: Float) {
-        show(newColours, newGlitter)
+    fun save(context: Context, newColours: List<ColourChoice>?, newGlitter: Float, newTilt: Float = tiltReaction) {
+        show(newColours, newGlitter, newTilt)
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_COLOURS, colours?.let { AppColourMath.encode(it) })
             .putFloat(KEY_GLITTER, glitter)
+            .putFloat(KEY_TILT, tiltReaction)
             .apply()
     }
 }
