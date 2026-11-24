@@ -238,8 +238,11 @@ private fun App(
     // To and from the card screen, the screens only fade: the card itself flies
     // between its pocket and the card screen (see CardFlight).
     val flyFade = tween<Float>(CardFlight.FlyMillis, easing = Motion.Ease)
-    // The 3D binder hands over to its page: a short cross-fade (see Shelf3D).
-    val openFade = tween<Float>(260, easing = Motion.Ease)
+    // The 3D binder hands over to its page: the page screen fades in over the
+    // binder's last picture (its cards are in the same spots, see PageLanding),
+    // while the shelf stays put underneath until the page is fully there.
+    val openFade = tween<Float>(300, easing = Motion.Ease)
+    val openStay = tween<Float>(1, delayMillis = 300)
     // Between tabs: a soft fade-through. The old page fades out quickly, then
     // the new one fades in and rises a touch, so the two never look muddled.
     val tabOut = fadeOut(tween(140, easing = LinearOutSlowInEasing))
@@ -295,7 +298,7 @@ private fun App(
         startDestination = "shelf",
         // Switching tabs just cross-fades; going deeper slides in from the right.
         enterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(flyFade) else if (openHop()) fadeIn(openFade) else slideInHorizontally(slide) { it / 3 } + fadeIn(fade) },
-        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else if (openHop()) fadeOut(openFade) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
+        exitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(flyFade) else if (openHop()) fadeOut(openStay) else slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade) },
         // Closing the card screen is a quick fade (no flight back).
         popEnterTransition = { if (tabHop()) tabIn else if (cardHop()) fadeIn(fade) else slideInHorizontally(slide) { -it / 6 } + fadeIn(fade) },
         popExitTransition = { if (tabHop()) tabOut else if (cardHop()) fadeOut(fade) else slideOutHorizontally(slide) { it / 3 } + fadeOut(fade) },

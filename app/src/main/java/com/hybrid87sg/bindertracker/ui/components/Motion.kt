@@ -11,6 +11,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -71,4 +73,19 @@ fun arrive(play: Boolean, delayMillis: Int = 0, durationMillis: Int = Motion.Med
         }
     }
     return value.value
+}
+
+/**
+ * True for the first moment after a screen opens. Lists use it so their
+ * cards pop in when you open the screen, but not again and again as you
+ * scroll (that made scrolling look jerky).
+ */
+@Composable
+fun openingMoment(millis: Long = 600): Boolean {
+    var open by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(millis)
+        open = false
+    }
+    return open
 }

@@ -24,7 +24,8 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil3.compose.SubcomposeAsyncImage
+import androidx.compose.runtime.mutableStateOf
+import coil3.compose.AsyncImage
 import com.hybrid87sg.bindertracker.data.OfflineArt
 import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
@@ -77,13 +78,17 @@ fun CardImage(
     val shown = sources.getOrNull(tried)
     Box(modifier.aspectRatio(CARD_ASPECT).clip(shape).background(CardPlaceholder).border(1.dp, CardPlaceholderBorder, shape)) {
         if (shown != null) {
-            SubcomposeAsyncImage(
+            // The blank card shows until the picture arrives. (AsyncImage, not
+            // SubcomposeAsyncImage: the "sub" version is much slower in long
+            // scrolling lists like Missing cards.)
+            var loaded by remember(shown) { mutableStateOf(false) }
+            if (!loaded) BlankCard()
+            AsyncImage(
                 model = shown,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-                loading = { BlankCard() },
-                error = { BlankCard() },
+                onSuccess = { loaded = true },
                 onError = { if (tried < sources.size) tried++ },
                 colorFilter = greyFilter(greyness),
             )

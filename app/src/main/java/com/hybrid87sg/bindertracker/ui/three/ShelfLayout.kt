@@ -139,4 +139,43 @@ object SheetGrid {
             floatArrayOf(x / WIDTH, y / HEIGHT, (x + w) / WIDTH, (y + h) / HEIGHT)
         }
     }
+
+    /**
+     * Where the page screen showed its cards ([rects]: left, top, right, bottom
+     * in screen pixels, card after card), turned into places on the 3D page.
+     * The cards keep exactly the same arrangement, scaled so they fill most
+     * of the 3D page, centred on it.
+     */
+    class Landing(
+        /** Each card as fractions of the page, like [cards]. */
+        val cards: List<FloatArray>,
+        /** How big one screen pixel is on the 3D page (for placing the camera). */
+        val worldPerPx: Float,
+        /** The middle of the cards on the screen, in pixels (the middle of the 3D page). */
+        val centreX: Float,
+        val centreY: Float,
+    )
+
+    fun fromScreen(rects: List<Float>, fill: Float = 0.88f): Landing? {
+        if (rects.isEmpty() || rects.size % 4 != 0) return null
+        val n = rects.size / 4
+        var l = Float.MAX_VALUE; var t = Float.MAX_VALUE; var r = -Float.MAX_VALUE; var b = -Float.MAX_VALUE
+        for (i in 0 until n) {
+            l = min(l, rects[4 * i]); t = min(t, rects[4 * i + 1])
+            r = max(r, rects[4 * i + 2]); b = max(b, rects[4 * i + 3])
+        }
+        val gw = r - l; val gh = b - t
+        if (gw < 1f || gh < 1f) return null
+        val s = min(fill * WIDTH / gw, fill * HEIGHT / gh)
+        val cx = (l + r) / 2f; val cy = (t + b) / 2f
+        val cards = (0 until n).map { i ->
+            floatArrayOf(
+                0.5f + (rects[4 * i] - cx) * s / WIDTH,
+                0.5f + (rects[4 * i + 1] - cy) * s / HEIGHT,
+                0.5f + (rects[4 * i + 2] - cx) * s / WIDTH,
+                0.5f + (rects[4 * i + 3] - cy) * s / HEIGHT,
+            )
+        }
+        return Landing(cards, s, cx, cy)
+    }
 }

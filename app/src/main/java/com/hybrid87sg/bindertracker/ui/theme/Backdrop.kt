@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
@@ -68,6 +69,10 @@ fun Modifier.appBackground(): Modifier = composed {
         )
         if (glitter > 0f) drawGlitter(glitter, time.value, AppColors.isDark, if (tiltOn) tilt.value else Offset.Zero, if (tiltOn) reaction else 0f)
     }
+        // Everything on top of the background (lists, cards, text) goes in its own
+        // layer. The glitter redraws every frame; without this, the whole screen's
+        // contents were drawn again with it every frame, which made scrolling stutter.
+        .graphicsLayer()
 }
 
 /**

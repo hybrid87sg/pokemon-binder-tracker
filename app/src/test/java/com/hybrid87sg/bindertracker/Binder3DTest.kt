@@ -98,4 +98,34 @@ class Binder3DTest {
             assertEquals(1f - cells[cols - 1][2], cells[0][0], 0.001f)
         }
     }
+
+    @Test
+    fun cardsLandWhereThePageScreenDrawsThem() {
+        // A 2 x 2 page as the page screen drew it: 100 x 140 px cards, gaps of 20 and 40 px.
+        val rects = listOf(
+            40f, 200f, 140f, 340f, 160f, 200f, 260f, 340f,
+            40f, 380f, 140f, 520f, 160f, 380f, 260f, 520f,
+        )
+        val l = SheetGrid.fromScreen(rects)!!
+        assertEquals(4, l.cards.size)
+        // The middle of the cards on screen.
+        assertEquals(150f, l.centreX, 0.001f)
+        assertEquals(360f, l.centreY, 0.001f)
+        // Same arrangement on the 3D page: every card keeps its shape and place relative to the others.
+        for (i in 0 until 4) {
+            val c = l.cards[i]
+            assertTrue(c[0] >= 0f && c[1] >= 0f && c[2] <= 1f && c[3] <= 1f)
+            assertEquals(100f * l.worldPerPx, (c[2] - c[0]) * SheetGrid.WIDTH, 0.0001f)
+            assertEquals(140f * l.worldPerPx, (c[3] - c[1]) * SheetGrid.HEIGHT, 0.0001f)
+            // Back to screen pixels: exactly where the page screen had it.
+            assertEquals(rects[4 * i], l.centreX + (c[0] - 0.5f) * SheetGrid.WIDTH / l.worldPerPx, 0.01f)
+            assertEquals(rects[4 * i + 1], l.centreY + (c[1] - 0.5f) * SheetGrid.HEIGHT / l.worldPerPx, 0.01f)
+        }
+        // Centred on the 3D page.
+        assertEquals(1f - l.cards[1][2], l.cards[0][0], 0.001f)
+        assertEquals(1f - l.cards[3][3], l.cards[0][1], 0.001f)
+        // Nothing to go on: no landing.
+        assertEquals(null, SheetGrid.fromScreen(emptyList()))
+        assertEquals(null, SheetGrid.fromScreen(listOf(1f, 2f, 3f)))
+    }
 }

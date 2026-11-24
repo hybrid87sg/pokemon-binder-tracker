@@ -101,7 +101,7 @@ import com.hybrid87sg.bindertracker.ui.components.CollectingSheet
 import com.hybrid87sg.bindertracker.ui.components.Eyebrow
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.PrimaryButton
-import com.hybrid87sg.bindertracker.ui.components.arrive
+import com.hybrid87sg.bindertracker.ui.components.openingMoment
 import com.hybrid87sg.bindertracker.ui.components.countUp
 import com.hybrid87sg.bindertracker.ui.components.holoBrush
 import com.hybrid87sg.bindertracker.ui.components.holoTopStripe
@@ -218,6 +218,7 @@ fun MissingCardsScreen(
             // Unfolded phone (same test as the binder's two-page spread): 6 cards per row, 3 each side of the fold.
             val config = LocalConfiguration.current
             val unfolded = config.screenWidthDp >= 600 && config.screenHeightDp >= 480
+            val opening = openingMoment()
             LazyVerticalGrid(
                 columns = GridCells.Fixed(if (unfolded) 6 else 4),
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -321,8 +322,8 @@ fun MissingCardsScreen(
                     full("g-$title") {
                         GroupHeading(title, groupAll.count { it.owned }, groupAll.size)
                     }
-                    items(cards, key = { "c-${it.card.id}" }) { e ->
-                        Tile(e, onClick = {
+                    items(cards, key = { "c-${it.card.id}" }, contentType = { "card" }) { e ->
+                        Tile(e, pop = opening, onClick = {
                             // Every card showing, in order, so the card screen can swipe through them.
                             val showing = groups.flatMap { it.second }
                             val listName = when (show) {
@@ -529,11 +530,17 @@ private fun GroupHeading(title: String, have: Int, total: Int) {
 
 /** One card in the grid: its picture if you have it, or a dashed outline with its number if not. */
 @Composable
-internal fun Tile(e: Checklist.Entry, onClick: () -> Unit) {
+internal fun Tile(e: Checklist.Entry, pop: Boolean = true, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
-    val inT = arrive(play = true, durationMillis = Motion.Short)
+    // Pops in only when the screen first opens (see openingMoment), not every
+    // time the card scrolls into view. The animation runs in the drawing
+    // layer, so the card isn't rebuilt on every frame of it.
+    val inT = remember { Animatable(if (pop) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (inT.value < 1f) inT.animateTo(1f, tween(Motion.Short, easing = Motion.Ease))
+    }
     Column(
-        Modifier.graphicsLayer { alpha = inT; val s = 0.85f + 0.15f * inT; scaleX = s; scaleY = s }
+        Modifier.graphicsLayer { val t = inT.value; alpha = t; val s = 0.85f + 0.15f * t; scaleX = s; scaleY = s }
             .pressSquish(press)
             .clickable(interactionSource = press, indication = null, onClick = onClick)
             .semantics { contentDescription = "${e.card.name}, number ${e.card.number}, ${if (e.owned) "in the binder" else "missing"}" },
