@@ -134,7 +134,7 @@ fun EditShelfSheet(
                 }
                 Segments(
                     options = LedStrips.entries.map { it to it.label },
-                    selected = look.strips,
+                    current = look.strips,
                     onPick = { onChange(look.copy(strips = it)) },
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                 )
@@ -229,7 +229,7 @@ fun EditShelfSheet(
                     Text("Angle", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AppColors.Ink)
                     Segments(
                         options = ShelfLook.Angles.map { it to if (it == 0) "Straight" else "$it°" },
-                        selected = look.angle,
+                        current = look.angle,
                         onPick = { onChange(look.copy(angle = it)) },
                     )
                 }
@@ -237,7 +237,7 @@ fun EditShelfSheet(
                     Text("Covers face", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AppColors.Ink)
                     Segments(
                         options = listOf(false to "Left", true to "Right"),
-                        selected = if (look.turned) look.coversOnRight else null,
+                        current = if (look.turned) look.coversOnRight else null,
                         onPick = { onChange(look.copy(coversOnRight = it)) },
                         enabled = look.turned,
                     )
@@ -283,14 +283,14 @@ private fun Group(modifier: Modifier = Modifier, content: @Composable ColumnScop
 
 /** A row of pill buttons where one is picked (like a segmented switch). */
 @Composable
-private fun <T> Segments(options: List<Pair<T, String>>, selected: T?, onPick: (T) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+private fun <T> Segments(options: List<Pair<T, String>>, current: T?, onPick: (T) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val haptics = LocalHapticFeedback.current
     Row(
         modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).clip(CircleShape).background(AppColors.Surface).padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         options.forEach { (value, label) ->
-            val picked = value == selected
+            val picked = value == current
             Box(
                 Modifier.weight(1f).heightIn(min = 36.dp).clip(CircleShape)
                     .background(if (picked) AppColors.Accent else Color.Transparent)

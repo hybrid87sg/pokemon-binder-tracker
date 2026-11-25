@@ -512,7 +512,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     private fun clearLights() {
         for (b in bays) for ((e, _) in b.back + b.front) {
-            scene.removeEntity(e)
+            scene.remove(e)
             engine.destroyEntity(e)
             EntityManager.get().destroy(e)
         }
