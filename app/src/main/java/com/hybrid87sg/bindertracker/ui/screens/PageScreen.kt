@@ -353,8 +353,17 @@ fun PageScreen(
         .onGloballyPositioned { shotRect = it.boundsInWindow() }
     // (A new picture whenever the cards on the page change.)
     val pageLook = pockets.map { Triple(it.cardId, it.isEmpty, it.position) }.hashCode()
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook) {
+    // (Also when the grey missing cards change: they're in the picture too.)
+    val pageGhostLook = ghosts[pageId].orEmpty().mapValues { it.value.id }
+    // Unfolded, the picture shows page 2 as well: take a new one when it changes too.
+    val secondPageLook = if (open && pageId == pageIds.firstOrNull()) pageIds.getOrNull(1)?.let { id ->
+        (spreadPockets[id] ?: pageCards[id].orEmpty()).map { Triple(it.cardId, it.isEmpty, it.position) } to
+            ghosts[id].orEmpty().mapValues { it.value.id }
+    } else null
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, secondPageLook, filter.active) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
+        // Not while a filter is on: the page is dimmed or swapped for results. (Clearing it takes the picture.)
+        if (filter.active) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
         val count = columns * rows
@@ -385,10 +394,17 @@ fun PageScreen(
             if (area.width < 1f || area.height < 1f) return@LaunchedEffect
             val picture = runCatching { shotLayer.toImageBitmap().asAndroidBitmap() }.getOrNull() ?: return@LaunchedEffect
             val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.shotKey(landingBinderId, config.screenWidthDp, config.screenHeightDp, AppColors.isDark)
+            // What's on the page in this picture, so the shelf can tell if it goes out of date.
+            val shotLook = com.hybrid87sg.bindertracker.ui.three.PageLanding.lookOf(
+                columns, rows,
+                landingPockets.map { p ->
+                    p.position to (pageGhostLook[p.position]?.let { "g$it" } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
+                },
+            )
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val soft = if (picture.config == android.graphics.Bitmap.Config.HARDWARE) picture.copy(android.graphics.Bitmap.Config.ARGB_8888, false) else picture
                 if (soft != null) {
-                    com.hybrid87sg.bindertracker.ui.three.PageLanding.saveShot(landingContext, key, soft, listOf(area.left, area.top, area.right, area.bottom), open)
+                    com.hybrid87sg.bindertracker.ui.three.PageLanding.saveShot(landingContext, key, soft, listOf(area.left, area.top, area.right, area.bottom), open, shotLook)
                 }
             }
         }

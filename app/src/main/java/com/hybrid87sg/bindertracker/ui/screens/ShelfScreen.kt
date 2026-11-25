@@ -177,8 +177,9 @@ fun ShelfScreen(
                     // Drawn where the page screen will show its cards (see PageLanding),
                     // so the camera lands on them exactly and the page screen takes over seamlessly.
                     sheet = firstPages[b.id]?.let { s ->
-                        val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.key(s.columns, s.rows, screen.screenWidthDp, screen.screenHeightDp)
-                        s.copy(landing = com.hybrid87sg.bindertracker.ui.three.PageLanding.get(context, key), surface = sheetColor)
+                        // (For this fold state: the closest screen size seen folded, or unfolded.)
+                        val landing = com.hybrid87sg.bindertracker.ui.three.PageLanding.getNear(context, s.columns, s.rows, screen.screenWidthDp, screen.screenHeightDp)
+                        s.copy(landing = landing, surface = sheetColor)
                     },
                     back = cardBack,
                 )
