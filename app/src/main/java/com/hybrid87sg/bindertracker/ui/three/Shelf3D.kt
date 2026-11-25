@@ -109,6 +109,8 @@ fun Shelf3D(
     // Room the Edit shelf sheet takes at the bottom / right, in pixels: the shelf fits in the rest.
     bottomInset: Float = 0f,
     rightInset: Float = 0f,
+    // Room the tab bar and the phone's navigation bar always take at the bottom, in pixels.
+    bottomClear: Float = 0f,
 ) {
     val context = LocalContext.current
     val open by rememberUpdatedState(onOpen)
@@ -131,7 +133,7 @@ fun Shelf3D(
     val dark = com.hybrid87sg.bindertracker.ui.theme.AppColors.isDark
     SideEffect {
         stage.headerBottom = headerBottom
-        stage.setInsets(bottomInset, rightInset)
+        stage.setInsets(max(bottomInset, bottomClear), rightInset)
         // The picture each binder's first page left of itself, for this screen size
         // and fold state (see PageLanding). Read again whenever the phone is folded
         // or unfolded, so the opening always matches how the page screen will look.
