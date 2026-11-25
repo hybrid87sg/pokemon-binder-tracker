@@ -258,6 +258,8 @@ fun PageScreen(
     // and when the phone unfolds, and is forgotten when you leave the binder.
     var filter by rememberSaveable(stateSaver = FilterChoiceSaver) { mutableStateOf(FilterLogic.Choice()) }
     var filterOpen by remember { mutableStateOf(false) }
+    // Together = the matching cards gathered onto their own results pages; false = in place (the rest go dark).
+    var filterTogether by rememberSaveable { mutableStateOf(true) }
     androidx.activity.compose.BackHandler(enabled = filterOpen) { filterOpen = false }
     LaunchedEffect(openPosition, pockets) {
         val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
@@ -444,9 +446,9 @@ fun PageScreen(
             val list = if (id == pageId) shownPockets else spreadPockets[id] ?: pageCards[id].orEmpty()
             list.mapNotNull { p ->
                 if (p.cardId != null) {
-                    FilterLogic.Item(id, p.position, p.cardId, p.cardName.orEmpty(), p.rarity.orEmpty(), p.setName.orEmpty(), owned = true)
+                    FilterLogic.Item(id, p.position, p.cardId, p.cardName.orEmpty(), p.rarity.orEmpty(), p.setName.orEmpty(), owned = true, thumb = p.imageUrl?.let { "$it/low.webp" })
                 } else {
-                    ghosts[id]?.get(p.position)?.let { g -> FilterLogic.Item(id, p.position, g.id, g.name, g.rarity, g.setName, owned = false) }
+                    ghosts[id]?.get(p.position)?.let { g -> FilterLogic.Item(id, p.position, g.id, g.name, g.rarity, g.setName, owned = false, thumb = g.thumbnailUrl) }
                 }
             }
         }
@@ -468,6 +470,7 @@ fun PageScreen(
     // Null = no filter (or Edit is on); otherwise whether this pocket's card matches.
     fun filterMark(page: String, position: Int): Boolean? =
         if (!filter.active || editing) null else filterHits[page to position] == true
+    val showResults = filter.active && filterTogether && !editing
 
     // Swaps two pockets on this page, with both cards sliding to their new places.
     // [draggedFrom] is where the dragged card was let go, if it was dragged.
@@ -921,11 +924,32 @@ fun PageScreen(
                 }
             }
         }
-        // What the Filter has ticked, as chips you can tap off.
-        if (filter.active && !editing) FilterChips(filter, masterSet) { filter = it }
+        // With a filter on: how many cards it found (what's ticked only shows in the Filter menu).
+        if (filter.active && !editing) {
+            val found = filterHits.count { it.value }
+            Text(
+                "$found card${if (found == 1) "" else "s"} found · binder not changed",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.Muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+            )
+        }
         // (No "Page 3" heading: the page number shows once, in the navigation at the bottom.)
         Spacer(Modifier.height(4.dp))
 
+        if (showResults) {
+            // The matching cards gathered together onto results pages (nothing in the binder moves).
+            val matched = filterItems.filter { filterHits[it.pageId to it.position] == true }
+            FilterResults(
+                items = matched,
+                columns = columns.coerceAtLeast(1),
+                rows = rows.coerceAtLeast(1),
+                pageNumberOf = { id -> pageIds.indexOf(id) + 1 },
+                onOpen = { item -> onViewCard(item.pageId, item.position) },
+                onShowInBinder = { item -> filterTogether = false; if (item.pageId != pageId) goToPage(item.pageId) },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        } else {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
         // Folded: the page sits on the binder's cover, sized so the whole page fits
         // the screen's height without scrolling (see [foldedCoverWidth]).
@@ -1150,6 +1174,7 @@ fun PageScreen(
                 onOpenGlossary?.let { GlossaryButton(it) }
             }
         }
+        }
     }
 
     // The Filter menu, dropping down from the header over the page.
@@ -1158,6 +1183,8 @@ fun PageScreen(
         choice = filter,
         onChange = { filter = it },
         onClose = { filterOpen = false },
+        together = filterTogether,
+        onTogether = { filterTogether = it },
         masterSet = masterSet,
         onMasterSet = { on ->
             onMasterSet(on)
