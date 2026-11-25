@@ -114,6 +114,8 @@ import com.hybrid87sg.bindertracker.ui.components.cardFlight
 import kotlin.math.roundToInt
 import com.hybrid87sg.bindertracker.ui.components.HoloBar
 import com.hybrid87sg.bindertracker.ui.components.Motion
+import com.hybrid87sg.bindertracker.data.CardFact
+import com.hybrid87sg.bindertracker.data.CardFacts
 import com.hybrid87sg.bindertracker.ui.components.PageTurnStage
 import com.hybrid87sg.bindertracker.ui.components.SpreadTurnStage
 import com.hybrid87sg.bindertracker.ui.components.SpineGap
@@ -252,6 +254,11 @@ fun PageScreen(
     }
     // The phone's back button leaves Edit first.
     androidx.activity.compose.BackHandler(enabled = editing) { editing = false }
+    // Filter (the button in the header): what's ticked stays while you turn pages
+    // and when the phone unfolds, and is forgotten when you leave the binder.
+    var filter by rememberSaveable(stateSaver = FilterChoiceSaver) { mutableStateOf(FilterLogic.Choice()) }
+    var filterOpen by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = filterOpen) { filterOpen = false }
     LaunchedEffect(openPosition, pockets) {
         val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
         selected = pocket
@@ -429,6 +436,38 @@ fun PageScreen(
     fun ghostAt(page: String, position: Int): Card? =
         if (page == currentPageId && latestGuesses[position].orEmpty().isNotEmpty()) null
         else latestGhosts[page]?.get(position)
+
+    // ---- Filter: every card the binder shows, and which ones match what's ticked ----
+    val filterContext = androidx.compose.ui.platform.LocalContext.current
+    val filterItems = remember(pageIds, pageCards, spreadPockets, shownPockets, ghosts, pageId) {
+        pageIds.flatMap { id ->
+            val list = if (id == pageId) shownPockets else spreadPockets[id] ?: pageCards[id].orEmpty()
+            list.mapNotNull { p ->
+                if (p.cardId != null) {
+                    FilterLogic.Item(id, p.position, p.cardId, p.cardName.orEmpty(), p.rarity.orEmpty(), p.setName.orEmpty(), owned = true)
+                } else {
+                    ghosts[id]?.get(p.position)?.let { g -> FilterLogic.Item(id, p.position, g.id, g.name, g.rarity, g.setName, owned = false) }
+                }
+            }
+        }
+    }
+    var filterRates by remember { mutableStateOf<com.hybrid87sg.bindertracker.prices.SgdRates?>(null) }
+    // Artist, type, kind and price come from TCGdex: looked up once, then kept on the phone (see CardFacts).
+    LaunchedEffect(filterOpen || filter.active, filterItems.size) {
+        if (!filterOpen && !filter.active) return@LaunchedEffect
+        CardFacts.load(filterContext)
+        if (filterRates == null) filterRates = runCatching { com.hybrid87sg.bindertracker.prices.ExchangeRates(filterContext).get() }.getOrNull()
+        CardFacts.fetch(filterContext, filterItems.map { it.cardId })
+    }
+    val filterSgd: (CardFact) -> Double? = { f -> f.price?.let { p -> filterRates?.convert(p, f.currency ?: "USD") } }
+    val filterDups = remember(filterItems) { FilterLogic.duplicates(filterItems) }
+    fun filterMatches(choice: FilterLogic.Choice, item: FilterLogic.Item) =
+        FilterLogic.matches(choice, item, CardFacts.known[item.cardId], filterDups, ::isShinyRarity, filterSgd)
+    val filterHits: Map<Pair<String, Int>, Boolean> =
+        if (filter.active) filterItems.associate { (it.pageId to it.position) to filterMatches(filter, it) } else emptyMap()
+    // Null = no filter (or Edit is on); otherwise whether this pocket's card matches.
+    fun filterMark(page: String, position: Int): Boolean? =
+        if (!filter.active || editing) null else filterHits[page to position] == true
 
     // Swaps two pockets on this page, with both cards sliding to their new places.
     // [draggedFrom] is where the dragged card was let go, if it was dragged.
@@ -868,13 +907,10 @@ fun PageScreen(
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 // (A long binder name is cut short with "…" so the buttons always fit.)
                 Box(Modifier.weight(1f)) { BackButton(binderName, onBack, maxLines = 1) }
-                // Main set / Master set, just for this phone (the Glossary is in "Go to page").
-                masterSet?.let { m ->
-                    MasterSetToggle(m) { on ->
-                        onMasterSet(on)
-                        notice = Notice(if (on) "Master set: secret rares count too. Just on this phone." else "Main set: secret rares don't count. Just on this phone.")
-                    }
-                }
+                // Filter: a drop-down with Main set / Master set (just for this phone) and
+                // things to find in the binder (the Glossary is in "Go to page").
+                FilterButton(filter.count, filterOpen) { filterOpen = !filterOpen }
+                Spacer(Modifier.width(4.dp))
                 // The tips used to sit under the page as fine print (and made the page scroll).
                 TipsButton { showTips = true }
                 // Batch edit (and deleting the page) lives behind Edit, with Done to leave.
@@ -885,6 +921,8 @@ fun PageScreen(
                 }
             }
         }
+        // What the Filter has ticked, as chips you can tap off.
+        if (filter.active && !editing) FilterChips(filter, masterSet) { filter = it }
         // (No "Page 3" heading: the page number shows once, in the navigation at the bottom.)
         Spacer(Modifier.height(4.dp))
 
@@ -954,6 +992,7 @@ fun PageScreen(
                             onPocket = { if (live) gestures.tap(it.position) else if (other) tapOther(id, it) },
                             onPocketHold = { if (live) { if (editing) batchTap(id, it) else if (canEdit) selected = it } else if (other) holdOther(id, it) },
                             batchMark = { p -> batchMarkFor(id, p) },
+                            filterMark = { p -> filterMark(id, p.position) },
                             drag = if (live) drag else null,
                             gestures = if (live) gestures else null,
                             mirrored = side == 0,
@@ -1015,6 +1054,7 @@ fun PageScreen(
                         onPocket = { if (live) gestures.tap(it.position) },
                         onPocketHold = { if (live) { if (editing) batchTap(sheetKey, it) else if (canEdit) selected = it } },
                         batchMark = { p -> batchMarkFor(sheetKey, p) },
+                        filterMark = { p -> filterMark(sheetKey, p.position) },
                         drag = if (live) drag else null,
                         gestures = if (live) gestures else null,
                     )
@@ -1050,6 +1090,20 @@ fun PageScreen(
             readingStatus?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.AccentText, fontWeight = FontWeight.Medium)
             }
+        }
+
+        // Filter on: how many match here and in the whole binder, and a jump to the next page with one.
+        if (filter.active && !editing) {
+            val visible = if (open) listOfNotNull(leftId, rightId) else listOf(pageId)
+            val perPage = filterHits.filterValues { it }.keys.groupingBy { it.first }.eachCount()
+            val lastShown = visible.maxOfOrNull { pageIds.indexOf(it) } ?: -1
+            val nextMatch = pageIds.indices.map { (lastShown + 1 + it) % pageIds.size.coerceAtLeast(1) }
+                .map { pageIds[it] }.firstOrNull { it !in visible && (perPage[it] ?: 0) > 0 }
+            FilterMatchBar(
+                here = visible.sumOf { perPage[it] ?: 0 },
+                total = perPage.values.sum(),
+                onNext = nextMatch?.let { id -> { goToPage(id) } },
+            )
         }
 
         if (editing) {
@@ -1097,6 +1151,28 @@ fun PageScreen(
             }
         }
     }
+
+    // The Filter menu, dropping down from the header over the page.
+    FilterMenu(
+        visible = filterOpen && !editing,
+        choice = filter,
+        onChange = { filter = it },
+        onClose = { filterOpen = false },
+        masterSet = masterSet,
+        onMasterSet = { on ->
+            onMasterSet(on)
+            notice = Notice(if (on) "Master set: secret rares count too. Just on this phone." else "Main set: secret rares don't count. Just on this phone.")
+        },
+        items = filterItems,
+        facts = CardFacts.known,
+        matching = if (filter.active) filterHits.count { it.value } else filterItems.size,
+        loading = CardFacts.loading,
+        quickCounts = if (filterOpen) FilterLogic.Quick.entries.associateWith { q ->
+            filterItems.count { filterMatches(FilterLogic.Choice(quick = setOf(q)), it) }
+        } else emptyMap(),
+        sgd = filterSgd,
+        rarityRank = { com.hybrid87sg.bindertracker.data.Checklist.rarityRank(it) },
+    )
 
     // The card under your finger while dragging, drawn above everything.
     val dragged = drag.card
@@ -1336,6 +1412,8 @@ private fun BinderSheet(
     peer: PocketDrag? = null,
     // Batch edit: how each pocket looks (ticked, tickable, a "?" to move into), or null.
     batchMark: (PocketWithCard) -> Pair<BatchMark, Int>? = { null },
+    // Filter: null = off, true = this card matches (glows), false = it doesn't (goes dark).
+    filterMark: (PocketWithCard) -> Boolean? = { null },
 ) {
     val shape = if (mirrored) {
         RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp)
@@ -1388,6 +1466,7 @@ private fun BinderSheet(
                             pocket = pocket,
                             batch = mark?.first,
                             slotNumber = mark?.second ?: 0,
+                            filtered = filterMark(pocket),
                             ghost = if (pocket.cardId == null) ghostAt(k) else null,
                             pageKey = pageKey,
                             live = live,
@@ -1574,6 +1653,8 @@ private fun PocketTile(
     // Batch edit: ticked, tickable, or a "?" pocket (with its number once picked as a place to move into).
     batch: BatchMark? = null,
     slotNumber: Int = 0,
+    // Filter: null = off, true = matches (lifts and glows), false = doesn't (goes dark).
+    filtered: Boolean? = null,
     // A missing card to show greyed out, when the pocket has no card.
     ghost: Card? = null,
     pageKey: String,
@@ -1626,6 +1707,9 @@ private fun PocketTile(
         label = "batchScale",
     )
     val pulse = if (batch == BatchMark.Picked) rememberPickPulse() else 0f
+    // Filter: cards that don't match fade into the dark; matches lift a little and glow.
+    val filterDim by animateFloatAsState(if (filtered == false) 1f else 0f, tween(Motion.Short), label = "filterDim")
+    val filterLift by animateFloatAsState(if (filtered == true) 1f else 0f, tween(Motion.Short), label = "filterLift")
     // Flying to or from the card screen: lifted up out of the sleeve (see CardFlight).
     val flightKey = CardFlight.pocketKey(pageKey, pocket.position)
     val rise by animateFloatAsState(
@@ -1748,7 +1832,7 @@ private fun PocketTile(
                         .graphicsLayer {
                             val t = arriveAt.value + nudge
                             translationX = t.x
-                            translationY = t.y - lift * 4.dp.toPx() - rise * size.height * 0.34f - pickLift * 5.dp.toPx()
+                            translationY = t.y - lift * 4.dp.toPx() - rise * size.height * 0.34f - pickLift * 5.dp.toPx() - filterLift * 3.dp.toPx()
                             val k = scale * arriveScale.value * (1f + 0.04f * rise) * batchScale
                             scaleX = k; scaleY = k
                             rotationZ = if (target == DropKind.Swap) -3f else 0f
@@ -1771,6 +1855,7 @@ private fun PocketTile(
                         )
                         .then(if (holdGlow > 0f) Modifier.border(3.dp, AppColors.AccentText.copy(alpha = holdGlow), shape) else Modifier)
                         .then(if (batch == BatchMark.Picked) Modifier.drawBehind { neonGlow(neon, 6.dp.toPx(), 0.35f + 0.65f * pulse) } else Modifier)
+                        .then(if (filterLift > 0f) Modifier.drawBehind { neonGlow(neon.copy(alpha = filterLift), 6.dp.toPx(), 0.45f * filterLift) } else Modifier)
                         .clip(shape)
                         .then(
                             when {
@@ -1802,6 +1887,10 @@ private fun PocketTile(
                     }
                 }
                 if (sparkle.value < 1f) Sparkles(sparkle.value, Modifier.matchParentSize())
+                // Filter: a dark veil over cards that don't match (they stay in their pockets).
+                if (filterDim > 0f) {
+                    Box(Modifier.matchParentSize().clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.62f * filterDim)))
+                }
                 // Batch edit: a "?" pocket the ticked cards can move into: "+", or its number once picked.
                 if (batch == BatchMark.Target) {
                     Box(
@@ -1856,13 +1945,13 @@ private fun PocketTile(
                     pocket.cardId == null && !pocket.isEmpty -> AppColors.Black
                     else -> AppColors.Ink
                 },
-                modifier = when {
+                modifier = Modifier.graphicsLayer { alpha = 1f - 0.6f * filterDim }.then(when {
                     batch == BatchMark.Target -> Modifier.clip(RoundedCornerShape(6.dp)).background(neon).padding(horizontal = 5.dp, vertical = 2.dp)
                     batch == BatchMark.Free -> Modifier.padding(horizontal = LabelInset, vertical = 2.dp)
                     pocket.cardId == null && !pocket.isEmpty && ghost == null ->
                         Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 3.dp, vertical = 2.dp)
                     else -> Modifier.padding(horizontal = LabelInset, vertical = 2.dp)
-                },
+                }),
             )
             // Just the card number under the name (the expansion is in card view).
             (pocket.cardNumber ?: ghost?.number)?.let { raw ->
@@ -1875,7 +1964,7 @@ private fun PocketTile(
                     color = AppColors.Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = LabelInset),
+                    modifier = Modifier.graphicsLayer { alpha = 1f - 0.6f * filterDim }.padding(horizontal = LabelInset),
                 )
             }
         }
@@ -2011,6 +2100,12 @@ private fun Modifier.binderCover(color: Color): Modifier = drawBehind {
 }
 
 /** A small round "?" button that shows the page's tips. */
+/** Keeps what the Filter has ticked when the phone unfolds (the screen is rebuilt then). */
+private val FilterChoiceSaver = androidx.compose.runtime.saveable.listSaver<FilterLogic.Choice, String>(
+    save = { it.save() },
+    restore = { FilterLogic.Choice.restore(it) },
+)
+
 @Composable
 private fun TipsButton(onClick: () -> Unit) {
     Box(
