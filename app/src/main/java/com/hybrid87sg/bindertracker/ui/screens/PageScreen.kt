@@ -353,7 +353,9 @@ fun PageScreen(
         .onGloballyPositioned { shotRect = it.boundsInWindow() }
     // (A new picture whenever the cards on the page change.)
     val pageLook = pockets.map { Triple(it.cardId, it.isEmpty, it.position) }.hashCode()
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook) {
+    // (Also when the grey missing cards change: they're in the picture too.)
+    val pageGhostLook = ghosts[pageId].orEmpty().mapValues { it.value.id }
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
@@ -386,11 +388,10 @@ fun PageScreen(
             val picture = runCatching { shotLayer.toImageBitmap().asAndroidBitmap() }.getOrNull() ?: return@LaunchedEffect
             val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.shotKey(landingBinderId, config.screenWidthDp, config.screenHeightDp, AppColors.isDark)
             // What's on the page in this picture, so the shelf can tell if it goes out of date.
-            val pageGhosts = ghosts[pageId].orEmpty()
             val shotLook = com.hybrid87sg.bindertracker.ui.three.PageLanding.lookOf(
                 columns, rows,
                 landingPockets.map { p ->
-                    p.position to (pageGhosts[p.position]?.let { "g" + it.id } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
+                    p.position to (pageGhostLook[p.position]?.let { "g$it" } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
                 },
             )
             withContext(kotlinx.coroutines.Dispatchers.IO) {
