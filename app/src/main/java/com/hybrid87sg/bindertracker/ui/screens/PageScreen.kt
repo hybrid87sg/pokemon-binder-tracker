@@ -928,10 +928,7 @@ fun PageScreen(
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 // (A long binder name is cut short with "…" so the buttons always fit.)
                 Box(Modifier.weight(1f)) { BackButton(binderName, onBack, maxLines = 1) }
-                // Filter: a drop-down with Main set / Master set (just for this phone) and
-                // things to find in the binder (the Glossary is in "Go to page").
-                FilterButton(filter.count, filterOpen) { filterOpen = !filterOpen }
-                Spacer(Modifier.width(4.dp))
+                // (Filter lives at the bottom right now, next to the page's right arrow.)
                 // The tips used to sit under the page as fine print (and made the page scroll).
                 TipsButton { showTips = true }
                 // Batch edit (and deleting the page) lives behind Edit, with Done to leave.
@@ -1187,17 +1184,23 @@ fun PageScreen(
                 onJump = if (pageIds.size > 1) ({ jumping = true }) else null,
                 ping = ping,
                 onPlaced = { k, c -> drag.rectOf(c)?.let { dotCenters[k] = it.center } },
+                // Filter: a round button at the bottom right, next to the right arrow. It opens
+                // a menu with Main set / Master set (just for this phone) and things to find.
+                trailing = { FilterIconButton(filter.count, filterOpen) { filterOpen = !filterOpen } },
             )
         } else {
-            // One page only (no "Go to page"): the Glossary button sits here instead.
-            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+            // One page only (no "Go to page"): the Glossary button sits here instead, Filter on the right.
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
                 onOpenGlossary?.let { GlossaryButton(it) }
+                Box(Modifier.align(Alignment.CenterEnd)) {
+                    FilterIconButton(filter.count, filterOpen) { filterOpen = !filterOpen }
+                }
             }
         }
         }
     }
 
-    // The Filter menu, dropping down from the header over the page.
+    // The Filter menu, rising from the Filter button at the bottom right.
     FilterMenu(
         visible = filterOpen && !editing,
         choice = filter,
@@ -1609,6 +1612,8 @@ private fun PageArrows(
     open: Boolean = false,
     // Keep clear of the phone's navigation bar (false when something sits below, like Edit's buttons).
     bottomInset: Boolean = true,
+    // A button at the right end of the row (the Filter button), or null for none.
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val dotCount = if (open) (pageCount + 1) / 2 else pageCount
     val current = if (open) (pageNumber - 1) / 2 else pageNumber - 1
@@ -1623,16 +1628,20 @@ private fun PageArrows(
             .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = if (bottomInset) 12.dp else 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+      // The arrows sit right beside the page label, all centred in the space left of the
+      // trailing button (unfolded, the trailing button joins the group in the middle).
+      Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (open) 12.dp else 8.dp)) {
         ArrowButton(R.drawable.ic_chevron_left, "Previous page", canPrev, onPrev, Modifier.onGloballyPositioned { onPlaced(PREV_ARROW, it) })
         Column(
-            Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
+            Modifier.weight(1f, fill = false).clip(RoundedCornerShape(16.dp))
                 .then(if (onJump != null) Modifier.clickable(onClickLabel = "Go to another page", onClick = onJump) else Modifier)
-                .padding(vertical = 4.dp),
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
+                Text(label, style = MaterialTheme.typography.titleMedium, color = AppColors.Ink, maxLines = 1)
                 if (onJump != null) com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_expand_more, AppColors.Muted, Modifier.padding(start = 4.dp), size = 16.dp)
             }
             if (dotCount <= 12) {
@@ -1665,6 +1674,16 @@ private fun PageArrows(
             }
         }
         ArrowButton(R.drawable.ic_chevron_right, "Next page", canNext, onNext, Modifier.onGloballyPositioned { onPlaced(NEXT_ARROW, it) })
+        if (open && trailing != null) {
+            Spacer(Modifier.width(4.dp))
+            trailing()
+        }
+      }
+      }
+      if (!open && trailing != null) {
+          Spacer(Modifier.width(8.dp))
+          trailing()
+      }
     }
 }
 
