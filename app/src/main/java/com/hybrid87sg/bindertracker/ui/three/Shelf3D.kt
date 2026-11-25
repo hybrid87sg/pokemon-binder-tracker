@@ -104,10 +104,10 @@ fun Shelf3D(
     val progress by rememberUpdatedState(onOpening)
     val stage = remember {
         ShelfStage(context, object : ShelfStage.Listener {
-            override fun onOpen(id: String, pageId: String?, revealMillis: Long) {
+            override fun onOpen(id: String, pageId: String?, revealMillis: Long, outOfDate: Boolean) {
                 // The cards are already where the page screen draws them, so they don't pop in
                 // again. (And the page screen waits, hidden, until the binder has landed.)
-                if (pageId != null) PageLanding.arrive(revealMillis)
+                if (pageId != null) PageLanding.arrive(revealMillis, outOfDate)
                 open(id, pageId)
             }
             override fun onEdit(id: String) = edit(id)
@@ -119,9 +119,12 @@ fun Shelf3D(
     val dark = com.hybrid87sg.bindertracker.ui.theme.AppColors.isDark
     SideEffect {
         stage.headerBottom = headerBottom
-        // The picture each binder's first page left of itself, for this screen size (see PageLanding).
+        // The picture each binder's first page left of itself, for this screen size
+        // and fold state (see PageLanding). Read again whenever the phone is folded
+        // or unfolded, so the opening always matches how the page screen will look.
         val w = config.screenWidthDp; val h = config.screenHeightDp
-        stage.shotFor = { id -> PageLanding.shot(context, PageLanding.shotKey(id, w, h, dark)) }
+        stage.spread = PageLanding.isSpread(w, h)
+        stage.shotFor = { id -> PageLanding.shotNear(context, id, w, h, dark) }
     }
     LaunchedEffect(binders, look, colors) {
         // Paint and build each binder away from the main thread, then show them.
@@ -204,7 +207,7 @@ private fun decodeSmall(file: File): Bitmap? = runCatching {
 internal class ShelfStage(context: Context, private val listener: Listener) : UiHelper.RendererCallback {
     interface Listener {
         /** [revealMillis]: how long until the binder has landed on the page (0: now). */
-        fun onOpen(id: String, pageId: String?, revealMillis: Long)
+        fun onOpen(id: String, pageId: String?, revealMillis: Long, outOfDate: Boolean = false)
         fun onEdit(id: String)
         fun onOpening(p: Float)
     }
@@ -232,6 +235,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     /** The picture of a binder's first page (see PageLanding), or null if there isn't one yet. */
     var shotFor: (String) -> PageLanding.Shot? = { null }
+
+    /** True when the page screen shows two pages side by side (phone unfolded). */
+    var spread = false
     private val scene = engine.createScene()
     private val frontScene = engine.createScene() // the binder that's opening, drawn over the fade
     private val view = engine.createView()
@@ -573,7 +579,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         // The first page has left a picture of itself: land on that.
         if (item.look.sheet != null && width > 0 && height > 0) {
             val shot = runCatching { shotFor(item.look.id) }.getOrNull()
-            if (shot != null && startLanding(item, shot, cam)) return
+            if (shot != null && shot.spread == spread && startLanding(item, shot, cam)) return
         }
         // Where the closed binder sits in front of you: the open spread fills the width.
         val aspect = width.toFloat() / height
@@ -587,7 +593,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val open = Vec3(centre.x, centre.y - H / 2f, centre.z)
         // With pages: end looking straight at the first page, so it fills the screen
         // (where the page screen takes over). Without: a view of the open binder.
-        val toPage = item.look.sheet != null
+        // (Unfolded, the page screen shows two pages side by side, so zooming into
+        // one page would end on the wrong picture: end on the whole open binder.)
+        val toPage = item.look.sheet != null && !spread
         val page = Vec3(open.x + d * (C / 2f + 0.07f), open.y + H / 2f, open.z - 0.129f)
         val pageDist = max(SheetGrid.WIDTH / (0.94f * 2f * tanH * aspect), SheetGrid.HEIGHT / (0.86f * 2f * tanH))
         // Better still: if we know where the page screen draws these cards, stop with
@@ -659,7 +667,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         // Onto a page: stay on the last picture while the page screen fades in over it
         // (jumping back to the shelf here showed through the fade). The screen goes
         // away by itself; this is only in case it doesn't.
-        val hold = if (plan.toPage) HOLD_MILLIS else 0f
+        val hold = if (item.look.sheet != null) HOLD_MILLIS else 0f
         if ((now - openStart) / 1e6f >= (if (plan.toPage) PAGE_MILLIS else OPEN_MILLIS) + hold) finishOpening()
     }
 
@@ -873,7 +881,10 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         listener.onOpening(t)
         if (!plan.sent && t >= 0.6f) {
             plan.sent = true
-            listener.onOpen(item.look.id, item.look.sheet?.pageId, ((1f - t) * PAGE_MILLIS).toLong())
+            // Out of date: cards on the page changed since the picture was taken
+            // (for example while the phone was folded the other way).
+            val outOfDate = item.look.sheet?.let { s -> plan.shot.look != null && plan.shot.look != PageLanding.lookOf(s) } ?: false
+            listener.onOpen(item.look.id, item.look.sheet?.pageId, ((1f - t) * PAGE_MILLIS).toLong(), outOfDate)
         }
         if (plan.elapsed >= PAGE_MILLIS + HOLD_MILLIS) finishOpening()
     }

@@ -255,11 +255,13 @@ private fun App(
     // the header and arrows come in, with a quick fade.
     fun openIn(): androidx.compose.animation.EnterTransition {
         val wait = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealDelay()
-        return if (wait > 0) fadeIn(tween(160, delayMillis = wait, easing = LinearEasing)) else fadeIn(openFade)
+        val fade = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealFadeMillis()
+        return if (wait > 0) fadeIn(tween(fade, delayMillis = wait, easing = LinearEasing)) else fadeIn(openFade)
     }
     fun openOut(): androidx.compose.animation.ExitTransition {
         val wait = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealDelay()
-        return if (wait > 0) fadeOut(tween(1, delayMillis = wait + 260)) else fadeOut(openStay)
+        val fade = com.hybrid87sg.bindertracker.ui.three.PageLanding.revealFadeMillis()
+        return if (wait > 0) fadeOut(tween(1, delayMillis = wait + fade + 100)) else fadeOut(openStay)
     }
     // Between tabs: a soft fade-through. The old page fades out quickly, then
     // the new one fades in and rises a touch, so the two never look muddled.

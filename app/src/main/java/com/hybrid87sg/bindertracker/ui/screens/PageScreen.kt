@@ -385,10 +385,18 @@ fun PageScreen(
             if (area.width < 1f || area.height < 1f) return@LaunchedEffect
             val picture = runCatching { shotLayer.toImageBitmap().asAndroidBitmap() }.getOrNull() ?: return@LaunchedEffect
             val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.shotKey(landingBinderId, config.screenWidthDp, config.screenHeightDp, AppColors.isDark)
+            // What's on the page in this picture, so the shelf can tell if it goes out of date.
+            val pageGhosts = ghosts[pageId].orEmpty()
+            val shotLook = com.hybrid87sg.bindertracker.ui.three.PageLanding.lookOf(
+                columns, rows,
+                landingPockets.map { p ->
+                    p.position to (pageGhosts[p.position]?.let { "g" + it.id } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
+                },
+            )
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val soft = if (picture.config == android.graphics.Bitmap.Config.HARDWARE) picture.copy(android.graphics.Bitmap.Config.ARGB_8888, false) else picture
                 if (soft != null) {
-                    com.hybrid87sg.bindertracker.ui.three.PageLanding.saveShot(landingContext, key, soft, listOf(area.left, area.top, area.right, area.bottom), open)
+                    com.hybrid87sg.bindertracker.ui.three.PageLanding.saveShot(landingContext, key, soft, listOf(area.left, area.top, area.right, area.bottom), open, shotLook)
                 }
             }
         }
