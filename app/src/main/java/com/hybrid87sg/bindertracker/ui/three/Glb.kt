@@ -28,6 +28,8 @@ class Glb {
         // Unlit + see-through: for the fade layer behind an opening binder.
         val unlitBlend: Boolean = false,
         val doubleSided: Boolean = false,
+        // Unlit and solid: glows in its own colour whatever the lights do (the LED strips).
+        val unlit: Boolean = false,
     )
 
     /** Triangles that share one material. */
@@ -132,7 +134,7 @@ class Glb {
 
         val json = StringBuilder()
         json.append("{\"asset\":{\"version\":\"2.0\",\"generator\":\"BinderTracker\"}")
-        if (materials.any { it.unlitBlend }) json.append(",\"extensionsUsed\":[\"KHR_materials_unlit\"]")
+        if (materials.any { it.unlitBlend || it.unlit }) json.append(",\"extensionsUsed\":[\"KHR_materials_unlit\"]")
         json.append(",\"scene\":0,\"scenes\":[{\"nodes\":[${roots.joinToString(",")}]}]")
         json.append(",\"nodes\":[")
         nodes.forEachIndexed { i, n ->
@@ -152,6 +154,7 @@ class Glb {
             json.append(",\"metallicFactor\":${num(m.metallic)},\"roughnessFactor\":${num(m.roughness)}}")
             m.normalTexture?.let { json.append(",\"normalTexture\":{\"index\":$it,\"scale\":${num(m.normalScale)}}") }
             if (m.unlitBlend) json.append(",\"alphaMode\":\"BLEND\",\"extensions\":{\"KHR_materials_unlit\":{}}")
+            else if (m.unlit) json.append(",\"extensions\":{\"KHR_materials_unlit\":{}}")
             if (m.doubleSided || m.unlitBlend) json.append(",\"doubleSided\":true")
             json.append('}')
         }
