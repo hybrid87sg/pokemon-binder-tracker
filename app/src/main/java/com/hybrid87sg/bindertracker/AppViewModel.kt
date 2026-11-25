@@ -915,6 +915,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Batch edit on the binder page (Edit: pick several cards at once) ----
+
+    /** Marks every one of these pockets (page ID, position) as an empty pocket. */
+    fun markPocketsEmpty(pockets: List<Pair<String, Int>>) {
+        viewModelScope.launch {
+            pockets.forEach { (page, position) -> savePocket(Pocket(page, position, isEmpty = true)) }
+        }
+    }
+
+    /**
+     * Moves cards into free pockets: each pair is (from, to), as (page ID, position).
+     * Done as swaps one after another, so each card's scan picture and guesses go with it
+     * and the pocket it left becomes a normal "to scan" pocket.
+     */
+    fun movePockets(moves: List<Pair<Pair<String, Int>, Pair<String, Int>>>) {
+        moves.forEach { (from, to) -> swapExtras(from.first, from.second, to.first, to.second) }
+        viewModelScope.launch {
+            moves.forEach { (from, to) -> swapAndSync(from.first, from.second, to.first, to.second) }
+        }
+    }
+
+    /**
+     * Adds a new page at the end of the binder and moves these cards into its first
+     * pockets, in order. [onCreated] gets the new page's ID.
+     */
+    fun movePocketsToNewPage(binder: Binder, pockets: List<Pair<String, Int>>, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            val last = pageDao.pagesOf(binder.id).maxOfOrNull { it.createdAt } ?: 0L
+            val page = Page(binderId = binder.id, photoPath = null, createdAt = maxOf(System.currentTimeMillis(), last + 1))
+            pageDao.createPage(page, binder.pocketsPerPage)
+            cloud.pagesAdded(binder.id, listOf(page))
+            pockets.forEachIndexed { i, (from, position) ->
+                swapExtras(from, position, page.id, i)
+                swapAndSync(from, position, page.id, i)
+            }
+            onCreated(page.id)
+        }
+    }
+
+    /**
+     * Puts pockets back the way they were (batch edit's Undo). Saved one after
+     * another in this order, so if a pocket is listed twice the last one wins.
+     */
+    fun restorePockets(pockets: List<Pocket>) {
+        viewModelScope.launch { pockets.forEach { savePocket(it) } }
+    }
+
     private suspend fun swapAndSync(pageA: String, positionA: Int, pageB: String, positionB: Int) {
         val changed = pageDao.swapPockets(pageA, positionA, pageB, positionB)
         changed.forEach { pocket -> pageDao.getPage(pocket.pageId)?.let { cloud.pocketChanged(it.binderId, pocket) } }
