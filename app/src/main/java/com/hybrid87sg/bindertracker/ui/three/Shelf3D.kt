@@ -883,7 +883,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
             plan.sent = true
             // Out of date: cards on the page changed since the picture was taken
             // (for example while the phone was folded the other way).
-            val outOfDate = item.look.sheet?.let { s -> plan.shot.look != null && plan.shot.look != PageLanding.lookOf(s) } ?: false
+            val outOfDate = item.look.sheet?.let { PageLanding.isOutOfDate(plan.shot, it) } ?: false
             listener.onOpen(item.look.id, item.look.sheet?.pageId, ((1f - t) * PAGE_MILLIS).toLong(), outOfDate)
         }
         if (plan.elapsed >= PAGE_MILLIS + HOLD_MILLIS) finishOpening()

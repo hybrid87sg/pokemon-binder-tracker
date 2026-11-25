@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.hybrid87sg.bindertracker.data.CardPictures
+import com.hybrid87sg.bindertracker.ui.three.PageLanding
 import com.hybrid87sg.bindertracker.ui.three.SheetLook
 import com.hybrid87sg.bindertracker.ui.three.SheetPocket
 import kotlinx.coroutines.flow.map
@@ -552,14 +553,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // The grey missing cards on this page, worked out just like the page screen does.
             val ghosts = if (b.followedSetIds.isEmpty()) emptyMap() else {
                 val entries = Checklist.entries(d.cards, b.followedSetIds, d.owned, b.countSecretRares)
-                Checklist.ghosts(entries, d.pockets).filterKeys { it.first == pageId }.mapKeys { it.key.second }
+                Checklist.ghosts(entries, d.pockets)
             }
-            SheetLook(
-                pageId = pageId,
+            fun sheet(id: String) = SheetLook(
+                pageId = id,
                 columns = b.columns,
                 rows = b.rows,
-                pockets = pockets.filter { it.pageId == pageId }.map { p ->
-                    val ghost = ghosts[p.position]
+                pockets = pockets.filter { it.pageId == id }.map { p ->
+                    val ghost = ghosts[id to p.position]
                     when {
                         ghost != null -> SheetPocket(p.position, SheetPocket.Kind.Missing, ghost.id, ghost.thumbnailUrl, CardPictures.backupUrl(ghost.id, large = false))
                         p.isEmpty -> SheetPocket(p.position, SheetPocket.Kind.Empty)
@@ -568,6 +569,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 },
             )
+            // The pockets are ordered by page creation time, as on the page screen.
+            val secondPageLook = pockets.firstOrNull { it.pageId != pageId }?.let { PageLanding.lookOf(sheet(it.pageId)) }
+            sheet(pageId).copy(secondPageLook = secondPageLook)
         }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
     fun pockets(pageId: String): Flow<List<PocketWithCard>> = pageDao.observePockets(pageId)

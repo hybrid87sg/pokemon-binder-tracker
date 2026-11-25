@@ -97,7 +97,7 @@ object PageLanding {
     // ---- A picture of the page ----
 
     /**
-     * A picture of a binder's first page exactly as the page screen draws it
+     * A picture of a binder's first page or spread exactly as the page screen draws it
      * (the cover round it, the rings, the cards and their names), and where on
      * the screen it was. The 3D binder is painted with it, so when it lands the
      * page screen can take over with nothing changing.
@@ -113,7 +113,10 @@ object PageLanding {
     fun lookOf(columns: Int, rows: Int, pockets: List<Pair<Int, String>>): Int =
         ("${columns}x$rows|" + pockets.sortedBy { it.first }.joinToString(";") { "${it.first}=${it.second}" }).hashCode()
 
-    /** The same fingerprint, for the first page the 3D shelf has. */
+    /** Combines the pages in display order; null means there is no right page. */
+    fun spreadLookOf(first: Int, second: Int?): Int = "spread:$first:$second".hashCode()
+
+    /** The same single-page fingerprint, for a page the 3D shelf has. */
     fun lookOf(sheet: SheetLook): Int = lookOf(
         sheet.columns, sheet.rows,
         sheet.pockets.map { p ->
@@ -125,6 +128,11 @@ object PageLanding {
             }
         },
     )
+
+    fun isOutOfDate(shot: Shot, sheet: SheetLook): Boolean = shot.look?.let { saved ->
+        val first = lookOf(sheet)
+        saved != if (shot.spread) spreadLookOf(first, sheet.secondPageLook) else first
+    } ?: false
 
     fun shotKey(binderId: String, screenWidthDp: Int, screenHeightDp: Int, dark: Boolean) = "$binderId@${screenWidthDp}x$screenHeightDp${if (dark) ":dark" else ""}"
 

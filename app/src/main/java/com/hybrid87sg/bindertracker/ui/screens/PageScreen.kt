@@ -355,12 +355,18 @@ fun PageScreen(
     val pageLook = pockets.map { Triple(it.cardId, it.isEmpty, it.position) }.hashCode()
     // (Also when the grey missing cards change: they're in the picture too.)
     val pageGhostLook = ghosts[pageId].orEmpty().mapValues { it.value.id }
+    fun fingerprint(pockets: List<PocketWithCard>, ghostIds: Map<Int, String>) =
+        com.hybrid87sg.bindertracker.ui.three.PageLanding.lookOf(columns, rows, pockets.map { p ->
+            p.position to (ghostIds[p.position]?.let { "g$it" } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
+        })
     // Unfolded, the picture shows page 2 as well: take a new one when it changes too.
-    val secondPageLook = if (open && pageId == pageIds.firstOrNull()) pageIds.getOrNull(1)?.let { id ->
-        (spreadPockets[id] ?: pageCards[id].orEmpty()).map { Triple(it.cardId, it.isEmpty, it.position) } to
-            ghosts[id].orEmpty().mapValues { it.value.id }
-    } else null
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, secondPageLook, filter.active) {
+    val secondPageId = if (open && pageId == pageIds.firstOrNull()) pageIds.getOrNull(1) else null
+    val secondPageLook = secondPageId?.let { id ->
+        (spreadPockets[id] ?: pageCards[id])?.takeIf { it.size == columns * rows }?.let {
+            fingerprint(it, ghosts[id].orEmpty().mapValues { ghost -> ghost.value.id })
+        }
+    }
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, secondPageId, secondPageLook, filter.active) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
         // Not while a filter is on: the page is dimmed or swapped for results. (Clearing it takes the picture.)
         if (filter.active) return@LaunchedEffect
@@ -390,17 +396,14 @@ fun PageScreen(
         )
         // The first page: keep a picture of the whole binder area for the 3D binder.
         if (landingBinderId != null && pageId == pageIds.firstOrNull()) {
+            if (secondPageId != null && secondPageLook == null) return@LaunchedEffect
             val area = shotRect ?: return@LaunchedEffect
             if (area.width < 1f || area.height < 1f) return@LaunchedEffect
             val picture = runCatching { shotLayer.toImageBitmap().asAndroidBitmap() }.getOrNull() ?: return@LaunchedEffect
             val key = com.hybrid87sg.bindertracker.ui.three.PageLanding.shotKey(landingBinderId, config.screenWidthDp, config.screenHeightDp, AppColors.isDark)
             // What's on the page in this picture, so the shelf can tell if it goes out of date.
-            val shotLook = com.hybrid87sg.bindertracker.ui.three.PageLanding.lookOf(
-                columns, rows,
-                landingPockets.map { p ->
-                    p.position to (pageGhostLook[p.position]?.let { "g$it" } ?: if (p.isEmpty) "E" else p.cardId ?: "-")
-                },
-            )
+            val firstPageLook = fingerprint(landingPockets, pageGhostLook)
+            val shotLook = if (open) com.hybrid87sg.bindertracker.ui.three.PageLanding.spreadLookOf(firstPageLook, secondPageLook) else firstPageLook
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val soft = if (picture.config == android.graphics.Bitmap.Config.HARDWARE) picture.copy(android.graphics.Bitmap.Config.ARGB_8888, false) else picture
                 if (soft != null) {

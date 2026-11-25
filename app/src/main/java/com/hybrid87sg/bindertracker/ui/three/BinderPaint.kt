@@ -44,6 +44,8 @@ data class SheetLook(
     val landing: List<Float>? = null,
     /** The page's colour, the same as the page screen's (light or dark mode). */
     val surface: Int = 0xFFF8F8FB.toInt(),
+    /** Content of the right page if the binder is shown unfolded. */
+    val secondPageLook: Int? = null,
 )
 
 /**
