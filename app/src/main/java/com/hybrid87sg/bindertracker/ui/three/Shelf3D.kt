@@ -43,6 +43,7 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import com.hybrid87sg.bindertracker.data.OfflineArt
 import com.hybrid87sg.bindertracker.data.OwnPhotos
 import com.hybrid87sg.bindertracker.data.ShelfLook
+import com.hybrid87sg.bindertracker.data.ShelfWood
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -71,10 +72,14 @@ object Engine3D {
 /** Finished 3D binder files, so coming back to the shelf doesn't paint them again. */
 private object GlbCache {
     val binders = LruCache<BinderLook3D, ByteArray>(24)
+    /** The wooden shelf for a layout, wood and set of name plates. */
+    val units = LruCache<UnitKey, ByteArray>(4)
 }
 
+private data class UnitKey(val count: Int, val angle: Int, val right: Boolean, val wood: ShelfWood, val plates: List<ShelfPlate>, val paper: Color)
+
 /** The colours of the room around the binders (they follow light and dark mode). */
-data class ShelfColors(val wood: Color, val panel: Color, val paper: Color)
+data class ShelfColors(val paper: Color, val dark: Boolean = false)
 
 /**
  * The My binders shelf with real 3D binders.
@@ -97,6 +102,11 @@ fun Shelf3D(
     modifier: Modifier = Modifier,
     // Where the screen's title ends, in window pixels: binders stay below it.
     headerBottom: Float = 0f,
+    // The name plate under each binder (same order as [binders]).
+    plates: List<ShelfPlate> = emptyList(),
+    // Room the Edit shelf sheet takes at the bottom / right, in pixels: the shelf fits in the rest.
+    bottomInset: Float = 0f,
+    rightInset: Float = 0f,
 ) {
     val context = LocalContext.current
     val open by rememberUpdatedState(onOpen)
@@ -119,6 +129,9 @@ fun Shelf3D(
     val dark = com.hybrid87sg.bindertracker.ui.theme.AppColors.isDark
     SideEffect {
         stage.headerBottom = headerBottom
+        stage.setInsets(bottomInset, rightInset)
+        // Strips, brightness and on/off change the lights straight away, without rebuilding anything.
+        stage.setLights(look, colors.dark)
         // The picture each binder's first page left of itself, for this screen size
         // and fold state (see PageLanding). Read again whenever the phone is folded
         // or unfolded, so the opening always matches how the page screen will look.
@@ -126,20 +139,37 @@ fun Shelf3D(
         stage.spread = PageLanding.isSpread(w, h)
         stage.shotFor = { id -> PageLanding.shotNear(context, id, w, h, dark) }
     }
-    LaunchedEffect(binders, look, colors) {
+    // Where everything stands. Only changes when binders come or go, or they're turned.
+    val layout = remember(binders.size, look.angle, look.coversOnRight) { ShelfLayout(binders.size, look.angle, look.coversOnRight) }
+    LaunchedEffect(binders, layout, look.wood, plates, colors.paper) {
         // Paint and build each binder away from the main thread, then show them.
         // First with only the card pictures already on the phone, so the shelf
         // appears straight away; then again for any page still missing a picture,
         // this time fetching it from the internet.
+        val key = UnitKey(binders.size, look.angle, look.coversOnRight, look.wood, plates, colors.paper)
+        val unit = withContext(Dispatchers.Default) {
+            GlbCache.units.get(key) ?: ShelfUnit.unit(layout, look.wood, plates, linear(colors.paper, 0f)).also { GlbCache.units.put(key, it) }
+        }
         val first = withContext(Dispatchers.Default) { binders.map { b -> build(context, b, online = false) } }
-        stage.show(first.map { it.first to it.second }, look, colors)
+        stage.show(first.map { it.first to it.second }, layout, unit, colors.paper)
         if (first.all { it.third }) return@LaunchedEffect
         val second = withContext(Dispatchers.Default) {
             first.map { (b, glb, complete) -> if (complete) b to glb else build(context, b, online = true).let { it.first to it.second } }
         }
-        stage.show(second, look, colors)
+        stage.show(second, layout, unit, colors.paper)
+    }
+    // The LED strips: rebuilt (quickly) when the colours change, e.g. while you drag on the colour ring.
+    LaunchedEffect(layout, look.led) {
+        val leds = withContext(Dispatchers.Default) { ShelfUnit.leds(layout, look.led) }
+        stage.showLeds(layout, leds, look.led)
     }
     AndroidView(factory = { stage.container }, modifier = modifier)
+}
+
+/** A colour as the 3D engine wants it (linear), with see-through [alpha]. */
+private fun linear(c: Color, alpha: Float): FloatArray {
+    val f = { v: Float -> if (v <= 0.04045f) v / 12.92f else ((v + 0.055f) / 1.055f).pow(2.4f) }
+    return floatArrayOf(f(c.red), f(c.green), f(c.blue), alpha)
 }
 
 /**
@@ -370,25 +400,190 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
 
     // ---- Showing the binders ----
 
-    fun show(built: List<Pair<BinderLook3D, ByteArray>>, look: ShelfLook, colors: ShelfColors) {
+    fun show(built: List<Pair<BinderLook3D, ByteArray>>, l: ShelfLayout, unit: ByteArray, paper: Color) {
         if (destroyed || opening != null) return
         // Keep binders that haven't changed, swap the rest.
         val old = items.associateBy { it.look }
         val next = built.mapNotNull { (b, glb) -> old[b]?.takeIf { it.glb === glb } ?: load(b, glb) }
         items.filter { it !in next }.forEach { remove(it.asset) }
         items = next
-        val l = ShelfLayout(items.size, look.angle, look.coversOnRight)
+        val moved = layout !== l
         layout = l
-        items.forEachIndexed { i, it -> it.spot = l.spots[i].position }
-        shelfAsset?.let { remove(it) }
-        shelfAsset = loadAsset(shelfGlb(l, colors))?.also { a ->
-            dim = a.getFirstEntityByName("dim")
-            setDim(0f, colors.paper)
+        items.forEachIndexed { i, it -> if (i < l.spots.size) it.spot = l.spots[i].position }
+        // The wooden shelf (only reloaded when it changed).
+        if (unit !== unitGlb) {
+            shelfAsset?.let { remove(it) }
+            shelfAsset = loadAsset(unit)?.also { a -> dim = a.getFirstEntityByName("dim") }
+            unitGlb = unit
         }
-        dimColor = colors.paper
-        fit()
+        dimColor = paper
+        setDim(0f, paper)
+        // (The binders move to their new places on the next frame, as dirty is set.)
+        if (moved) fit()
+        loadLeds()
         dirty = true
     }
+
+    private var unitGlb: ByteArray? = null
+
+    // ---- The LED strips and their light ----
+
+    /** One cubby's strips and lights, and how far its lights are on (0 to 1). */
+    private class Bay(val row: Int, val back: List<Pair<Int, Float>>, val front: List<Pair<Int, Float>>) {
+        var stripB = 0
+        var stripF = 0
+        var glow = 0
+        var level = 0f
+        var onAt = 0L
+    }
+
+    private var bays = listOf<Bay>()
+    private var ledAsset: FilamentAsset? = null
+    private var ledFor: ShelfLayout? = null
+    private var ledGlb: ByteArray? = null
+    private var ledColours: List<com.hybrid87sg.bindertracker.data.LedColour> = emptyList()
+    private var lightLook = ShelfLook()
+    private var dark = false
+    private var introduced = false
+    private var lightsChanged = true
+
+    /** New LED strips (new colours, or a new layout). */
+    fun showLeds(l: ShelfLayout, glb: ByteArray, colours: List<com.hybrid87sg.bindertracker.data.LedColour>) {
+        if (destroyed) return
+        ledFor = l; ledGlb = glb; ledColours = colours
+        if (opening == null) loadLeds()
+    }
+
+    /** Puts the LED strips in once they were built for the layout on show. */
+    private fun loadLeds() {
+        val l = layout ?: return
+        val glb = ledGlb ?: return
+        if (ledFor !== l) return
+        ledAsset?.let { remove(it) }
+        ledAsset = loadAsset(glb, shadows = false)
+        ledGlb = null
+        // The real lights: three along each strip, coloured like the strip at that spot.
+        val keep = bays.associateBy { it.row }
+        if (lightsAt !== l) {
+            clearLights()
+            bays = l.bays.map { b ->
+                val old = keep[b.row]
+                Bay(
+                    b.row,
+                    b.backLights(LIGHTS_PER_STRIP).mapIndexed { k, p -> pointLight(p, BACK_FALLOFF) to (k + 0.5f) / LIGHTS_PER_STRIP },
+                    b.frontLights(LIGHTS_PER_STRIP).mapIndexed { k, p -> pointLight(p, FRONT_FALLOFF) to (k + 0.5f) / LIGHTS_PER_STRIP },
+                ).also { nb ->
+                    // Already lit cubbies stay lit; the first time, they come on one after another.
+                    nb.level = old?.level ?: if (introduced && lightLook.lit) 1f else 0f
+                    nb.onAt = old?.onAt ?: (System.nanoTime() + if (introduced || !animate()) 0L else (300L + b.row * 260L) * 1_000_000L)
+                }
+            }
+            lightsAt = l
+        }
+        introduced = true
+        val a = ledAsset
+        val lm = engine.lightManager
+        for (b in bays) {
+            if (a != null) {
+                b.stripB = a.getFirstEntityByName("strip_b_${b.row}")
+                b.stripF = a.getFirstEntityByName("strip_f_${b.row}")
+                b.glow = a.getFirstEntityByName("glow_${b.row}")
+            }
+            for ((e, t) in b.back + b.front) {
+                val c = Led.linear(Led.at(ledColours, t))
+                lm.setColor(lm.getInstance(e), c[0], c[1], c[2])
+            }
+        }
+        lightsChanged = true
+        dirty = true
+    }
+
+    private var lightsAt: ShelfLayout? = null
+
+    private fun pointLight(p: Vec3, falloff: Float): Int {
+        val e = EntityManager.get().create()
+        LightManager.Builder(LightManager.Type.POINT)
+            .color(1f, 1f, 1f).intensity(0f).falloff(falloff).position(p.x, p.y, p.z)
+            .castShadows(false)
+            .build(engine, e)
+        scene.addEntity(e)
+        return e
+    }
+
+    private fun clearLights() {
+        for (b in bays) for ((e, _) in b.back + b.front) {
+            scene.remove(e)
+            engine.destroyEntity(e)
+            EntityManager.get().destroy(e)
+        }
+        bays = emptyList()
+    }
+
+    /** Which strips, how bright, on or off, and light or dark mode. */
+    fun setLights(look: ShelfLook, dark: Boolean) {
+        val was = lightLook
+        if (was.strips == look.strips && was.brightness == look.brightness && was.lightsOn == look.lightsOn && this.dark == dark) return
+        val turnedOn = look.lit && !was.lit
+        lightLook = look
+        if (this.dark != dark) {
+            this.dark = dark
+            // In dark mode the room is dimmer, so the LEDs stand out more.
+            val lm = engine.lightManager
+            lm.setIntensity(lm.getInstance(sun), if (dark) 0.9f else 2.3f)
+            lm.setIntensity(lm.getInstance(fill), if (dark) 0.3f else 0.6f)
+            ambient.intensity = if (dark) 0.45f else 1f
+        }
+        // Switched on: the cubbies light up one after another, top first.
+        if (turnedOn && introduced) {
+            val now = System.nanoTime()
+            bays.forEach { it.onAt = now + if (animate()) it.row * 260L * 1_000_000L else 0L }
+        }
+        lightsChanged = true
+        dirty = true
+    }
+
+    /** Moves the lights a step towards on or off. True while they're still changing. */
+    private fun stepLights(now: Long, dt: Float): Boolean {
+        if (bays.isEmpty()) return false
+        val look = lightLook
+        val br = 0.3f + look.brightness / 100f
+        val rm = engine.renderableManager
+        val lm = engine.lightManager
+        var moving = false
+        for (b in bays) {
+            val want = if (look.lit && now >= b.onAt) 1f else 0f
+            if (b.level != want) {
+                val k = 1f - (1f - if (want > 0f) 0.06f else 0.12f).pow(dt * 60f)
+                b.level += (want - b.level) * k
+                if (kotlin.math.abs(want - b.level) < 0.004f) b.level = want
+                moving = true
+            } else if (!lightsChanged) continue
+            // A little flicker as each strip comes on.
+            val flick = if (want > 0f && b.level < 0.5f) (sin(now / 23e6f + b.row) * 0.5f + 0.5f) * 0.4f + 0.6f else 1f
+            val v = b.level * flick
+            val strip = max(0.12f, v * 2.2f * br)
+            fun tint(e: Int, r: Float, g: Float, bl: Float, a: Float, show: Boolean) {
+                if (e == 0) return
+                val inst = rm.getInstance(e)
+                if (inst == 0) return
+                rm.getMaterialInstanceAt(inst, 0).setParameter("baseColorFactor", Colors.RgbaType.LINEAR, r, g, bl, a)
+                rm.setLayerMask(inst, 0xff, if (show) 0xff else 0)
+            }
+            tint(b.stripB, strip, strip, strip, 1f, look.strips.back)
+            tint(b.stripF, strip, strip, strip, 1f, look.strips.front)
+            val glow = min(1f, v * (if (dark) 0.85f else 0.95f) * br)
+            tint(b.glow, 1f, 1f, 1f, glow, look.strips.back && glow > 0.003f)
+            val backLm = if (look.strips.back) v * br * (if (dark) BACK_LUMENS * 1.2f else BACK_LUMENS) else 0f
+            val frontLm = if (look.strips.front) v * br * (if (dark) FRONT_LUMENS * 1.2f else FRONT_LUMENS) else 0f
+            for ((e, _) in b.back) lm.setIntensity(lm.getInstance(e), backLm)
+            for ((e, _) in b.front) lm.setIntensity(lm.getInstance(e), frontLm)
+        }
+        lightsChanged = false
+        return moving
+    }
+
+    /** False when the phone's animations are switched off (then lights just come on). */
+    private fun animate() = android.animation.ValueAnimator.areAnimatorsEnabled()
 
     private var dimColor = Color.White
 
@@ -397,7 +592,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         return Item(b, glb, asset, asset.getFirstEntityByName("hinge"))
     }
 
-    private fun loadAsset(glb: ByteArray): FilamentAsset? {
+    private fun loadAsset(glb: ByteArray, shadows: Boolean = true): FilamentAsset? {
         val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
         buffer.flip()
         val asset = loader.createAsset(buffer) ?: return null
@@ -406,8 +601,8 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val rm = engine.renderableManager
         for (e in asset.renderableEntities) {
             val i = rm.getInstance(e)
-            rm.setCastShadows(i, true)
-            rm.setReceiveShadows(i, true)
+            rm.setCastShadows(i, shadows)
+            rm.setReceiveShadows(i, shadows)
         }
         scene.addEntities(asset.entities)
         return asset
@@ -417,25 +612,6 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         scene.removeEntities(asset.entities)
         frontScene.removeEntities(asset.entities)
         loader.destroyAsset(asset)
-    }
-
-    /** The planks, the back of each shelf, and a see-through sheet used to fade the room. */
-    private fun shelfGlb(l: ShelfLayout, colors: ShelfColors): ByteArray {
-        val g = Glb()
-        fun lin(c: Color, a: Float = 1f): FloatArray {
-            val f = { v: Float -> if (v <= 0.04045f) v / 12.92f else ((v + 0.055f) / 1.055f).pow(2.4f) }
-            return floatArrayOf(f(c.red), f(c.green), f(c.blue), a)
-        }
-        val wood = g.material(Glb.Material("wood", lin(colors.wood), roughness = 0.55f))
-        val panel = g.material(Glb.Material("panel", lin(colors.panel), roughness = 0.95f))
-        val fade = g.material(Glb.Material("dim", lin(colors.paper, 0f), unlitBlend = true))
-        val pw = Glb.Part(wood); val pp = Glb.Part(panel); val pd = Glb.Part(fade)
-        l.planks.forEach { Shapes.box(pw, it.size, Shapes.at(it.centre)) }
-        l.panels.forEach { Shapes.box(pp, it.size, Shapes.at(it.centre)) }
-        Shapes.plane(pd, 2f, 2f, Shapes.at(Vec3(0f, 0f, 0f)))
-        val shelf = g.node(Glb.Node("shelf", listOf(pw, pp)))
-        val d = g.node(Glb.Node("dim", listOf(pd)))
-        return g.write(listOf(shelf, d))
     }
 
     private fun setDim(alpha: Float, color: Color) {
@@ -460,12 +636,13 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val tanH = kotlin.math.tan(Math.toRadians(fovY / 2.0)).toFloat()
         val margin = 12f * textureView.resources.displayMetrics.density
         val inset = topInset()
-        val tw = width - 2 * margin
-        val th = height - inset - 2 * margin
+        val tw = width - rightInset - 2 * margin
+        val th = height - inset - bottomInset - 2 * margin
         var cx = (l.min.x + l.max.x) / 2f
         var cy = (l.min.y + l.max.y) / 2f
         var d = (l.max.x - l.min.x) / (2f * tanH * aspect) * 1.1f
-        val oneRowHigh = l.spots.isNotEmpty() && l.panels.size <= 2
+        // Fit the whole shelf when it's short, or while Edit shelf is open (so every change shows).
+        val oneRowHigh = l.spots.isNotEmpty() && (l.rows <= 2 || bottomInset > 0f || rightInset > 0f)
         repeat(6) {
             val cam = Cam(Vec3(cx, cy + 0.12f * d, d), Vec3(cx, cy, 0f), fovY, aspect)
             var lft = Float.MAX_VALUE; var rgt = -Float.MAX_VALUE; var top = Float.MAX_VALUE; var bot = -Float.MAX_VALUE
@@ -475,9 +652,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
             }
             val scale = if (oneRowHigh) max((rgt - lft) / tw, (bot - top) / th) else (rgt - lft) / tw
             val k = d * 2f * tanH / height
-            cx -= (width / 2f - (lft + rgt) / 2f) * k
+            cx -= ((width - rightInset) / 2f - (lft + rgt) / 2f) * k
             // Top aligned when it's tall (you can drag to see more), centred when it fits.
-            val wantTop = inset + if ((bot - top) / scale <= th) (height - inset - (bot - top) / scale) / 2f else margin
+            val wantTop = inset + if ((bot - top) / scale <= th) (height - inset - bottomInset - (bot - top) / scale) / 2f else margin
             cy += (wantTop - top) * k
             d *= scale
         }
@@ -487,9 +664,38 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         val cam = fitCam!!
         var bot = -Float.MAX_VALUE
         for (p in pts) bot = max(bot, cam.project(p).second * height)
-        panMax = max(0f, (bot - (height - margin)) * worldPerPx)
+        panMax = max(0f, (bot - (height - bottomInset - margin)) * worldPerPx)
         pan = pan.coerceIn(0f, panMax)
-        placeCamera(currentCam())
+        if (easeFrom == null) placeCamera(currentCam())
+    }
+
+    // ---- Making room for Edit shelf ----
+
+    private var bottomInset = 0f
+    private var rightInset = 0f
+    /** Where the camera was when the room changed: it glides from there to the new fit. */
+    private var easeFrom: Cam? = null
+    private var easeStart = 0L
+    private var shownCam: Cam? = null
+
+    fun setInsets(bottom: Float, right: Float) {
+        if (bottom == bottomInset && right == rightInset) return
+        bottomInset = bottom; rightInset = right
+        if (opening != null) return
+        easeFrom = if (animate()) shownCam else null
+        easeStart = System.nanoTime()
+        fit()
+        dirty = true
+    }
+
+    private fun stepEase(now: Long) {
+        val from = easeFrom ?: return
+        val t = ((now - easeStart) / 1e6f / EASE_MILLIS).coerceIn(0f, 1f)
+        val e = ease(t)
+        val to = currentCam()
+        placeCamera(Cam(mix(from.eye, to.eye, e), mix(from.target, to.target, e), fovY, to.aspect))
+        if (t >= 1f) easeFrom = null
+        dirty = true
     }
 
     private fun currentCam(): Cam {
@@ -498,6 +704,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
     }
 
     private fun placeCamera(c: Cam) {
+        shownCam = c
         camera.lookAt(c.eye.x.toDouble(), c.eye.y.toDouble(), c.eye.z.toDouble(), c.target.x.toDouble(), c.target.y.toDouble(), c.target.z.toDouble(), 0.0, 1.0, 0.0)
     }
 
@@ -680,6 +887,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         opening = null
         setDim(0f, dimColor)
         placeCamera(currentCam())
+        loadLeds()
         clipTo(topInset())
         listener.onOpening(0f)
         frontClear = true
@@ -925,6 +1133,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         textureView.alpha = 1f
         opening = null
         placeCamera(currentCam())
+        loadLeds()
         clipTo(topInset())
         listener.onOpening(0f)
         frontClear = true
@@ -992,6 +1201,7 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
                 stepOpening(now)
                 dirty = true
             } else if (l != null) {
+                stepEase(now)
                 // Binders you press lift out of the shelf a little.
                 for (it in items) {
                     if (it.lift != it.liftTarget || dirty) {
@@ -1003,6 +1213,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
                     }
                 }
             }
+            // The LED strips coming on or going off.
+            val changed = lightsChanged
+            if (stepLights(now, dt) || changed) dirty = true
             // The opening binder, on its own surface in front (cleared once it's done).
             if (opening != null || frontClear) {
                 val front = frontChain
@@ -1071,6 +1284,9 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         items = emptyList()
         shelfAsset?.let { remove(it) }
         shelfAsset = null
+        ledAsset?.let { remove(it) }
+        ledAsset = null
+        clearLights()
         resources.destroy()
         landingResources.destroy()
         loader.destroy()
@@ -1100,6 +1316,14 @@ internal class ShelfStage(context: Context, private val listener: Listener) : Ui
         const val PAGE_MILLIS = 1800f
         /** How long the last picture stays while the page screen fades in. */
         const val HOLD_MILLIS = 1500f
+        /** How long the shelf takes to glide into the space Edit shelf leaves. */
+        const val EASE_MILLIS = 380f
+        // The light each LED strip throws: three lights along it, in lumens (tuned by eye).
+        const val LIGHTS_PER_STRIP = 3
+        const val BACK_LUMENS = 70f
+        const val FRONT_LUMENS = 50f
+        const val BACK_FALLOFF = 6f
+        const val FRONT_FALLOFF = 4.5f
         private fun seg(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
         private fun ease(t: Float) = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).pow(3) / 2f
         private fun out(t: Float) = 1f - (1f - t).pow(3)
