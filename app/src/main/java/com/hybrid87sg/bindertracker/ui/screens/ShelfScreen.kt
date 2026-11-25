@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -226,6 +227,12 @@ fun ShelfScreen(
                 // the shelf glides into the space that's left.
                 bottomInset = if (!wide && editing) with(density) { sheetHeight(screenH).toPx() } else 0f,
                 rightInset = if (wide && editing) with(density) { (SheetWidth + 24.dp).toPx() } else 0f,
+                // Always keep binders and their names clear of the floating tab bar (folded)
+                // and the phone's own navigation bar (folded and unfolded); scroll for the rest.
+                bottomClear = with(density) {
+                    val navBar = WindowInsets.navigationBars.getBottom(density).toFloat()
+                    kotlin.math.max(com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current.toPx(), navBar) + 12.dp.toPx()
+                },
                 onOpen = { id, pageId ->
                     binders.firstOrNull { it.id == id }?.let { b ->
                         if (pageId != null && onOpenPage != null) onOpenPage(b, pageId) else onOpenBinder(b)
@@ -263,7 +270,13 @@ fun ShelfScreen(
                 Eyebrow("Your collection", Modifier.weight(1f))
                 if (headerButtons.isNotEmpty()) IconButtonGroup(headerButtons)
             }
-            Text("My binders", style = MaterialTheme.typography.headlineLarge)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("My binders", style = MaterialTheme.typography.headlineLarge, maxLines = 1, modifier = Modifier.weight(1f))
+                // Spines / Covers, right under the Edit shelf button (only on the 3D shelf).
+                if (use3D && onLookChange != null) {
+                    ViewPill(view = look.view, onPick = { onLookChange(look.copy(view = it)) })
+                }
+            }
         }
 
         if (notice != null) {
@@ -371,16 +384,6 @@ fun ShelfScreen(
         }
         }
     }
-        // Spines / Covers, in the corner (only on the 3D shelf).
-        if (use3D && onLookChange != null) {
-            ViewPill(
-                view = look.view,
-                onPick = { onLookChange(look.copy(view = it)) },
-                modifier = Modifier.align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp + com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current)
-                    .graphicsLayer { alpha = (1f - opening * 2.2f).coerceIn(0f, 1f) * (1f - editIn) },
-            )
-        }
         // Edit shelf: a sheet over the bottom of the shelf, or a panel on the right when unfolded.
         if (onLookChange != null && (editing || editIn > 0.001f)) {
             val shape = if (wide) RoundedCornerShape(28.dp) else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
@@ -420,22 +423,22 @@ private fun ViewPill(view: com.hybrid87sg.bindertracker.data.ShelfView, onPick: 
     Surface(
         shape = RoundedCornerShape(percent = 50),
         color = AppColors.Surface,
-        shadowElevation = 6.dp,
+        shadowElevation = 3.dp,
         modifier = modifier,
     ) {
-        Row(Modifier.padding(4.dp)) {
+        Row(Modifier.padding(3.dp)) {
             for ((v, label) in listOf(com.hybrid87sg.bindertracker.data.ShelfView.Spine to "Spines", com.hybrid87sg.bindertracker.data.ShelfView.Cover to "Covers")) {
                 val picked = v == view
                 val press = remember { MutableInteractionSource() }
                 Box(
-                    Modifier.heightIn(min = 40.dp).pressSquish(press).clip(RoundedCornerShape(percent = 50))
+                    Modifier.heightIn(min = 36.dp).pressSquish(press).clip(RoundedCornerShape(percent = 50))
                         .background(if (picked) AppColors.Accent else Color.Transparent)
                         .clickable(interactionSource = press, indication = androidx.compose.material3.ripple()) { if (!picked) onPick(v) }
                         .semantics { selected = picked; role = androidx.compose.ui.semantics.Role.Tab; contentDescription = "Show binders by $label" }
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 13.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (picked) AppColors.White else AppColors.Muted)
+                    Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (picked) AppColors.White else AppColors.Muted)
                 }
             }
         }
