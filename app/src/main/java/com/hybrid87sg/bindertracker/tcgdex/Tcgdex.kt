@@ -163,6 +163,8 @@ object Tcgdex {
             illustrator = c.optString("illustrator").ifEmpty { null },
             prices = prices,
             moves = parseMoves(c),
+            category = c.optString("category").ifEmpty { null },
+            types = c.optJSONArray("types")?.let { t -> (0 until t.length()).mapNotNull { t.optString(it).ifEmpty { null } } }.orEmpty(),
         )
     }
 
@@ -210,6 +212,10 @@ data class CardDetails(
     val prices: List<MarketPrice>,
     // The names of its attacks and abilities (see [Tcgdex.parseMoves]).
     val moves: List<String> = emptyList(),
+    // "Pokemon", "Trainer" or "Energy" (null if TCGdex didn't say).
+    val category: String? = null,
+    // Its energy types, e.g. ["Fire"]. Trainers have none.
+    val types: List<String> = emptyList(),
 )
 
 /**
