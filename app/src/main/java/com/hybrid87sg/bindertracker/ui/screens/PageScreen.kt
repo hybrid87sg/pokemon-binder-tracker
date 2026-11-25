@@ -355,8 +355,10 @@ fun PageScreen(
     val pageLook = pockets.map { Triple(it.cardId, it.isEmpty, it.position) }.hashCode()
     // (Also when the grey missing cards change: they're in the picture too.)
     val pageGhostLook = ghosts[pageId].orEmpty().mapValues { it.value.id }
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook) {
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, filter.active) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
+        // Not while a filter is on: the page is dimmed or swapped for results. (Clearing it takes the picture.)
+        if (filter.active) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
         delay(1200)
         val count = columns * rows
