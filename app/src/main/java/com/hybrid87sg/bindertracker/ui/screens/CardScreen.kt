@@ -92,6 +92,7 @@ import com.hybrid87sg.bindertracker.ui.components.BackButton
 import com.hybrid87sg.bindertracker.ui.components.CardImage
 import com.hybrid87sg.bindertracker.ui.components.holoTilt
 import com.hybrid87sg.bindertracker.ui.components.isShinyRarity
+import com.hybrid87sg.bindertracker.ui.components.rememberPhoneTilt
 import com.hybrid87sg.bindertracker.ui.components.rememberTouchTilt
 import com.hybrid87sg.bindertracker.ui.components.touchTilt
 import com.hybrid87sg.bindertracker.ui.components.Motion
@@ -394,7 +395,7 @@ fun CardScreen(
             }
         }
     }
-    if (fullScreen) FullScreenCard(card, fitHeight = open) { fullScreen = false }
+    if (fullScreen) FullScreenCard(card, fitHeight = open, shiny = shiny) { fullScreen = false }
 }
 
 /** A round arrow button beside the card. Faded at the first or last card. */
@@ -560,7 +561,11 @@ private fun RateNote(prices: List<MarketPrice>, rates: SgdRates?) {
  * Back zooms out first, and ✕ always closes.
  */
 @Composable
-private fun FullScreenCard(card: Card, fitHeight: Boolean = false, onClose: () -> Unit) {
+private fun FullScreenCard(card: Card, fitHeight: Boolean = false, shiny: Boolean = false, onClose: () -> Unit) {
+    // Shiny cards: the holo rainbow and glare slide across the card as you
+    // tilt the phone. The card itself stays flat, so zooming, moving around
+    // and swiping down to close all work as before (and the shine works zoomed in).
+    val phoneTilt = rememberPhoneTilt(enabled = shiny)
     var scale by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var dragY by remember { mutableFloatStateOf(0f) }
@@ -673,7 +678,8 @@ private fun FullScreenCard(card: Card, fitHeight: Boolean = false, onClose: () -
                         scaleY = scale
                         translationX = pan.x
                         translationY = pan.y + dragY
-                    },
+                    }
+                    .then(if (shiny) Modifier.holoTilt(phoneTilt, maxDegrees = 0f, scale = 1f, shape = RoundedCornerShape(14.dp)) else Modifier),
                 corner = 14.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
