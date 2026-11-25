@@ -90,6 +90,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.hybrid87sg.bindertracker.ui.components.TonalButton
 
 /** Totals shown on the Account screen. */
 data class CollectionStats(val cards: Int, val pages: Int, val binders: Int)
@@ -138,33 +143,10 @@ fun AccountScreen(
 
     // ---- The sections, as blocks that can be stacked in one column (folded) or two (unfolded) ----
     val profile: @Composable () -> Unit = {
-        ProfileCard(user, stats)
+        ProfileCard(user, stats, syncActive, syncProblem)
     }
-    val account: @Composable () -> Unit = {
-        SettingsGroup(label = "Account") {
-            SettingsRow(
-                title = when {
-                    user.isLocalOnly -> "Saved on this phone only"
-                    syncActive -> "Saved to your Google account"
-                    else -> "Saved to this account on this phone"
-                },
-                subtitle = when {
-                    user.isLocalOnly -> "Sign in with Google to keep binders on every phone and share them"
-                    syncActive -> "Comes back on any phone you sign in on"
-                    else -> null
-                },
-                icon = R.drawable.ic_cloud,
-                below = if (!user.isLocalOnly && syncProblem != null) {
-                    { Text(syncProblem, style = MaterialTheme.typography.bodySmall, color = AppColors.Danger) }
-                } else null,
-            )
-            SettingsRow(
-                title = if (user.isLocalOnly) "Go to sign-in" else "Sign out",
-                icon = R.drawable.ic_logout,
-                onClick = onSignOut,
-            )
-        }
-    }
+    // Signing out asks first, so a stray tap can't do it.
+    var confirmSignOut by rememberSaveable { mutableStateOf(false) }
     val appearance: @Composable () -> Unit = {
         SettingsGroup(label = "Appearance") {
             Column(Modifier.fillMaxWidth().background(AppColors.Group).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -233,25 +215,118 @@ fun AccountScreen(
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Eyebrow("Trainer profile")
+                // Sign out sits up here, top right, well away from where thumbs usually tap.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { Eyebrow("Trainer profile") }
+                    if (user.isLocalOnly) SignInPill(onSignOut)
+                    else SignOutPill { confirmSignOut = true }
+                }
                 Text(if (showBack) "Account" else "Me", style = MaterialTheme.typography.headlineLarge)
             }
             if (unfolded) {
                 // Unfolded: two columns side by side.
                 Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { profile(); account(); versionRow() }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { profile(); versionRow() }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { appearance(); offline(); Column { backups() } }
                 }
             } else {
-                profile(); account(); appearance(); offline(); Column { backups() }; versionRow()
+                profile(); appearance(); offline(); Column { backups() }; versionRow()
             }
+        }
+    }
+
+    if (confirmSignOut) {
+        SignOutSheet(
+            onSignOut = { confirmSignOut = false; onSignOut() },
+            onStay = { confirmSignOut = false },
+        )
+    }
+}
+
+/** Top-right red "Sign out" pill. Soft red fill with a red edge, so it reads as a warning. */
+@Composable
+private fun SignOutPill(onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = press,
+        shape = AppShapes.Pill,
+        color = AppColors.Danger.copy(alpha = if (AppColors.isDark) 0.18f else 0.10f),
+        contentColor = AppColors.Danger,
+        border = BorderStroke(1.dp, AppColors.Danger.copy(alpha = 0.55f)),
+        modifier = Modifier.heightIn(min = 40.dp).pressSquish(press),
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_logout), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Sign out", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** When nobody is signed in, the same spot is an ordinary "Sign in" pill (nothing to warn about). */
+@Composable
+private fun SignInPill(onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = press,
+        shape = AppShapes.Pill,
+        color = AppColors.Tonal,
+        contentColor = AppColors.OnTonal,
+        modifier = Modifier.heightIn(min = 40.dp).pressSquish(press),
+    ) {
+        Text(
+            "Sign in",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+    }
+}
+
+/** "Sign out of this phone?" Asks before signing out. Tapping outside or "Stay signed in" cancels. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SignOutSheet(onSignOut: () -> Unit, onStay: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onStay, sheetState = sheetState, containerColor = AppColors.Surface) {
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).background(AppColors.Danger.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = AppColors.Danger, modifier = Modifier.size(24.dp))
+            }
+            Text("Sign out of this phone?", style = MaterialTheme.typography.titleLarge, color = AppColors.Ink)
+            Text(
+                "Your binders stay safe in your Google account and come back when you sign in again. " +
+                    "Shared binders stop updating on this phone until then.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.Muted,
+            )
+            Spacer(Modifier.height(4.dp))
+            val press = remember { MutableInteractionSource() }
+            androidx.compose.material3.Button(
+                onClick = onSignOut,
+                interactionSource = press,
+                shape = AppShapes.Pill,
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(52.dp).pressSquish(press),
+            ) {
+                Text("Sign out", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            TonalButton("Stay signed in", onStay)
         }
     }
 }
 
 /** The big rounded card at the top: your picture, name and collection totals. */
 @Composable
-private fun ProfileCard(user: AppUser, stats: CollectionStats?) {
+private fun ProfileCard(user: AppUser, stats: CollectionStats?, syncActive: Boolean, syncProblem: String?) {
     Column(
         Modifier.fillMaxWidth()
             .shadow(10.dp, AppShapes.Large, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
@@ -288,12 +363,53 @@ private fun ProfileCard(user: AppUser, stats: CollectionStats?) {
                 }
             }
         }
+        SyncStrip(user, syncActive, syncProblem)
         stats?.let { st ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatTile("${countUp(st.cards, 200)}", if (st.cards == 1) "card" else "cards", Modifier.weight(1f))
                 StatTile("${countUp(st.pages, 200)}", if (st.pages == 1) "page" else "pages", Modifier.weight(1f))
                 StatTile("${countUp(st.binders, 200)}", if (st.binders == 1) "binder" else "binders", Modifier.weight(1f))
             }
+        }
+    }
+}
+
+/**
+ * Where your binders are kept, shown inside the profile card under the email.
+ * Turns red with the reason if syncing has a problem.
+ */
+@Composable
+private fun SyncStrip(user: AppUser, syncActive: Boolean, syncProblem: String?) {
+    val problem = !user.isLocalOnly && syncProblem != null
+    val tint = if (problem) AppColors.Danger else AppColors.OnTonal
+    Row(
+        Modifier.fillMaxWidth().clip(AppShapes.Medium)
+            .background(if (problem) AppColors.Danger.copy(alpha = 0.14f) else AppColors.Tonal)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_cloud), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                when {
+                    user.isLocalOnly -> "Saved on this phone only"
+                    problem -> "Couldn't save to your Google account"
+                    syncActive -> "Saved to your Google account"
+                    else -> "Saved to this account on this phone"
+                },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (problem) AppColors.Danger else AppColors.Ink,
+            )
+            val sub = when {
+                user.isLocalOnly -> "Sign in with Google to keep binders on every phone and share them"
+                problem -> syncProblem
+                syncActive -> "Comes back on any phone you sign in on"
+                else -> null
+            }
+            sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (problem) AppColors.Danger else AppColors.Muted) }
         }
     }
 }
