@@ -391,26 +391,26 @@ internal fun BatchActionBar(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BatchActionButton(
                 title = "Mark empty",
-                detail = if (tickedPockets > 0) "$tickedPockets pocket${if (tickedPockets == 1) "" else "s"}" else "Pick pockets first",
+                count = tickedPockets,
                 enabled = canMarkEmpty,
                 onClick = onMarkEmpty,
                 modifier = Modifier.weight(1f),
-            ) { CardBack(Modifier.width(15.dp).aspectRatio(CARD_ASPECT).clip(RoundedCornerShape(2.dp))) }
+            ) { CardBack(Modifier.width(11.dp).aspectRatio(CARD_ASPECT).clip(RoundedCornerShape(2.dp))) }
             BatchActionButton(
                 title = "Move to page",
-                detail = if (tickedCards > 0) "$tickedCards card${if (tickedCards == 1) "" else "s"}" else "Pick cards first",
+                count = tickedCards,
                 enabled = tickedCards > 0,
                 onClick = onMove,
                 modifier = Modifier.weight(1f),
-            ) { Icon(painterResource(R.drawable.ic_move), contentDescription = null, modifier = Modifier.size(22.dp)) }
+            ) { Icon(painterResource(R.drawable.ic_move), contentDescription = null, modifier = Modifier.size(16.dp)) }
         }
         Text(
             "Delete page",
             color = AppColors.Danger,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onDeletePage)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onDeletePage)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
 }
@@ -418,29 +418,30 @@ internal fun BatchActionBar(
 @Composable
 private fun BatchActionButton(
     title: String,
-    detail: String,
+    count: Int,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier,
     icon: @Composable () -> Unit,
 ) {
+    // A slim pill: small icon, the action, and how many are picked (if any).
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(50),
         color = AppColors.Surface,
         contentColor = AppColors.Ink,
         border = BorderStroke(1.dp, AppColors.BorderStrong),
-        modifier = modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f },
+        modifier = modifier.height(40.dp).graphicsLayer { alpha = if (enabled) 1f else 0.45f },
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.height(24.dp), contentAlignment = Alignment.Center) { icon() }
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = AppColors.Ink)
-            Text(detail, fontSize = 11.sp, color = AppColors.Muted, maxLines = 1)
+            Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) { icon() }
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AppColors.Ink, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
+            if (count > 0) Text(" · $count", fontSize = 13.sp, color = AppColors.Muted, maxLines = 1)
         }
     }
 }

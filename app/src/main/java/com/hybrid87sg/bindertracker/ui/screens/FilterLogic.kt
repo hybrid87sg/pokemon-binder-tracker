@@ -40,6 +40,8 @@ object FilterLogic {
         val rarity: String,
         val setName: String,
         val owned: Boolean,
+        // Its small picture (for the gathered results pages).
+        val thumb: String? = null,
     )
 
     /** What's ticked. Saved as a short list of words so it survives the phone unfolding. */
