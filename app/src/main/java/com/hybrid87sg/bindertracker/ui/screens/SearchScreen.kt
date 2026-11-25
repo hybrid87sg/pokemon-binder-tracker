@@ -184,10 +184,14 @@ fun SearchScreen(
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
+    val barShown = com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current > 0.dp
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().imePadding()) {
-        if (showBack) Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton(backLabel, onBack) }
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = if (showBack) 8.dp else 32.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = if (showBack) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge)
+        if (showBack) Box(Modifier.padding(start = 12.dp, top = 12.dp)) { BackButton(backLabel, onBack) }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = if (showBack) 8.dp else 28.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (!showBack) com.hybrid87sg.bindertracker.ui.components.Eyebrow("Find any card")
+                Text(title, style = if (showBack) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge)
+            }
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
@@ -195,11 +199,13 @@ fun SearchScreen(
                 placeholder = { Text("e.g. Pikachu or 025/165") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                shape = RoundedCornerShape(12.dp),
+                // A rounded search pill with a magnifying glass (2026 refresh).
+                shape = RoundedCornerShape(28.dp),
+                leadingIcon = { com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_search, AppColors.Muted, size = 22.dp) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = AppColors.Surface,
+                    unfocusedContainerColor = AppColors.Group,
                     focusedContainerColor = AppColors.Surface,
-                    unfocusedBorderColor = AppColors.BorderStrong,
+                    unfocusedBorderColor = AppColors.Border,
                 ),
                 trailingIcon = if (searching) {
                     { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
@@ -214,7 +220,7 @@ fun SearchScreen(
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp + com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             when {
@@ -257,9 +263,11 @@ fun SearchScreen(
                     items(others, key = { it.id }) { card -> CardRow(card) { onCardClick(card) } }
                 }
             }
+            if (status.count > 0 && barShown) item(key = "footer") { IndexFooter(status, onRefreshIndex, inline = true) }
         }
 
-        if (status.count > 0) IndexFooter(status, onRefreshIndex)
+        // With the floating tab bar, the footer goes at the end of the list instead (so the bar doesn't cover it).
+        if (status.count > 0 && !barShown) IndexFooter(status, onRefreshIndex)
     }
 }
 
@@ -292,9 +300,9 @@ private fun ExpansionFilter(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
             onClick = { open = true },
-            shape = RoundedCornerShape(12.dp),
-            color = if (filtered) AppColors.Surface2 else AppColors.Surface,
-            border = BorderStroke(if (filtered) 1.5.dp else 1.dp, if (filtered) AppColors.AccentText else AppColors.BorderStrong),
+            shape = RoundedCornerShape(percent = 50),
+            color = if (filtered) AppColors.Tonal else AppColors.Group,
+            border = if (filtered) BorderStroke(1.5.dp, AppColors.AccentText) else null,
             modifier = Modifier.weight(1f).height(48.dp),
         ) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -307,18 +315,17 @@ private fun ExpansionFilter(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text("▾", color = if (filtered) AppColors.AccentText else AppColors.Ink)
+                com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_expand_more, if (filtered) AppColors.AccentText else AppColors.Ink)
             }
         }
         if (filtered) {
             Surface(
                 onClick = { onChange("", "") },
-                shape = RoundedCornerShape(12.dp),
-                color = AppColors.Surface,
-                border = BorderStroke(1.dp, AppColors.BorderStrong),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = AppColors.Group,
                 modifier = Modifier.size(48.dp).semantics { contentDescription = "Clear expansion filter" },
             ) {
-                Box(contentAlignment = Alignment.Center) { Text("✕", color = AppColors.Ink) }
+                Box(contentAlignment = Alignment.Center) { com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_close, AppColors.Ink) }
             }
         }
     }
@@ -371,11 +378,13 @@ fun ExpansionPicker(
                 label = { Text("Find an expansion") },
                 placeholder = { Text("e.g. Paldea") },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                // A rounded search pill with a magnifying glass (2026 refresh).
+                shape = RoundedCornerShape(28.dp),
+                leadingIcon = { com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_search, AppColors.Muted, size = 22.dp) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = AppColors.Surface,
+                    unfocusedContainerColor = AppColors.Group,
                     focusedContainerColor = AppColors.Surface,
-                    unfocusedBorderColor = AppColors.BorderStrong,
+                    unfocusedBorderColor = AppColors.Border,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -460,7 +469,7 @@ private fun PickerRow(name: String, selected: Boolean, bold: Boolean = false, on
                 color = if (selected) AppColors.AccentText else AppColors.Ink,
                 modifier = Modifier.weight(1f),
             )
-            if (selected) Text("✓", color = AppColors.AccentText)
+            if (selected) com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_check, AppColors.AccentText)
         }
     }
 }
@@ -482,9 +491,8 @@ private fun SectionLabel(text: String) {
 private fun CardRow(card: Card, place: String? = null, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = AppColors.Surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
+        shape = RoundedCornerShape(20.dp),
+        color = AppColors.Group,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -534,11 +542,12 @@ private fun IndexEmptyState(status: IndexStatus, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun IndexFooter(status: IndexStatus, onRefresh: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(AppColors.Paper)) {
-        HorizontalDivider(color = AppColors.Border)
+private fun IndexFooter(status: IndexStatus, onRefresh: () -> Unit, inline: Boolean = false) {
+    Column(Modifier.fillMaxWidth().then(if (inline) Modifier.padding(top = 8.dp) else Modifier.background(AppColors.Paper))) {
+        if (!inline) HorizontalDivider(color = AppColors.Border)
         Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            Modifier.fillMaxWidth().then(if (inline) Modifier else Modifier.navigationBarsPadding())
+                .padding(start = if (inline) 6.dp else 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

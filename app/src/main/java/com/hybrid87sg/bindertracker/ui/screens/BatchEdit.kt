@@ -330,7 +330,7 @@ private fun UndoHistoryMenu(history: List<BatchStep>, pageNumberOf: (BatchStep) 
             history.withIndex().reversed().forEachIndexed { row, (index, step) ->
                 Surface(
                     onClick = { onPick(index) },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = AppColors.Surface,
                     border = BorderStroke(1.dp, AppColors.Border),
                 ) {
@@ -615,7 +615,7 @@ private fun PageTile(enabled: Boolean, onClick: () -> Unit, modifier: Modifier, 
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f },

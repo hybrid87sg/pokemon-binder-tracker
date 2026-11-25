@@ -43,25 +43,24 @@ fun Eyebrow(text: String, modifier: Modifier = Modifier) {
         text.uppercase(),
         modifier = modifier,
         color = AppColors.AccentText,
-        fontSize = 11.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = 1.6.sp,
+        letterSpacing = 1.4.sp,
     )
 }
 
 /** One small box with a big number and a label, e.g. "142 / cards". [foil] gives it the rainbow top. */
 @Composable
 fun StatTile(value: String, label: String, modifier: Modifier = Modifier, foil: Boolean = false) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
             .clip(shape)
-            .background(if (foil) AppColors.Surface2 else AppColors.Surface)
+            .background(AppColors.Surface2)
             .then(if (foil) Modifier.holoTopStripe() else Modifier)
-            .border(1.dp, AppColors.Border, shape)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(value, fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 21.sp, color = AppColors.Ink, maxLines = 1)
+        Text(value, fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = AppColors.Ink, maxLines = 1)
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AppColors.Muted, maxLines = 1)
     }
 }

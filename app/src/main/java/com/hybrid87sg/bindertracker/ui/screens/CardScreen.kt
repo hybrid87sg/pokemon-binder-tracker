@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -350,7 +351,7 @@ fun CardScreen(
     }
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().then(swipe)) {
-        Box(Modifier.padding(start = 8.dp, top = 12.dp)) { BackButton("Back", onBack) }
+        Box(Modifier.padding(start = 12.dp, top = 12.dp)) { BackButton("Back", onBack) }
         if (open) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 // Left half: the card, as big as fits, standing still while the details scroll.
@@ -402,13 +403,14 @@ fun CardScreen(
 @Composable
 private fun ArrowButton(label: String, forward: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.size(40.dp).graphicsLayer { alpha = if (enabled) 1f else 0.3f }
-            .clip(CircleShape).background(AppColors.Surface).border(1.dp, AppColors.Border, CircleShape)
+        modifier.size(44.dp).graphicsLayer { alpha = if (enabled) 1f else 0.3f }
+            .shadow(3.dp, CircleShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+            .clip(CircleShape).background(AppColors.Group)
             .clickable(enabled = enabled, onClickLabel = label, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (forward) "›" else "‹", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = AppColors.Ink, modifier = Modifier.padding(bottom = 3.dp))
+        com.hybrid87sg.bindertracker.ui.components.SmallIcon(if (forward) com.hybrid87sg.bindertracker.R.drawable.ic_chevron_right else com.hybrid87sg.bindertracker.R.drawable.ic_chevron_left, AppColors.Ink, size = 24.dp)
     }
 }
 
@@ -483,8 +485,8 @@ private fun CardInfo(
 /** Opened from Missing cards: is it in the binder, and if not, where it goes. */
 @Composable
 private fun MissingBox(status: MissingStatus, onPutIn: (Checklist.Spot) -> Unit, onScanInto: (Checklist.Spot) -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    val box = Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface2).border(1.dp, AppColors.Border, shape).padding(12.dp)
+    val shape = RoundedCornerShape(16.dp)
+    val box = Modifier.fillMaxWidth().clip(shape).background(AppColors.Group).padding(14.dp)
     val spot = status.spot
     when {
         status.owned -> Column(box, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -512,7 +514,7 @@ private fun MissingBox(status: MissingStatus, onPutIn: (Checklist.Spot) -> Unit,
                 OutlinedButton(
                     onClick = { onScanInto(spot) },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(percent = 50),
                     border = BorderStroke(1.dp, AppColors.BorderStrong),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                 ) { Text("Scan it in to check") }
@@ -548,7 +550,7 @@ private fun RateNote(prices: List<MarketPrice>, rates: SgdRates?) {
         text,
         style = MaterialTheme.typography.bodySmall,
         color = AppColors.Muted,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AppColors.Surface2).padding(12.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Surface2).padding(12.dp),
     )
 }
 
@@ -679,7 +681,7 @@ private fun FullScreenCard(card: Card, fitHeight: Boolean = false, shiny: Boolea
                         translationX = pan.x
                         translationY = pan.y + dragY
                     }
-                    .then(if (shiny) Modifier.holoTilt(phoneTilt, maxDegrees = 0f, scale = 1f, shape = RoundedCornerShape(14.dp)) else Modifier),
+                    .then(if (shiny) Modifier.holoTilt(phoneTilt, maxDegrees = 0f, scale = 1f, shape = RoundedCornerShape(16.dp)) else Modifier),
                 corner = 14.dp,
                 backupUrl = card.largeBackupUrl,
                 cardId = card.id,
@@ -690,7 +692,7 @@ private fun FullScreenCard(card: Card, fitHeight: Boolean = false, shiny: Boolea
                     .clickable(onClickLabel = "Close", onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("✕", color = Color.White, fontSize = 20.sp)
+                com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_close, Color.White, size = 22.dp)
             }
         }
     }
@@ -703,8 +705,8 @@ private const val DOUBLE_TAP_ZOOM = 2.5f
 
 @Composable
 private fun PriceTable(prices: List<MarketPrice>, rates: SgdRates?) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).border(1.dp, AppColors.Border, shape)) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(AppColors.Group)) {
         prices.groupBy { it.source }.entries.forEachIndexed { index, (source, rows) ->
             if (index > 0) HorizontalDivider(color = AppColors.Border)
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

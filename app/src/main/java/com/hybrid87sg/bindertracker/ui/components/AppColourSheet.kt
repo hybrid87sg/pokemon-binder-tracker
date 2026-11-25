@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -99,25 +100,30 @@ fun AppColourRow(modifier: Modifier = Modifier) {
     var open by rememberSaveable { mutableStateOf(false) }
     val colours = AppColourSetting.colours ?: listOf(AppColourMath.CLASSIC)
     val press = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(16.dp)
+    // A row in the Appearance settings group (see SettingsRow in Common.kt).
     Row(
         modifier
             .fillMaxWidth()
-            .pressSquish(press)
-            .clip(shape)
-            .background(AppColors.Surface)
-            .border(1.dp, AppColors.Border, shape)
+            .background(AppColors.Group)
             .clickable(interactionSource = press, indication = LocalIndication.current) { open = true }
-            .padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
+            .heightIn(min = 60.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ColourOrb(colours, Modifier.size(40.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(colours.joinToString(" + ") { AppColourMath.nameFor(it.hue) }, style = MaterialTheme.typography.titleMedium)
-            Text("App colours and glitter, on this phone only", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("App colour", style = MaterialTheme.typography.titleMedium)
+            Text(
+                colours.joinToString(" + ") { AppColourMath.nameFor(it.hue) } + " · colours and glitter, this phone only",
+                style = MaterialTheme.typography.bodySmall, color = AppColors.Muted,
+            )
         }
-        Text("›", fontSize = 26.sp, color = AppColors.Muted)
+        Spacer(Modifier.width(8.dp))
+        androidx.compose.material3.Icon(
+            androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_chevron_right),
+            contentDescription = null, tint = AppColors.Muted, modifier = Modifier.size(18.dp),
+        )
     }
     if (open) AppColourSheet(onClose = { open = false })
 }
@@ -240,7 +246,7 @@ fun AppColourSheet(onClose: () -> Unit) {
                     },
                     interactionSource = resetPress,
                     modifier = Modifier.weight(1f).height(52.dp).pressSquish(resetPress),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(percent = 50),
                     border = BorderStroke(2.dp, AppColors.Ink),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                 ) { Text("Reset", style = MaterialTheme.typography.labelLarge) }
@@ -252,7 +258,7 @@ fun AppColourSheet(onClose: () -> Unit) {
                     },
                     interactionSource = usePress,
                     modifier = Modifier.weight(1.4f).height(52.dp).pressSquish(usePress),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(percent = 50),
                     colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
                 ) { Text("Use colour", style = MaterialTheme.typography.labelLarge) }
             }
@@ -274,7 +280,7 @@ private fun ColourTabs(
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         colours.forEachIndexed { i, c ->
             val selected = i == active
-            val shape = RoundedCornerShape(12.dp)
+            val shape = RoundedCornerShape(16.dp)
             Row(
                 Modifier
                     .height(38.dp)
@@ -300,8 +306,8 @@ private fun ColourTabs(
         }
         if (colours.size < AppColourMath.MAX_COLOURS) {
             Box(
-                Modifier.height(38.dp).clip(RoundedCornerShape(12.dp))
-                    .border(1.5.dp, AppColors.BorderStrong, RoundedCornerShape(12.dp))
+                Modifier.height(38.dp).clip(RoundedCornerShape(16.dp))
+                    .border(1.5.dp, AppColors.BorderStrong, RoundedCornerShape(16.dp))
                     .clickable(onClick = onAdd)
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,

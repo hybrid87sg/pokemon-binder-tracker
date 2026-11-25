@@ -161,7 +161,7 @@ fun JoinScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Go),
                             keyboardActions = KeyboardActions(onGo = { onLookUp(typed) }),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 unfocusedContainerColor = AppColors.Surface,
                                 focusedContainerColor = AppColors.Surface,
@@ -173,7 +173,7 @@ fun JoinScreen(
                         androidx.compose.material3.Button(
                             onClick = { onLookUp(typed) },
                             enabled = typed.isNotBlank() && state !is JoinState.Busy,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(percent = 50),
                             colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
                             modifier = Modifier.height(56.dp),
                         ) { Text("Find") }
@@ -225,7 +225,7 @@ private fun InvitePreviewCard(invite: InvitePreview) {
                 Text(invite.binderName, style = MaterialTheme.typography.headlineMedium)
                 Text("${invite.columns} × ${invite.rows} pockets · Owner: ${invite.ownerName}", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted)
             }
-            Surface(shape = RoundedCornerShape(12.dp), color = AppColors.Surface2, modifier = Modifier.fillMaxWidth()) {
+            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.Surface2, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
                     Icon(
                         painterResource(if (editor) R.drawable.ic_edit else R.drawable.ic_search),
