@@ -62,7 +62,16 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.data.CoverPicture
 import com.hybrid87sg.bindertracker.data.CoverPlacement
-import com.hybrid87sg.bindertracker.data.ShelfLook
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.semantics.Role
 import com.hybrid87sg.bindertracker.ui.components.BinderTurn
 import com.hybrid87sg.bindertracker.ui.components.CoverLook
 import com.hybrid87sg.bindertracker.ui.components.colorFromHex
@@ -89,10 +98,8 @@ fun EditBinderScreen(
     onSave: (name: String, colorHex: String, size: BinderSize, collecting: List<String>, countSecretRares: Boolean) -> Unit,
     // Every expansion, for the "Collecting" section.
     expansions: List<ExpansionOption> = emptyList(),
-    // This binder's own cover picture (kept on this phone), or null.
+    // This binder's cover picture (the owner's, shared with everyone in the binder), or null.
     cover: CoverPicture? = null,
-    // The shelf's angle and side, so the cover preview turns the same way.
-    look: ShelfLook = ShelfLook(),
     // Copies a picked photo to a temporary file; null if it couldn't be read.
     importCover: suspend (Uri) -> String? = { null },
     // Saves the cover picture (null path = remove it).
@@ -150,7 +157,6 @@ fun EditBinderScreen(
         extra = {
             CoverSection(
                 binder = binder,
-                look = look,
                 picture = picture,
                 placement = CoverPlacement(coverX, coverY, coverZoom),
                 hasPicture = coverPath != null,
@@ -284,12 +290,15 @@ private fun SizeChangeNote(binder: Binder, size: BinderSize, pageCount: Int, fil
 
 private fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
 
-/** "Cover picture": your own photo on the binder's cover, with a turned preview. */
+/**
+ * "Cover picture": a photo on the binder's cover, shown flat and straight
+ * on. The owner's cover is shared with everyone in the binder, so only the
+ * owner can change it; friends see a note saying who can.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CoverSection(
     binder: Binder,
-    look: ShelfLook,
     picture: ImageBitmap?,
     placement: CoverPlacement,
     hasPicture: Boolean,
@@ -299,6 +308,8 @@ private fun CoverSection(
     onRemove: () -> Unit,
 ) {
     val shape = RoundedCornerShape(16.dp)
+    val owner = binder.isOwner
+    val ownerName = binder.ownerName ?: "the owner"
     Column(
         Modifier.fillMaxWidth().clip(shape).background(AppColors.Surface).holoTopStripe().border(1.dp, AppColors.Border, shape).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -306,28 +317,100 @@ private fun CoverSection(
         Column {
             Text("Cover picture", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Put your own picture on the binder's cover. The spine keeps its colour and label. " +
-                    "It shows when your shelf's binders are turned (Edit shelf), and stays on this phone.",
+                when {
+                    !owner -> "$ownerName chose this cover. It's the same on every phone in this binder."
+                    binder.isShared -> "Put your own picture on the cover. Everyone you share this binder with sees it too."
+                    else -> "Put your own picture on the cover. The spine keeps its colour and label."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Muted,
             )
         }
-        // Always turned (at least 30°) here, so you can see the cover.
-        val previewLook = ShelfLook(angle = maxOf(look.angle, 30), coversOnRight = look.coversOnRight)
-        ShelfPreview(
-            listOf(PreviewBinder(binder.name, binder.sizeLabel, binder.colorHex, fill = null, picture = picture, placement = placement)),
-            previewLook,
-            perRow = 1,
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onChoose,
-                enabled = !reading,
-                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
-            ) { Text(if (reading) "Opening…" else if (hasPicture) "Change picture" else "Choose picture") }
-            if (hasPicture) {
-                OutlinedButton(onClick = onAdjust, enabled = picture != null) { Text("Adjust", color = AppColors.Ink) }
-                OutlinedButton(onClick = onRemove) { Text("Remove", color = AppColors.Ink) }
+        val canAdjust = owner && hasPicture && picture != null
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            StraightCover(
+                binder = binder,
+                picture = picture,
+                placement = placement,
+                modifier = if (canAdjust) {
+                    Modifier.clickable(onClickLabel = "Adjust cover picture", role = Role.Button, onClick = onAdjust)
+                } else {
+                    Modifier
+                },
+            )
+            if (canAdjust) {
+                Text("Tap the cover to adjust", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        if (owner) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onChoose,
+                    enabled = !reading,
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
+                ) { Text(if (reading) "Opening…" else if (hasPicture) "Change picture" else "Choose picture") }
+                if (hasPicture) {
+                    OutlinedButton(onClick = onAdjust, enabled = picture != null) { Text("Adjust", color = AppColors.Ink) }
+                    OutlinedButton(onClick = onRemove) { Text("Remove", color = AppColors.Ink) }
+                }
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AppColors.Surface2).padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LockIcon(AppColors.Muted)
+                Text("Only $ownerName (the owner) can change the cover.", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            }
+        }
+    }
+}
+
+/** A small padlock. */
+@Composable
+private fun LockIcon(tint: Color) {
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width
+        val line = 1.8.dp.toPx()
+        // Shackle: a rounded arch over the body.
+        drawRoundRect(tint, topLeft = Offset(w * 0.28f, w * 0.06f), size = Size(w * 0.44f, w * 0.6f), cornerRadius = CornerRadius(w * 0.22f), style = Stroke(line))
+        drawRoundRect(tint, topLeft = Offset(w * 0.14f, w * 0.44f), size = Size(w * 0.72f, w * 0.5f), cornerRadius = CornerRadius(2.dp.toPx()))
+    }
+}
+
+/**
+ * The binder's front cover seen straight on, with a thin strip of spine on
+ * the left: exactly how the picture sits on the cover.
+ */
+@Composable
+private fun StraightCover(binder: Binder, picture: ImageBitmap?, placement: CoverPlacement, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    val color = colorFromHex(binder.colorHex)
+    val height = 260.dp
+    val spine = 22.dp
+    Box(modifier) {
+        Canvas(
+            Modifier
+                .size(spine + height * BinderTurn.COVER_RATIO, height)
+                .semantics { contentDescription = if (picture != null) "Cover of ${binder.name} with a picture" else "Cover of ${binder.name}" },
+        ) {
+            val s = spine.toPx()
+            // Spine edge: rounded on the outside, shaded like a curved back.
+            drawRoundRect(
+                Brush.horizontalGradient(
+                    0f to lerp(color, Color.Black, 0.45f),
+                    0.45f to color,
+                    1f to lerp(color, Color.Black, 0.3f),
+                    startX = 0f,
+                    endX = s,
+                ),
+                size = Size(s + 6.dp.toPx(), size.height),
+                cornerRadius = CornerRadius(5.dp.toPx()),
+            )
+            drawRect(Color.Black.copy(alpha = 0.4f), topLeft = Offset(s - 1.dp.toPx(), 0f), size = Size(1.dp.toPx(), size.height))
+            translate(left = s) {
+                drawCover(Size(size.width - s, size.height), CoverLook(color, binder.name, picture, placement), hingeOnLeft = true, measurer = measurer)
             }
         }
     }

@@ -17,6 +17,9 @@ import com.google.firebase.firestore.WriteBatch
 import com.hybrid87sg.bindertracker.auth.AppUser
 import com.hybrid87sg.bindertracker.data.AppDatabase
 import com.hybrid87sg.bindertracker.data.Binder
+import com.hybrid87sg.bindertracker.data.CoverPictures
+import com.hybrid87sg.bindertracker.data.CoverPlacement
+import com.google.firebase.firestore.Blob
 import com.hybrid87sg.bindertracker.data.Page
 import com.hybrid87sg.bindertracker.data.Pocket
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +75,9 @@ data class InvitePreview(
  * What is stored online:
  *   binders/{binderId}            name, colour, size, owner, who can use it
  *   binders/{binderId}/pages/{id} which card is in each pocket
+ *   binders/{binderId}/cover/picture  the owner's cover picture (a small
+ *                                 JPEG) and where it sits; only the owner
+ *                                 can change it
  *   invites/{code}                share codes, which binder and role they give
  * Page photos stay on the phone that took them (storing pictures online
  * needs Firebase's paid plan). Card pictures come from TCGdex, so everyone
@@ -81,6 +87,8 @@ class CloudSync(
     context: Context,
     db: AppDatabase,
     private val scope: CoroutineScope,
+    // Cover pictures on this phone, kept in step with the owner's online cover.
+    private val covers: CoverPictures? = null,
 ) {
     /** False when the app was built without Firebase (no google-services.json). */
     val isAvailable: Boolean = FirebaseApp.getApps(context).isNotEmpty()
@@ -96,6 +104,11 @@ class CloudSync(
     private var user: AppUser? = null
     private var bindersListener: ListenerRegistration? = null
     private val pageListeners = mutableMapOf<String, ListenerRegistration>()
+    private val coverListeners = mutableMapOf<String, ListenerRegistration>()
+
+    // "binderId:version" covers already sent this run, so a refused upload
+    // (for example, rules not published yet) isn't retried over and over.
+    private val coversSent = mutableSetOf<String>()
 
     private val _sharing = MutableStateFlow<Map<String, SharingInfo>>(emptyMap())
 
@@ -142,6 +155,8 @@ class CloudSync(
         bindersListener = null
         pageListeners.values.forEach { it.remove() }
         pageListeners.clear()
+        coverListeners.values.forEach { it.remove() }
+        coverListeners.clear()
         user = null
         _active.value = false
         _sharing.value = emptyMap()
@@ -170,6 +185,7 @@ class CloudSync(
                 if (local != null && local.pocketsPerPage != updated.pocketsPerPage) fitPockets(doc.id, updated.pocketsPerPage)
             }
             watchPages(u, doc.id)
+            watchCover(u, doc.id)
         }
 
         // Deleted online, or the owner stopped sharing it with you.
@@ -200,6 +216,7 @@ class CloudSync(
         }
 
         (pageListeners.keys - remoteIds).forEach { pageListeners.remove(it)?.remove() }
+        (coverListeners.keys - remoteIds).forEach { coverListeners.remove(it)?.remove() }
         saveKnownBinders(uid, known)
         _sharing.value = sharing
     }
@@ -241,6 +258,95 @@ class CloudSync(
         }
     }
 
+    private fun watchCover(u: AppUser, binderId: String) {
+        if (covers == null || binderId in coverListeners) return
+        coverListeners[binderId] = coverRef(binderId).addSnapshotListener { snap, error ->
+            if (error != null) {
+                // Usually: removed from this binder, or the new rules aren't published yet.
+                coverListeners.remove(binderId)?.remove()
+                return@addSnapshotListener
+            }
+            if (snap != null) scope.launch { lock.withLock { applyCover(u, binderId, snap) } }
+        }
+    }
+
+    /**
+     * The online cover changed (or we just started watching it). The owner's
+     * cover wins on every phone. On the owner's own phone, a cover that was
+     * never sent (set before covers went online) is sent now.
+     */
+    private suspend fun applyCover(u: AppUser, binderId: String, snap: DocumentSnapshot) {
+        val covers = covers ?: return
+        if (user?.uid != u.uid) return
+        val binder = binderDao.get(binderId) ?: return
+        val mine = covers.all.value[binderId]
+        if (snap.exists()) {
+            val version = snap.getLong(COVER_VERSION) ?: 0L
+            if (mine != null && mine.version == version) {
+                covers.markOnline(binderId)
+                return
+            }
+            // The owner changed it on this phone and it hasn't gone up yet.
+            if (binder.isOwner && mine != null && !covers.isOnline(binderId) && mine.version > version) {
+                sendCover(binderId)
+                return
+            }
+            val jpeg = snap.getBlob(COVER_JPEG)?.toBytes() ?: return
+            val placement = CoverPlacement(
+                x = snap.getDouble("x")?.toFloat() ?: 0.5f,
+                y = snap.getDouble("y")?.toFloat() ?: 0.5f,
+                zoom = snap.getDouble("zoom")?.toFloat() ?: 1f,
+            )
+            covers.applyOnline(binderId, jpeg, placement, version)
+        } else {
+            // Only trust "there's no cover" when the server says so.
+            if (snap.metadata.isFromCache || mine == null) return
+            if (binder.isOwner && !covers.isOnline(binderId)) {
+                sendCover(binderId)
+            } else {
+                // The owner took it off (or never set one): plain leather here too.
+                covers.remove(binderId)
+            }
+        }
+    }
+
+    /** Sends this phone's cover for [binderId] online (owners only). */
+    private suspend fun sendCover(binderId: String) {
+        val covers = covers ?: return
+        val u = user ?: return
+        val mine = covers.all.value[binderId] ?: return
+        val key = "$binderId:${mine.version}"
+        if (!coversSent.add(key)) return
+        val jpeg = covers.onlineCopy(binderId) ?: return
+        val doc = mapOf(
+            COVER_JPEG to Blob.fromBytes(jpeg),
+            "x" to mine.placement.x.toDouble(),
+            "y" to mine.placement.y.toDouble(),
+            "zoom" to mine.placement.zoom.toDouble(),
+            COVER_VERSION to mine.version,
+            "by" to u.uid,
+        )
+        coverRef(binderId).set(doc)
+            .addOnSuccessListener { covers.markOnline(binderId) }
+            .addOnFailureListener(::reportWriteFailure)
+    }
+
+    /** The owner saved or removed a cover on this phone: send it online. */
+    fun coverChanged(binderId: String) {
+        val covers = covers ?: return
+        if (user == null) return
+        scope.launch {
+            lock.withLock {
+                val binder = binderDao.get(binderId)?.takeIf { it.isOwner } ?: return@withLock
+                if (covers.all.value[binderId] != null) {
+                    sendCover(binder.id)
+                } else {
+                    coverRef(binder.id).delete().addOnFailureListener(::reportWriteFailure)
+                }
+            }
+        }
+    }
+
     /** After a binder changes size online: trims or adds pockets on every page. */
     private suspend fun fitPockets(binderId: String, count: Int) {
         for (page in pageDao.pagesOf(binderId)) {
@@ -251,9 +357,11 @@ class CloudSync(
 
     private suspend fun removeLocal(binderId: String) {
         pageListeners.remove(binderId)?.remove()
+        coverListeners.remove(binderId)?.remove()
         val binder = binderDao.get(binderId) ?: return
         pageDao.pagesOf(binderId).forEach { deleteLocalPage(it.id) }
         binderDao.delete(binder)
+        covers?.remove(binderId)
     }
 
     private suspend fun deleteLocalPage(pageId: String) {
@@ -319,6 +427,8 @@ class CloudSync(
         val u = user ?: return
         val ref = binderRef(b.id)
         if (b.isOwner) {
+            // Sent on its own, so the binder is still deleted if this one is refused.
+            coverRef(b.id).delete()
             val writes = mutableListOf<(WriteBatch) -> Unit>()
             pageIds.forEach { id -> writes.add { batch -> batch.delete(ref.collection(PAGES).document(id)) } }
             _sharing.value[b.id]?.invites?.values?.forEach { inv ->
@@ -468,6 +578,8 @@ class CloudSync(
 
     private fun binderRef(id: String): DocumentReference = store.collection(BINDERS).document(id)
 
+    private fun coverRef(binderId: String): DocumentReference = binderRef(binderId).collection(COVER).document(COVER_DOC)
+
     private fun commit(writes: List<(WriteBatch) -> Unit>) {
         // Firestore takes at most 500 changes at once.
         writes.chunked(400).forEach { chunk ->
@@ -607,6 +719,10 @@ class CloudSync(
     private companion object {
         const val BINDERS = "binders"
         const val PAGES = "pages"
+        const val COVER = "cover"
+        const val COVER_DOC = "picture"
+        const val COVER_JPEG = "jpeg"
+        const val COVER_VERSION = "version"
         const val INVITES = "invites"
         const val MEMBER_IDS = "memberIds"
         const val ROLES = "roles"

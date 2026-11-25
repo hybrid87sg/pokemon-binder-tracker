@@ -447,7 +447,6 @@ private fun App(
                     onCancel = { nav.popBackStack() },
                     expansions = expansions,
                     cover = vm.covers.collectAsStateWithLifecycle().value[b.id],
-                    look = vm.shelfLook.collectAsStateWithLifecycle().value,
                     importCover = vm::importCover,
                     onSaveCover = { path, placement -> vm.setCover(b.id, path, placement) },
                     discardCoverDraft = vm::discardCoverDraft,

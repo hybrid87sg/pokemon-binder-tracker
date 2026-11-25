@@ -6,6 +6,7 @@ rules_version = '2';
 //
 // binders/{binderId}            one binder: name, colour, size, owner, members
 // binders/{binderId}/pages/{id} one page: which card is in each pocket
+// binders/{binderId}/cover/picture  the owner's cover picture (small JPEG)
 // invites/{code}                a share code: which binder, and Editor or Viewer
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -77,6 +78,20 @@ service cloud.firestore {
 
         allow read: if signedIn() && request.auth.uid in binder().memberIds;
         allow write: if signedIn() && (canEdit(binder()) || canEdit(binderAfter()));
+      }
+
+      // The binder's cover picture: everyone in the binder sees it, only the owner changes it.
+      // (A small JPEG kept right in the database, so it works on the free plan.)
+      match /cover/{docId} {
+        function coverBinder() {
+          return get(/databases/$(database)/documents/binders/$(binderId)).data;
+        }
+        allow read: if signedIn() && request.auth.uid in coverBinder().memberIds;
+        allow create, update: if signedIn()
+          && coverBinder().ownerId == request.auth.uid
+          && request.resource.data.jpeg is bytes
+          && request.resource.data.jpeg.size() < 700 * 1024;
+        allow delete: if signedIn() && coverBinder().ownerId == request.auth.uid;
       }
     }
 
