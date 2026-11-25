@@ -173,7 +173,7 @@ private fun SideButton(label: String, picked: Boolean, enabled: Boolean, modifie
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (picked) AppColors.Accent.copy(alpha = 0.12f) else AppColors.Surface,
         contentColor = AppColors.Ink,
         border = BorderStroke(if (picked) 2.dp else 1.dp, if (picked) AppColors.Accent else AppColors.Border),

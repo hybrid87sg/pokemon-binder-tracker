@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -131,6 +132,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
@@ -918,9 +920,11 @@ fun PageScreen(
                 TipsButton { showTips = true }
                 // Batch edit (and deleting the page) lives behind Edit, with Done to leave.
                 if (canEdit) {
-                    TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
-                        Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
-                    }
+                    Spacer(Modifier.width(4.dp))
+                    com.hybrid87sg.bindertracker.ui.components.TonalButton(
+                        "Edit", onClick = { editing = true }, fullWidth = false,
+                        modifier = Modifier.heightIn(max = 44.dp),
+                    )
                 }
             }
         }
@@ -1403,7 +1407,7 @@ fun PageScreen(
 private fun SheetButton(label: String, color: Color = AppColors.Ink, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth(),
@@ -1605,7 +1609,7 @@ private fun PageArrows(
     ) {
         ArrowButton(R.drawable.ic_chevron_left, "Previous page", canPrev, onPrev, Modifier.onGloballyPositioned { onPlaced(PREV_ARROW, it) })
         Column(
-            Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+            Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
                 .then(if (onJump != null) Modifier.clickable(onClickLabel = "Go to another page", onClick = onJump) else Modifier)
                 .padding(vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1613,7 +1617,7 @@ private fun PageArrows(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(label, style = MaterialTheme.typography.titleMedium, color = AppColors.Ink)
-                if (onJump != null) Text("  ▾", fontSize = 11.sp, color = AppColors.Muted)
+                if (onJump != null) com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_expand_more, AppColors.Muted, Modifier.padding(start = 4.dp), size = 16.dp)
             }
             if (dotCount <= 12) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1656,10 +1660,11 @@ private fun ArrowButton(icon: Int, label: String, enabled: Boolean, onClick: () 
         enabled = enabled,
         interactionSource = press,
         shape = CircleShape,
-        color = AppColors.Surface,
+        // A round floating button (no outline), dimmed at the first and last page.
+        color = if (enabled) AppColors.Group else AppColors.Group.copy(alpha = 0.5f),
         contentColor = if (enabled) AppColors.Ink else AppColors.BorderStrong,
-        border = BorderStroke(1.dp, AppColors.BorderStrong),
-        modifier = modifier.size(48.dp).pressSquish(press).semantics { contentDescription = label },
+        shadowElevation = if (enabled) 3.dp else 0.dp,
+        modifier = modifier.size(52.dp).pressSquish(press).semantics { contentDescription = label },
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -2003,7 +2008,7 @@ private fun PocketTile(
 private fun NoticeBar(notice: Notice, onAction: (() -> Unit) -> Unit, modifier: Modifier) {
     val show = arrive(play = true, durationMillis = 260)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Ink,
         contentColor = AppColors.Paper,
         shadowElevation = 6.dp,
@@ -2135,15 +2140,16 @@ private val FilterChoiceSaver = androidx.compose.runtime.saveable.listSaver<Filt
 
 @Composable
 private fun TipsButton(onClick: () -> Unit) {
-    Box(
-        Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Show tips", onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    // A round floating button with a "?" (same style as the other round buttons).
+    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
         Box(
-            Modifier.size(26.dp).border(1.5.dp, AppColors.Muted, CircleShape),
+            Modifier.size(44.dp)
+                .shadow(3.dp, CircleShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+                .clip(CircleShape).background(AppColors.Group)
+                .clickable(onClickLabel = "Show tips", onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Text("?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppColors.Muted)
+            Text("?", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AppColors.Ink)
         }
     }
 }

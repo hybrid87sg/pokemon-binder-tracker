@@ -88,33 +88,32 @@ internal fun FilterButton(count: Int, open: Boolean, onClick: () -> Unit) {
     val on = count > 0
     val turn by animateFloatAsState(if (open) 180f else 0f, label = "filterChevron")
     Row(
-        Modifier.height(38.dp)
-            .then(if (on) Modifier.drawBehind { drawRoundRect(neon.copy(alpha = 0.35f), topLeft = Offset(-3f * density, -3f * density), size = Size(size.width + 6f * density, size.height + 6f * density), cornerRadius = CornerRadius(size.height)) } else Modifier)
+        Modifier.height(44.dp)
+            .then(if (on) Modifier.drawBehind { drawRoundRect(neon.copy(alpha = 0.35f), topLeft = Offset(-3f * density, -3f * density), size = Size(size.width + 6f * density, size.height + 6f * density), cornerRadius = CornerRadius(size.height)) }
+                else Modifier.shadow(3.dp, RoundedCornerShape(50), ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow))
             .clip(RoundedCornerShape(50))
-            .background(if (on) neon else AppColors.Ink.copy(alpha = 0.08f))
-            .border(1.dp, if (on) neon else AppColors.BorderStrong, RoundedCornerShape(50))
+            .background(if (on) neon else AppColors.Group)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = if (on) "Filter, $count on" else "Filter" }
-            .padding(start = 10.dp, end = 8.dp),
+            .padding(start = 12.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val ink = if (on) OnNeon else AppColors.Ink
-        // Three lines getting shorter: the usual filter sign.
-        Box(Modifier.size(16.dp).drawBehind {
-            val w = 1.8f * density
-            listOf(0.22f to 1f, 0.5f to 0.6f, 0.78f to 0.25f).forEach { (y, len) ->
-                val half = size.width * len / 2
-                drawLine(ink, Offset(size.width / 2 - half, size.height * y), Offset(size.width / 2 + half, size.height * y), w, androidx.compose.ui.graphics.StrokeCap.Round)
-            }
-        })
+        androidx.compose.material3.Icon(
+            androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_filter),
+            contentDescription = null, tint = ink, modifier = Modifier.size(18.dp),
+        )
         Text("Filter", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ink)
         if (on) {
-            Box(Modifier.size(18.dp).clip(CircleShape).background(OnNeon), contentAlignment = Alignment.Center) {
-                Text("$count", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = neon)
+            Box(Modifier.size(20.dp).clip(CircleShape).background(OnNeon), contentAlignment = Alignment.Center) {
+                Text("$count", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = neon)
             }
         }
-        Text("⌄", fontSize = 14.sp, color = ink, modifier = Modifier.rotate(turn).padding(bottom = 4.dp))
+        androidx.compose.material3.Icon(
+            androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_expand_more),
+            contentDescription = null, tint = ink, modifier = Modifier.size(18.dp).rotate(turn),
+        )
     }
 }
 
@@ -247,7 +246,7 @@ internal fun BoxScope.FilterMenu(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Box(Modifier.size(28.dp).clip(CircleShape).background(AppColors.Surface), contentAlignment = Alignment.Center) {
-                                        Text("✕", fontSize = 13.sp, color = AppColors.Ink)
+                                        com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_close, AppColors.Ink, size = 16.dp)
                                     }
                                 }
                             }
@@ -305,7 +304,7 @@ internal fun BoxScope.FilterMenu(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 180.dp).padding(end = 6.dp),
                         )
-                        Text("›", fontSize = 18.sp, color = AppColors.Muted, modifier = Modifier.rotate(if (isOpen) 90f else 0f))
+                        com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_chevron_right, AppColors.Muted, Modifier.rotate(if (isOpen) 90f else 0f))
                     }
                     if (isOpen) {
                         Column(Modifier.padding(bottom = 10.dp)) {
@@ -540,26 +539,26 @@ internal fun FilterResults(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ResultsArrow("‹", "Previous results", page > 0) { page-- }
+            ResultsArrow(com.hybrid87sg.bindertracker.R.drawable.ic_chevron_left, "Previous results", page > 0) { page-- }
             Text(
                 if (pages.isEmpty()) "No results" else "Results ${page + 1} of ${pages.size}",
                 style = MaterialTheme.typography.bodyLarge, color = AppColors.Ink,
                 modifier = Modifier.weight(1f), textAlign = TextAlign.Center,
             )
-            ResultsArrow("›", "Next results", page < pages.size - 1) { page++ }
+            ResultsArrow(com.hybrid87sg.bindertracker.R.drawable.ic_chevron_right, "Next results", page < pages.size - 1) { page++ }
         }
     }
 }
 
 @Composable
-private fun ResultsArrow(symbol: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun ResultsArrow(icon: Int, label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.size(50.dp).clip(CircleShape).background(AppColors.Surface2.copy(alpha = if (enabled) 1f else 0.4f))
             .border(1.dp, AppColors.Border, CircleShape)
             .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
-    ) { Text(symbol, fontSize = 22.sp, color = AppColors.Ink.copy(alpha = if (enabled) 1f else 0.35f)) }
+    ) { com.hybrid87sg.bindertracker.ui.components.SmallIcon(icon, AppColors.Ink.copy(alpha = if (enabled) 1f else 0.35f), size = 24.dp) }
 }
 
 /** A slightly darker stripe colour, so the stripes show on the neon. */

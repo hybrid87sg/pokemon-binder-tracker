@@ -202,7 +202,7 @@ fun CardBackScreen(
             val sample = binders.take(3).ifEmpty { listOf(CardBackBinder("Your binder", AppColors.Accent)) }
             sample.forEach { b ->
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(b.color).padding(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(b.color).padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text("${b.name} · empty pockets", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)

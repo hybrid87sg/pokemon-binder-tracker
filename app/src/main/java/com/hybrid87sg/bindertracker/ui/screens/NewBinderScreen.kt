@@ -144,7 +144,7 @@ internal fun BinderForm(
                 supportingText = { Text("${name.length} / $MAX_NAME_LENGTH") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedContainerColor = AppColors.Surface,
                     focusedContainerColor = AppColors.Surface,
@@ -260,7 +260,7 @@ private fun SizeTile(option: BinderSize, selected: Boolean, modifier: Modifier, 
     val fg = if (selected) AppColors.Paper else AppColors.Ink
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = bg,
         contentColor = fg,
         border = BorderStroke(2.dp, if (selected) AppColors.Ink else AppColors.Border),

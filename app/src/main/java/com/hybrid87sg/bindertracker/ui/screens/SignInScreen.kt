@@ -96,7 +96,7 @@ fun SignInScreen(
             onClick = onGoogleSignIn,
             enabled = firebaseReady && !signingIn,
             modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(percent = 50),
             border = BorderStroke(2.dp, if (firebaseReady) AppColors.Ink else AppColors.Border),
             colors = ButtonDefaults.outlinedButtonColors(containerColor = AppColors.Surface, contentColor = AppColors.Ink),
         ) {

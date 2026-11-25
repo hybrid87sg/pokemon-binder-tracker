@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
@@ -208,11 +209,33 @@ object AppColors {
     /** The soft glow in the background's top-right corner. */
     val BackgroundGlow get() = palette.glow
 
+    // ---- 2026 refresh ----
+    /** A soft accent-tinted fill for second-choice buttons and round row icons. */
+    val Tonal get() = androidx.compose.ui.graphics.lerp(palette.surface, palette.accent, if (isDark) 0.30f else 0.14f)
+    /** Text and icons on [Tonal]: a deep accent in light mode, a pale one in dark mode. */
+    val OnTonal get() = if (isDark) androidx.compose.ui.graphics.lerp(palette.accentText, Color.White, 0.45f)
+        else androidx.compose.ui.graphics.lerp(palette.accent, Color(0xFF000000), 0.35f)
+    /** Rows in a settings group and floating bars: the surface, very slightly see-through. */
+    val Group get() = palette.surface.copy(alpha = if (isDark) 0.92f else 0.88f)
+
     /** Always white, in both modes: for text and icons on blue buttons and coloured spines. */
     val White = Color(0xFFFFFFFF)
 
     /** Always near-black, in both modes: for writing on pale things like a yellow spine or the "?" label. */
     val Black = Color(0xFF1A1A18)
+}
+
+/**
+ * The four corner sizes the whole app uses (2026 refresh). Fewer, rounder
+ * shapes look calmer and more current than many slightly different ones.
+ * Small: tiny things like pocket pictures. Medium: tiles, rows, fields.
+ * Large: big cards, sheets, dialogs. Pill: buttons, chips, the tab bar.
+ */
+object AppShapes {
+    val Small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+    val Medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    val Large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+    val Pill = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
 }
 
 /** Material's own components (dialogs, text fields) take their colours from here. */
@@ -255,7 +278,8 @@ private val typography = Typography().let { t ->
         displayLarge = t.displayLarge.copy(fontFamily = DisplayFont),
         displayMedium = t.displayMedium.copy(fontFamily = DisplayFont),
         displaySmall = t.displaySmall.copy(fontFamily = DisplayFont),
-        headlineLarge = headline.copy(fontSize = 32.sp, lineHeight = 36.sp),
+        // The big page titles ("My binders", "Me"): large and tight, like current Android apps.
+        headlineLarge = headline.copy(fontSize = 38.sp, lineHeight = 42.sp, letterSpacing = (-0.03).em),
         headlineMedium = headline.copy(fontSize = 28.sp, lineHeight = 32.sp),
         headlineSmall = headline.copy(fontSize = 24.sp, lineHeight = 28.sp),
         titleLarge = headline.copy(fontSize = 20.sp, lineHeight = 26.sp),
@@ -265,10 +289,20 @@ private val typography = Typography().let { t ->
         bodyMedium = TextStyle(fontFamily = BodyFont, fontSize = 15.sp, lineHeight = 21.sp),
         bodySmall = TextStyle(fontFamily = BodyFont, fontSize = 13.sp, lineHeight = 18.sp),
         labelLarge = TextStyle(fontFamily = BodyFont, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
-        labelMedium = t.labelMedium.body(),
-        labelSmall = t.labelSmall.body(),
+        labelMedium = TextStyle(fontFamily = BodyFont, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+        // The smallest text in the app: captions under pockets, badges. Nothing goes below 12.
+        labelSmall = TextStyle(fontFamily = BodyFont, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
     )
 }
+
+/** Material's own pieces (dialogs, menus, text fields, sheets) use the same corner sizes. */
+private val materialShapes = androidx.compose.material3.Shapes(
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+)
 
 @Composable
 private fun a(c: Color): Color = animateColorAsState(c, tween(durationMillis = 450), label = "palette").value
@@ -303,7 +337,7 @@ fun BinderTrackerTheme(dark: Boolean, content: @Composable () -> Unit) {
     // Swap the colour set after this frame is drawn. MainActivity also sets it
     // once before the first frame, so the app never flashes the wrong colours.
     SideEffect { AppColors.palette = palette }
-    MaterialTheme(colorScheme = materialColors(palette, dark), typography = typography) {
+    MaterialTheme(colorScheme = materialColors(palette, dark), typography = typography, shapes = materialShapes) {
         // Text with no colour of its own uses the main ink colour. Without
         // this, Android drew such text black, which vanished in dark mode.
         CompositionLocalProvider(LocalContentColor provides palette.ink, content = content)

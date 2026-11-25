@@ -228,7 +228,7 @@ private const val PAGE_HINT = "Fit the page inside the frame. Each box is one po
 private fun PocketGuide(columns: Int, rows: Int, modifier: Modifier) {
     Box(
         modifier
-            .border(2.dp, Light, RoundedCornerShape(14.dp))
+            .border(2.dp, Light, RoundedCornerShape(16.dp))
             .drawBehind {
                 val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))
                 val stroke = 1.5.dp.toPx()

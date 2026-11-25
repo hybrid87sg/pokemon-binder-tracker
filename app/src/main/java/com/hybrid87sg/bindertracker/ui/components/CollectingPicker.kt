@@ -85,7 +85,7 @@ fun CollectingSheet(
                     label = { Text("Find an expansion") },
                     placeholder = { Text("e.g. 151") },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         unfocusedContainerColor = AppColors.Surface,
                         focusedContainerColor = AppColors.Surface,
@@ -149,6 +149,6 @@ fun TickBox(on: Boolean) {
             .border(1.5.dp, if (on) AppColors.Accent else AppColors.BorderStrong, shape),
         contentAlignment = Alignment.Center,
     ) {
-        if (on) Text("✓", color = AppColors.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+        if (on) com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_check, AppColors.White, size = 16.dp)
     }
 }

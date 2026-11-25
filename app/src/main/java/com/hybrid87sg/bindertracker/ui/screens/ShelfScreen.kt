@@ -43,6 +43,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import com.hybrid87sg.bindertracker.ui.components.Eyebrow
+import com.hybrid87sg.bindertracker.ui.components.GroupButton
+import com.hybrid87sg.bindertracker.ui.components.IconButtonGroup
+import androidx.compose.foundation.layout.heightIn
 import com.hybrid87sg.bindertracker.ui.components.Motion
 import com.hybrid87sg.bindertracker.ui.components.StatTile
 import com.hybrid87sg.bindertracker.ui.components.arrive
@@ -198,98 +201,28 @@ fun ShelfScreen(
             )
         }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            headerFade.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.Top,
+        // Header: small eyebrow with the buttons joined in one strip on the right,
+        // and the big title underneath (2026 refresh).
+        val headerConfig = androidx.compose.ui.platform.LocalConfiguration.current
+        val headerWide = headerConfig.screenWidthDp >= 600 && headerConfig.screenHeightDp >= 480
+        val headerButtons = buildList {
+            if (onSearch != null) add(GroupButton(R.drawable.ic_search, "Search cards", onClick = onSearch))
+            if (onJoin != null) add(GroupButton(R.drawable.ic_qr, "Join a shared binder", onClick = onJoin))
+            if (onEditShelf != null) add(GroupButton(R.drawable.ic_edit, "Edit shelf", onClick = onEditShelf))
+            // The 3D shelf has no empty "Add binder" slot, so it's a button up here
+            // (unfolded, the big + on the side rail does this instead).
+            if (use3D && !headerWide) add(GroupButton(R.drawable.ic_plus, "Add binder", primary = true, onClick = onAddBinder))
+            if (onOpenAccount != null) add(GroupButton(R.drawable.ic_person, "Account", onClick = onOpenAccount))
+        }
+        Column(
+            headerFade.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Eyebrow("Your collection")
-                Text("My binders", style = MaterialTheme.typography.headlineLarge)
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Eyebrow("Your collection", Modifier.weight(1f))
+                if (headerButtons.isNotEmpty()) IconButtonGroup(headerButtons)
             }
-            if (use3D) {
-                // The 3D shelf has no empty "Add binder" slot, so it's a button up here.
-                val addPress = remember { MutableInteractionSource() }
-                Surface(
-                    onClick = onAddBinder,
-                    interactionSource = addPress,
-                    shape = RoundedCornerShape(14.dp),
-                    color = AppColors.Surface,
-                    contentColor = AppColors.Ink,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
-                    modifier = Modifier.size(48.dp).pressSquish(addPress).semantics { contentDescription = "Add binder" },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(painterResource(R.drawable.ic_plus), contentDescription = null, modifier = Modifier.size(22.dp))
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            if (onEditShelf != null) {
-                val editPress = remember { MutableInteractionSource() }
-                Surface(
-                    onClick = onEditShelf,
-                    interactionSource = editPress,
-                    shape = RoundedCornerShape(14.dp),
-                    color = AppColors.Surface,
-                    contentColor = AppColors.Ink,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
-                    modifier = Modifier.size(48.dp).pressSquish(editPress).semantics { contentDescription = "Edit shelf" },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(painterResource(R.drawable.ic_edit), contentDescription = null, modifier = Modifier.size(22.dp))
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            if (onJoin != null) {
-                val joinPress = remember { MutableInteractionSource() }
-                Surface(
-                    onClick = onJoin,
-                    interactionSource = joinPress,
-                    shape = RoundedCornerShape(14.dp),
-                    color = AppColors.Surface,
-                    contentColor = AppColors.Ink,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
-                    modifier = Modifier.size(48.dp).pressSquish(joinPress).semantics { contentDescription = "Join a shared binder" },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(painterResource(R.drawable.ic_qr), contentDescription = null, modifier = Modifier.size(22.dp))
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            if (onSearch != null) {
-            val searchPress = remember { MutableInteractionSource() }
-            Surface(
-                onClick = onSearch,
-                interactionSource = searchPress,
-                shape = RoundedCornerShape(14.dp),
-                color = AppColors.Surface,
-                contentColor = AppColors.Ink,
-                border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border),
-                modifier = Modifier.size(48.dp).pressSquish(searchPress).semantics { contentDescription = "Search cards" },
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_search), contentDescription = null, modifier = Modifier.size(22.dp))
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            }
-            if (onOpenAccount != null) {
-            val accountPress = remember { MutableInteractionSource() }
-            Surface(
-                onClick = onOpenAccount,
-                interactionSource = accountPress,
-                shape = CircleShape,
-                color = AppColors.Accent,
-                contentColor = AppColors.White,
-                modifier = Modifier.size(48.dp).pressSquish(accountPress).semantics { contentDescription = "Account" },
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_person), contentDescription = null, modifier = Modifier.size(22.dp))
-                }
-            }
-            }
+            Text("My binders", style = MaterialTheme.typography.headlineLarge)
         }
 
         if (notice != null) {
@@ -306,9 +239,9 @@ fun ShelfScreen(
         Row(
             headerFade.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
                 .graphicsLayer { alpha = statsIn; translationY = (1f - statsIn) * 12.dp.toPx() },
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            StatTile("${countUp(cards, 150)}", if (cards == 1) "card" else "cards", Modifier.weight(1f), foil = true)
+            StatTile("${countUp(cards, 150)}", if (cards == 1) "card" else "cards", Modifier.weight(1f))
             StatTile("${countUp(binders.size, 150)}", if (binders.size == 1) "binder" else "binders", Modifier.weight(1f))
             StatTile("${countUp(if (pockets == 0) 0 else cards * 100 / pockets, 150)}%", "filled", Modifier.weight(1f))
         }
@@ -325,14 +258,14 @@ fun ShelfScreen(
         // with many binders still scrolls smoothly.
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp + com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             itemsIndexed(rows) { rowIndex, row ->
                 // Each shelf is a soft box the gradient shows through, shaded at the top like a real shelf.
                 Column(
                     Modifier.padding(horizontal = 12.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(28.dp))
                         .background(AppColors.ShelfBackground.copy(alpha = 0.7f))
                         .drawBehind {
                             drawRect(
@@ -548,7 +481,7 @@ internal fun ShelfPreview(binders: List<PreviewBinder>, look: ShelfLook, perRow:
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(AppColors.ShelfBackground.copy(alpha = 0.7f))
             .drawBehind {
                 drawRect(Brush.verticalGradient(listOf(AppColors.Shadow.copy(alpha = AppColors.Shadow.alpha * 0.6f), Color.Transparent), endY = 18.dp.toPx()))
@@ -637,7 +570,7 @@ private fun Modifier.dashedBorder(): Modifier = drawBehind {
 private fun SuccessNotice(text: String, onDismiss: () -> Unit) {
     Surface(
         onClick = onDismiss,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         contentColor = AppColors.Ink,
         border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Success),

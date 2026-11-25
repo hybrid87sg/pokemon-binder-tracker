@@ -367,7 +367,7 @@ private fun PageChip(selected: Boolean, enabled: Boolean, onClick: () -> Unit, c
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) AppColors.AccentText else AppColors.Border),
         modifier = Modifier.width(84.dp),
@@ -447,7 +447,7 @@ internal fun PageJumpPicker(
                         val filled = p.pockets.count { it.cardId != null }
                         Surface(
                             onClick = { onPick(p.id) },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = if (here) AppColors.Surface2 else AppColors.Surface,
                             border = BorderStroke(if (here) 2.dp else 1.dp, if (here) AppColors.AccentText else AppColors.Border),
                             modifier = Modifier.weight(1f).semantics {
@@ -482,7 +482,7 @@ internal fun PageJumpPicker(
 private fun JumpButton(text: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(1.dp, AppColors.BorderStrong),
         modifier = modifier,

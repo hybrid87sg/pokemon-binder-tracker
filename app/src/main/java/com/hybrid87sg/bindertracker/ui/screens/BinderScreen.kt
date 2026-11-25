@@ -201,7 +201,7 @@ fun BinderScreen(
                 Surface(
                     onClick = { onOpenPage(page) },
                     interactionSource = press,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = AppColors.Surface,
                     border = BorderStroke(1.dp, AppColors.Border),
                     modifier = Modifier.fillMaxWidth()
@@ -288,7 +288,7 @@ internal fun MissingStrip(progress: ChecklistProgress?, collectingLabel: String,
     Surface(
         onClick = onClick,
         interactionSource = press,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(1.dp, AppColors.Border),
         modifier = Modifier.fillMaxWidth().pressSquish(press, 0.97f),

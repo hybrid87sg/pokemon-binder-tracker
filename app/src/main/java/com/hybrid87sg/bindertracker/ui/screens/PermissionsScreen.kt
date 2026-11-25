@@ -165,9 +165,9 @@ private fun PermissionRow(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(AppColors.Surface)
-            .border(1.dp, AppColors.Border, RoundedCornerShape(14.dp))
+            .border(1.dp, AppColors.Border, RoundedCornerShape(16.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -195,7 +195,7 @@ private fun PermissionRow(
             Button(
                 onClick = onAction,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(percent = 50),
                 colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
             ) { Text(actionLabel, style = MaterialTheme.typography.titleMedium) }
         }

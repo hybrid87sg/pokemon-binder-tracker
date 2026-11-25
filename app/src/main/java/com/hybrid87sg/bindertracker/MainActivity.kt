@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -298,14 +301,19 @@ private fun App(
         }
     }
     val cardBackSetting = remember(cardBackChoice, cardBackPicture) { CardBackSetting(cardBackChoice, cardBackPicture) }
+    // The floating tab bar sits over the bottom of the main tab screens, so they
+    // leave this much room under their last item (bar + gap + phone's nav bar).
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val barClearance = if (!wide && tab != null) 80.dp + navBarBottom else 0.dp
     Row(Modifier.fillMaxSize()) {
-    if (wide && tab != null) MainTabRail(tab, missingTotal, goTab)
+    if (wide && tab != null) MainTabRail(tab, missingTotal, goTab, onAdd = { nav.navigate("new") })
     Column(Modifier.weight(1f).fillMaxHeight()) {
     Box(
         Modifier.weight(1f).fillMaxWidth()
-            // The bar below already keeps clear of the phone's navigation bar.
+            // The floating bar already keeps clear of the phone's navigation bar.
             .then(if (!wide && tab != null) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
     ) {
+    CompositionLocalProvider(com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance provides barClearance) {
     SharedTransitionLayout {
     CompositionLocalProvider(LocalSharedTransitionScope provides this, LocalCardBack provides cardBackSetting) {
     NavHost(
@@ -853,7 +861,21 @@ private fun App(
     }
     }
     }
-    if (!wide && tab != null) MainTabBar(tab, missingTotal, goTab)
+    // The floating tab bar, over the bottom of the four main screens. It slides
+    // away when you open a binder or a card, and back when you return.
+    androidx.compose.animation.AnimatedVisibility(
+        visible = !wide && tab != null,
+        enter = androidx.compose.animation.slideInVertically(tween(260, easing = Motion.Ease)) { it } + fadeIn(tween(200)),
+        exit = androidx.compose.animation.slideOutVertically(tween(200)) { it } + fadeOut(tween(150)),
+        modifier = Modifier.align(Alignment.BottomCenter),
+    ) {
+        // Keep showing the last tab while the bar slides away.
+        val lastTab = remember { arrayOf(MainTab.Binders) }
+        if (tab != null) lastTab[0] = tab
+        // (The box above has used up the navigation bar's space, so pass it in.)
+        MainTabBar(lastTab[0], missingTotal, goTab, bottomInset = navBarBottom)
+    }
+    }
     }
     }
 }
