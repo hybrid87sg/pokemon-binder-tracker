@@ -193,8 +193,8 @@ class ScreenshotTest {
 
     @Test fun editShelf() = shoot("2h-edit-shelf") {
         com.hybrid87sg.bindertracker.ui.screens.EditShelfSheet(
-            look = com.hybrid87sg.bindertracker.data.ShelfLook(20, coversOnRight = true, led = com.hybrid87sg.bindertracker.data.ShelfLook.LedPresets[3].colours),
-            onChange = {}, onDone = {}, showsLights = true,
+            look = com.hybrid87sg.bindertracker.data.ShelfLook(view = com.hybrid87sg.bindertracker.data.ShelfView.Cover),
+            onChange = {}, onDone = {}, wide = false,
             modifier = androidx.compose.ui.Modifier.fillMaxSize(),
         )
     }
