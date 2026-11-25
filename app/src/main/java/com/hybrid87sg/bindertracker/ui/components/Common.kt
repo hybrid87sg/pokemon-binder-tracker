@@ -191,7 +191,7 @@ fun ShelfPlank(modifier: Modifier = Modifier, sideMargin: Dp = 8.dp) {
 
 /** "< Shelf" style back button used at the top of most screens. */
 @Composable
-fun BackButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = AppColors.Ink) {
+fun BackButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = AppColors.Ink, maxLines: Int = Int.MAX_VALUE) {
     val press = remember { MutableInteractionSource() }
     TextButton(
         onClick = onClick,
@@ -201,7 +201,7 @@ fun BackButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
     ) {
         Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(4.dp))
-        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 

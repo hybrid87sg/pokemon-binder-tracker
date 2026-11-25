@@ -223,6 +223,15 @@ fun PageScreen(
     // The binder's ID: its first page leaves a picture of itself for the 3D binder
     // on the shelf to open onto (see PageLanding). Null = don't.
     landingBinderId: String? = null,
+    // This phone's Main set / Master set choice for the binder (null = no switch), and changing it.
+    masterSet: Boolean? = null,
+    onMasterSet: (Boolean) -> Unit = {},
+    // Batch edit (Edit, then tick cards): mark pockets empty, move cards into pockets,
+    // move cards to a new page (then gives its ID), and put pockets back (Undo).
+    onBatchEmpty: (List<PocketRef>) -> Unit = {},
+    onBatchMove: (List<Pair<PocketRef, PocketRef>>) -> Unit = {},
+    onBatchMoveToNewPage: (List<PocketRef>, (String) -> Unit) -> Unit = { _, _ -> },
+    onRestorePockets: (List<com.hybrid87sg.bindertracker.data.Pocket>) -> Unit = {},
 ) {
     val turnState = rememberPageTurnState()
     var selected by remember { mutableStateOf<PocketWithCard?>(null) }
@@ -231,6 +240,18 @@ fun PageScreen(
     var editing by remember { mutableStateOf(false) }
     // The "Go to page" panel, opened by tapping the page number.
     var jumping by remember { mutableStateOf(false) }
+    // Batch edit: what's ticked, the slots picked to move into, and the undo history.
+    // (The screen stays while pages turn, so ticks on several pages are kept.)
+    val batch = remember { BatchEdit() }
+    var batchMoving by remember { mutableStateOf(false) }
+    LaunchedEffect(editing) {
+        if (!editing) {
+            batch.clear()
+            batchMoving = false
+        }
+    }
+    // The phone's back button leaves Edit first.
+    androidx.activity.compose.BackHandler(enabled = editing) { editing = false }
     LaunchedEffect(openPosition, pockets) {
         val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
         selected = pocket
@@ -443,14 +464,136 @@ fun PageScreen(
         }
     }
 
+    // ---- Batch edit (Edit: tick several cards, then mark them empty or move them) ----
+    val batchOn by rememberUpdatedState(editing)
+    val batchEmptyCb by rememberUpdatedState(onBatchEmpty)
+    val batchMoveCb by rememberUpdatedState(onBatchMove)
+    val batchNewPageCb by rememberUpdatedState(onBatchMoveToNewPage)
+    val restoreCb by rememberUpdatedState(onRestorePockets)
+
+    fun pocketFor(ref: PocketRef): PocketWithCard? =
+        (if (ref.first == currentPageId) latestPockets else (nearbyCards[ref.first] ?: cards[ref.first]).orEmpty())
+            .firstOrNull { it.position == ref.second }
+
+    fun pageLabel(id: String) = "page ${ids.indexOf(id) + 1}"
+
+    // The ticked pockets that hold a card, in binder order (pockets marked empty can't move).
+    fun tickedCards(): List<PocketRef> = batch.picked.filter { pocketFor(it)?.cardId != null }
+        .sortedWith(compareBy({ ids.indexOf(it.first) }, { it.second }))
+
+    fun namesOf(refs: List<PocketRef>): String {
+        val names = refs.map { r -> pocketFor(r)?.cardName ?: "pocket ${r.second + 1}" }
+        return if (names.size > 3) names.take(3).joinToString(", ") + " +${names.size - 3}" else names.joinToString(", ")
+    }
+
+    // How these pockets are now, so Undo can put them back.
+    fun snapshot(refs: List<PocketRef>): List<com.hybrid87sg.bindertracker.data.Pocket> = refs.mapNotNull { r ->
+        pocketFor(r)?.let { com.hybrid87sg.bindertracker.data.Pocket(r.first, r.second, cardId = it.cardId, isEmpty = it.isEmpty) }
+    }
+
+    // Goes back to before history step [index]: that step and every newer one are undone.
+    fun undoBatchTo(index: Int) {
+        val steps = batch.history.toList()
+        if (index !in steps.indices) return
+        val undone = steps.subList(index, steps.size)
+        // Newest first, so where steps changed the same pocket, the oldest "before" wins.
+        restoreCb(undone.reversed().flatMap { it.before })
+        repeat(undone.size) { batch.history.removeAt(batch.history.lastIndex) }
+        batch.clear()
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        notice = Notice(if (undone.size == 1) "Undone: ${undone[0].title}" else "Went back ${undone.size} steps")
+    }
+
+    fun undoBatch() = undoBatchTo(batch.history.lastIndex)
+
+    fun batchMarkEmpty() {
+        val refs = batch.picked.filter { pocketFor(it)?.isEmpty == false }
+        if (refs.isEmpty()) return
+        val plural = if (refs.size == 1) "" else "s"
+        batch.record(BatchStep("Marked ${refs.size} empty", namesOf(refs), snapshot(refs), moved = false))
+        batchEmptyCb(refs)
+        batch.clear()
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        notice = Notice("Marked ${refs.size} pocket$plural empty", listOf("Undo" to { undoBatch() }))
+    }
+
+    // Moves the cards in [from] into the "?" pockets in [to], in order.
+    fun batchMove(from: List<PocketRef>, to: List<PocketRef>) {
+        val n = minOf(from.size, to.size)
+        if (n == 0) return
+        val moving = from.take(n)
+        val dest = to.take(n)
+        val pages = dest.map { it.first }.distinct()
+        val where = if (pages.size == 1) pageLabel(pages[0]) else "${pages.size} pages"
+        val title = "Moved $n card${if (n == 1) "" else "s"}"
+        batch.record(BatchStep(title, "${namesOf(moving)} → $where", snapshot(moving + dest), moved = true))
+        batchMoveCb(moving.zip(dest))
+        batch.clear()
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        val target = pages.singleOrNull()
+        notice = Notice(
+            if (target == currentPageId) title else "$title to $where",
+            listOfNotNull(
+                target?.takeIf { it != currentPageId }?.let { t -> "Go there" to { goTo(t) } },
+                "Undo" to { undoBatch() },
+            ),
+        )
+    }
+
+    fun batchMoveToNewPage(from: List<PocketRef>) {
+        if (from.isEmpty()) return
+        val before = snapshot(from)
+        val names = namesOf(from)
+        val n = from.size
+        batch.clear()
+        batchNewPageCb(from) { newId ->
+            val title = "Moved $n card${if (n == 1) "" else "s"}"
+            // Undo puts the cards back and leaves the new page's pockets to scan.
+            batch.record(BatchStep(title, "$names → new page", before + (0 until n).map { com.hybrid87sg.bindertracker.data.Pocket(newId, it) }, moved = true))
+            notice = Notice("$title to a new page", listOf("Go there" to { goToPage(newId) }, "Undo" to { undoBatch() }))
+        }
+    }
+
+    // A tap while batch editing: tick or untick a card, or pick a "?" pocket for the ticked cards.
+    // Once there's a "?" pocket picked for every ticked card, they move.
+    fun batchTap(page: String, p: PocketWithCard) {
+        val ref = page to p.position
+        if (p.isFreeSlot()) {
+            val ticked = tickedCards()
+            if (ticked.isEmpty()) {
+                notice = Notice("\"?\" pockets can't be ticked. Tick cards first, then tap a \"?\" pocket to move them in.")
+                return
+            }
+            if (ref in batch.slots) batch.slots.remove(ref) else batch.slots.add(ref)
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            if (batch.slots.size >= ticked.size) batchMove(ticked, batch.slots.toList())
+        } else {
+            batch.toggle(ref)
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        }
+    }
+
+    // How a pocket looks while batch editing (and the number of a picked "?" pocket).
+    fun batchMarkFor(page: String, p: PocketWithCard): Pair<BatchMark, Int>? = when {
+        !editing -> null
+        p.isFreeSlot() -> {
+            val n = batch.slots.indexOf(page to p.position) + 1
+            if (batch.picked.any { pocketFor(it)?.cardId != null }) BatchMark.Target to n else BatchMark.Free to 0
+        }
+        (page to p.position) in batch.picked -> BatchMark.Picked to 0
+        else -> BatchMark.Pickable to 0
+    }
+
     // Open binder: a tap or hold on the other page makes it the page you're on,
     // then does what it would do there.
     fun tapOther(id: String, p: PocketWithCard) {
+        if (batchOn) return batchTap(id, p)
         goToPage(id)
         if (p.cardId != null || ghostAt(id, p.position) != null) openCard(id, p.position) else if (editable) scanCard(p.position)
     }
 
     fun holdOther(id: String, p: PocketWithCard) {
+        if (batchOn) return batchTap(id, p)
         if (!editable) {
             haptics.performHapticFeedback(HapticFeedbackType.Reject)
             notice = Notice("This binder is view only, so cards stay where they are.")
@@ -556,16 +699,23 @@ fun PageScreen(
     val gestures = remember(drag) {
         object : PocketGestures {
             override fun pocketAt(local: Offset): Int? = drag.pocketAt(drag.onScreen(local), 0f)
-            override fun press(position: Int) { drag.pressed = position }
+            override fun press(position: Int) { if (!batchOn) drag.pressed = position }
             override fun release() { drag.pressed = null }
             override fun tap(position: Int) {
                 val p = shownPocket(position) ?: return
+                // Batch editing: a tap ticks the card (or picks a "?" pocket).
+                if (batchOn) return batchTap(currentPageId, p)
                 // A grey missing card opens too: its card screen has "Put it in" and "Scan it in".
                 if (p.cardId != null || ghostAt(currentPageId, position) != null) openCard(currentPageId, position)
                 else if (editable) scanCard(position)
             }
             override fun hold(position: Int): Boolean {
                 drag.pressed = null
+                // Batch editing: no lifting or menus, a hold is just a tap.
+                if (batchOn) {
+                    shownPocket(position)?.let { batchTap(currentPageId, it) }
+                    return false
+                }
                 val p = shownPocket(position) ?: return false
                 if (!editable) {
                     haptics.performHapticFeedback(HapticFeedbackType.Reject)
@@ -687,16 +837,51 @@ fun PageScreen(
 
     Box(Modifier.fillMaxSize().windowBackground().onGloballyPositioned { drag.screen = it }) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            BackButton(binderName, onBack)
-            Spacer(Modifier.weight(1f))
-            // The tips used to sit under the page as fine print (and made the page scroll).
-            onOpenGlossary?.let { GlossaryButton(it) }
-            TipsButton { showTips = true }
-            // Deleting the page lives behind Edit, with a Done button to leave.
-            if (!editing && canEdit) {
-                TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
-                    Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+        if (editing) {
+            // Batch edit: Select all, how many are ticked, undo (hold for the history) and Done.
+            val tickable = shownPockets.filter { !it.isFreeSlot() }
+            val allTicked = tickable.isNotEmpty() && tickable.all { (pageId to it.position) in batch.picked }
+            val tickedCount = batch.picked.count { pocketFor(it)?.cardId != null }
+            val pagesTicked = batch.picked.map { it.first }.distinct().size
+            BatchTopBar(
+                status = when {
+                    batch.slots.isNotEmpty() -> (tickedCount - batch.slots.size).let { "Pick $it more slot${if (it == 1) "" else "s"}" }
+                    batch.picked.isEmpty() -> "Tap cards"
+                    pagesTicked > 1 -> "${batch.picked.size} selected · $pagesTicked pages"
+                    else -> "${batch.picked.size} selected"
+                },
+                allTicked = allTicked,
+                onSelectAll = {
+                    batch.slots.clear()
+                    tickable.forEach { p ->
+                        val ref = pageId to p.position
+                        if (allTicked) batch.picked.remove(ref) else if (ref !in batch.picked) batch.picked.add(ref)
+                    }
+                },
+                history = batch.history,
+                pageNumberOf = { null },
+                onUndo = { undoBatch() },
+                onUndoTo = { undoBatchTo(it) },
+                onDone = { editing = false },
+            )
+        } else {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // (A long binder name is cut short with "…" so the buttons always fit.)
+                Box(Modifier.weight(1f)) { BackButton(binderName, onBack, maxLines = 1) }
+                // Main set / Master set, just for this phone (the Glossary is in "Go to page").
+                masterSet?.let { m ->
+                    MasterSetToggle(m) { on ->
+                        onMasterSet(on)
+                        notice = Notice(if (on) "Master set: secret rares count too. Just on this phone." else "Main set: secret rares don't count. Just on this phone.")
+                    }
+                }
+                // The tips used to sit under the page as fine print (and made the page scroll).
+                TipsButton { showTips = true }
+                // Batch edit (and deleting the page) lives behind Edit, with Done to leave.
+                if (canEdit) {
+                    TextButton(onClick = { editing = true }, modifier = Modifier.height(48.dp)) {
+                        Text("Edit", style = MaterialTheme.typography.labelLarge, color = AppColors.Ink)
+                    }
                 }
             }
         }
@@ -767,7 +952,8 @@ fun PageScreen(
                             ghostAt = { pos -> ghostAt(id, pos) },
                             // (Also what TalkBack's double tap / double tap and hold do.)
                             onPocket = { if (live) gestures.tap(it.position) else if (other) tapOther(id, it) },
-                            onPocketHold = { if (live) { if (canEdit) selected = it } else if (other) holdOther(id, it) },
+                            onPocketHold = { if (live) { if (editing) batchTap(id, it) else if (canEdit) selected = it } else if (other) holdOther(id, it) },
+                            batchMark = { p -> batchMarkFor(id, p) },
                             drag = if (live) drag else null,
                             gestures = if (live) gestures else null,
                             mirrored = side == 0,
@@ -827,7 +1013,8 @@ fun PageScreen(
                         sheetPockets, columns, pageKey = sheetKey, live = live,
                         ghostAt = { pos -> ghostAt(sheetKey, pos) },
                         onPocket = { if (live) gestures.tap(it.position) },
-                        onPocketHold = { if (live && canEdit) selected = it },
+                        onPocketHold = { if (live) { if (editing) batchTap(sheetKey, it) else if (canEdit) selected = it } },
+                        batchMark = { p -> batchMarkFor(sheetKey, p) },
                         drag = if (live) drag else null,
                         gestures = if (live) gestures else null,
                     )
@@ -866,12 +1053,30 @@ fun PageScreen(
         }
 
         if (editing) {
-            BottomBar {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SheetButton("Delete page", color = AppColors.Danger) { confirmDelete = true }
-                    PrimaryButton(text = "Done", onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
-                }
+            // Turn pages while ticking (the ticks stay), then act on everything ticked.
+            if (pageCount > 1) {
+                PageArrows(
+                    pageNumber = pageNumber,
+                    pageCount = pageCount,
+                    canPrev = canPrevTurn,
+                    canNext = canNextTurn,
+                    open = open,
+                    onPrev = { turnState.turn(-1) },
+                    onNext = { turnState.turn(1) },
+                    onJump = if (pageIds.size > 1) ({ jumping = true }) else null,
+                    ping = ping,
+                    onPlaced = { k, c -> drag.rectOf(c)?.let { dotCenters[k] = it.center } },
+                    bottomInset = false,
+                )
             }
+            BatchActionBar(
+                tickedPockets = batch.picked.count { pocketFor(it)?.isEmpty == false },
+                tickedCards = batch.picked.count { pocketFor(it)?.cardId != null },
+                canMarkEmpty = batch.picked.any { pocketFor(it)?.isEmpty == false },
+                onMarkEmpty = { batchMarkEmpty() },
+                onMove = { batch.slots.clear(); batchMoving = true },
+                onDeletePage = { confirmDelete = true },
+            )
         } else if (pageCount > 1) {
             PageArrows(
                 pageNumber = pageNumber,
@@ -886,8 +1091,10 @@ fun PageScreen(
                 onPlaced = { k, c -> drag.rectOf(c)?.let { dotCenters[k] = it.center } },
             )
         } else {
-            // Keep the pockets clear of the phone's own navigation bar.
-            Spacer(Modifier.navigationBarsPadding())
+            // One page only (no "Go to page"): the Glossary button sits here instead.
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+                onOpenGlossary?.let { GlossaryButton(it) }
+            }
         }
     }
 
@@ -941,7 +1148,7 @@ fun PageScreen(
                 n,
                 onAction = { action -> notice = null; action() },
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = if (pageCount > 1) 84.dp else 16.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = if (editing) (if (pageCount > 1) 200.dp else 130.dp) else if (pageCount > 1) 84.dp else 60.dp),
             )
         }
     }
@@ -1014,6 +1221,27 @@ fun PageScreen(
                 if (!pocket.isEmpty) SheetButton("Mark as empty pocket") { selected = null; onMarkEmpty(pocket.position) }
                 if (pocket.cardId != null || pocket.isEmpty) SheetButton("Clear pocket") { selected = null; onClear(pocket.position) }
               }
+            }
+        }
+    }
+
+    if (batchMoving) {
+        ModalBottomSheet(
+            onDismissRequest = { batchMoving = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = AppColors.Paper,
+        ) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
+                val ticked = tickedCards()
+                BatchMovePicker(
+                    cardCount = ticked.size,
+                    pages = pageIds.mapIndexed { i, id -> PickerPage(id, i + 1, pocketsOf(id)) },
+                    currentPageId = pageId,
+                    columns = columns,
+                    ticked = batch.picked.toSet(),
+                    onMove = { dest -> batchMoving = false; batchMove(ticked, dest) },
+                    onNewPage = { batchMoving = false; batchMoveToNewPage(ticked) },
+                )
             }
         }
     }
@@ -1106,6 +1334,8 @@ private fun BinderSheet(
     onOtherHold: ((PocketWithCard) -> Unit)? = null,
     // The other page of an open binder: the card being dragged on the page you're on can be dropped here.
     peer: PocketDrag? = null,
+    // Batch edit: how each pocket looks (ticked, tickable, a "?" to move into), or null.
+    batchMark: (PocketWithCard) -> Pair<BatchMark, Int>? = { null },
 ) {
     val shape = if (mirrored) {
         RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp)
@@ -1153,8 +1383,11 @@ private fun BinderSheet(
                             val to = drag?.cardRects?.get(k)
                             if (from != null && to != null) (from.center - to.center) * 0.22f else Offset.Zero
                         } else Offset.Zero
+                        val mark = batchMark(pocket)
                         PocketTile(
                             pocket = pocket,
+                            batch = mark?.first,
+                            slotNumber = mark?.second ?: 0,
                             ghost = if (pocket.cardId == null) ghostAt(k) else null,
                             pageKey = pageKey,
                             live = live,
@@ -1248,6 +1481,8 @@ private fun PageArrows(
     onPlaced: (key: Int, LayoutCoordinates) -> Unit = { _, _ -> },
     // Open binder: one dot for each pair of pages.
     open: Boolean = false,
+    // Keep clear of the phone's navigation bar (false when something sits below, like Edit's buttons).
+    bottomInset: Boolean = true,
 ) {
     val dotCount = if (open) (pageCount + 1) / 2 else pageCount
     val current = if (open) (pageNumber - 1) / 2 else pageNumber - 1
@@ -1258,7 +1493,8 @@ private fun PageArrows(
         "Page $pageNumber of $pageCount"
     }
     Row(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().then(if (bottomInset) Modifier.navigationBarsPadding() else Modifier)
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = if (bottomInset) 12.dp else 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ArrowButton(R.drawable.ic_chevron_left, "Previous page", canPrev, onPrev, Modifier.onGloballyPositioned { onPlaced(PREV_ARROW, it) })
@@ -1335,6 +1571,9 @@ private const val NEXT_ARROW = -2
 @Composable
 private fun PocketTile(
     pocket: PocketWithCard,
+    // Batch edit: ticked, tickable, or a "?" pocket (with its number once picked as a place to move into).
+    batch: BatchMark? = null,
+    slotNumber: Int = 0,
     // A missing card to show greyed out, when the pocket has no card.
     ghost: Card? = null,
     pageKey: String,
@@ -1363,11 +1602,30 @@ private fun PocketTile(
     onTilePlaced: (LayoutCoordinates) -> Unit = {},
 ) {
     val label = when {
+        batch == BatchMark.Target -> if (slotNumber > 0) "Slot $slotNumber" else "Move here"
         pocket.cardName != null -> pocket.cardName
         ghost != null -> ghost.name
         pocket.isEmpty -> "Empty pocket"
+        batch == BatchMark.Free -> "Not scanned"
         else -> "Tap to scan"
     }
+    // Batch edit: a ticked card lifts and its neon glow breathes; the rest sit a little smaller.
+    val neon = BatchNeon
+    val pickLift by animateFloatAsState(
+        if (batch == BatchMark.Picked) 1f else 0f,
+        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        label = "pickLift",
+    )
+    val batchScale by animateFloatAsState(
+        when (batch) {
+            null -> 1f
+            BatchMark.Picked -> 1.02f
+            else -> 0.96f
+        },
+        spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "batchScale",
+    )
+    val pulse = if (batch == BatchMark.Picked) rememberPickPulse() else 0f
     // Flying to or from the card screen: lifted up out of the sleeve (see CardFlight).
     val flightKey = CardFlight.pocketKey(pageKey, pocket.position)
     val rise by animateFloatAsState(
@@ -1452,7 +1710,15 @@ private fun PocketTile(
             }
             // For TalkBack: a double tap opens it, a double tap and hold opens the menu.
             .semantics {
-                onClick(label = if (pocket.cardId != null || ghost != null) "View card" else "Scan a card") { onTapped(); true }
+                onClick(
+                    label = when {
+                        batch == BatchMark.Target -> "Move the ticked cards here"
+                        batch == BatchMark.Picked -> "Untick"
+                        batch == BatchMark.Pickable -> "Tick"
+                        pocket.cardId != null || ghost != null -> "View card"
+                        else -> "Scan a card"
+                    },
+                ) { onTapped(); true }
                 onLongClick(label = "More options") { onHeld(); true }
             },
     ) {
@@ -1482,13 +1748,13 @@ private fun PocketTile(
                         .graphicsLayer {
                             val t = arriveAt.value + nudge
                             translationX = t.x
-                            translationY = t.y - lift * 4.dp.toPx() - rise * size.height * 0.34f
-                            val k = scale * arriveScale.value * (1f + 0.04f * rise)
+                            translationY = t.y - lift * 4.dp.toPx() - rise * size.height * 0.34f - pickLift * 5.dp.toPx()
+                            val k = scale * arriveScale.value * (1f + 0.04f * rise) * batchScale
                             scaleX = k; scaleY = k
                             rotationZ = if (target == DropKind.Swap) -3f else 0f
                             rotationY = (1f - flip.value) * 90f
                             cameraDistance = 12f * density
-                            alpha = if (hole || hidden) 0f else 1f
+                            alpha = if (hole || hidden) 0f else if (batch == BatchMark.Free) 0.55f else 1f
                             // A soft shadow lifts every card off the page (more while it's held up).
                             val resting = if ((pocket.cardId != null || (pocket.isEmpty && ghost == null)) && !hole && !hidden) 3.dp.toPx() else 0f
                             shadowElevation = resting + lift * 14.dp.toPx()
@@ -1504,6 +1770,7 @@ private fun PocketTile(
                             },
                         )
                         .then(if (holdGlow > 0f) Modifier.border(3.dp, AppColors.AccentText.copy(alpha = holdGlow), shape) else Modifier)
+                        .then(if (batch == BatchMark.Picked) Modifier.drawBehind { neonGlow(neon, 6.dp.toPx(), 0.35f + 0.65f * pulse) } else Modifier)
                         .clip(shape)
                         .then(
                             when {
@@ -1535,6 +1802,31 @@ private fun PocketTile(
                     }
                 }
                 if (sparkle.value < 1f) Sparkles(sparkle.value, Modifier.matchParentSize())
+                // Batch edit: a "?" pocket the ticked cards can move into: "+", or its number once picked.
+                if (batch == BatchMark.Target) {
+                    Box(
+                        Modifier.matchParentSize().graphicsLayer { scaleX = batchScale; scaleY = batchScale }
+                            .clip(shape)
+                            .background(if (slotNumber > 0) neon else AppColors.Surface)
+                            .drawBehind { if (slotNumber == 0) neonDash(neon, 6.dp.toPx()) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (slotNumber > 0) "$slotNumber" else "+",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (slotNumber > 0) OnNeon else neon,
+                        )
+                    }
+                }
+                // Batch edit: the round tick in the corner (filled when ticked).
+                if (batch == BatchMark.Pickable || batch == BatchMark.Picked) {
+                    BatchTick(
+                        on = batch == BatchMark.Picked,
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = (-3).dp, y = 3.dp)
+                            .graphicsLayer { translationY = -pickLift * 5.dp.toPx() },
+                    )
+                }
                 // "Swap" or "Move here" on the pocket under the dragged card.
                 if (target != null) {
                     Text(
@@ -1558,13 +1850,19 @@ private fun PocketTile(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = when {
+                    batch == BatchMark.Target -> OnNeon
+                    batch == BatchMark.Free -> AppColors.Muted
                     ghost != null -> AppColors.Muted
                     pocket.cardId == null && !pocket.isEmpty -> AppColors.Black
                     else -> AppColors.Ink
                 },
-                modifier = if (pocket.cardId == null && !pocket.isEmpty && ghost == null) {
-                    Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 3.dp, vertical = 2.dp)
-                } else Modifier.padding(horizontal = LabelInset, vertical = 2.dp),
+                modifier = when {
+                    batch == BatchMark.Target -> Modifier.clip(RoundedCornerShape(6.dp)).background(neon).padding(horizontal = 5.dp, vertical = 2.dp)
+                    batch == BatchMark.Free -> Modifier.padding(horizontal = LabelInset, vertical = 2.dp)
+                    pocket.cardId == null && !pocket.isEmpty && ghost == null ->
+                        Modifier.clip(RoundedCornerShape(6.dp)).background(CheckFill).padding(horizontal = 3.dp, vertical = 2.dp)
+                    else -> Modifier.padding(horizontal = LabelInset, vertical = 2.dp)
+                },
             )
             // Just the card number under the name (the expansion is in card view).
             (pocket.cardNumber ?: ghost?.number)?.let { raw ->

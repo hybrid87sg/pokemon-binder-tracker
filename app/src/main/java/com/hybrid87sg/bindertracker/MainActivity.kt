@@ -697,6 +697,13 @@ private fun App(
                         ghosts = ghosts,
                         onOpenGlossary = { showGlossary = true },
                         landingBinderId = b.id,
+                        // Main set / Master set: this phone's own choice (anyone can flip it).
+                        masterSet = b.countSecretRares,
+                        onMasterSet = { on -> vm.setMasterSet(b.id, on) },
+                        onBatchEmpty = vm::markPocketsEmpty,
+                        onBatchMove = vm::movePockets,
+                        onBatchMoveToNewPage = { from, onCreated -> vm.movePocketsToNewPage(b, from, onCreated) },
+                        onRestorePockets = vm::restorePockets,
                     )
                     if (showGlossary) {
                         val missing by vm.missingCounts.collectAsStateWithLifecycle()
