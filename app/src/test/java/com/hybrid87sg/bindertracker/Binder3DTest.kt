@@ -3,6 +3,7 @@ package com.hybrid87sg.bindertracker
 import com.hybrid87sg.bindertracker.ui.three.BinderModel
 import com.hybrid87sg.bindertracker.ui.three.Cam
 import com.hybrid87sg.bindertracker.ui.three.SheetGrid
+import com.hybrid87sg.bindertracker.data.ShelfView
 import com.hybrid87sg.bindertracker.ui.three.ShelfLayout
 import com.hybrid87sg.bindertracker.ui.three.Vec3
 import com.hybrid87sg.bindertracker.ui.three.hitBox
@@ -38,27 +39,32 @@ class Binder3DTest {
     }
 
     @Test
-    fun shelfPutsFourBindersOnEachRow() {
-        val l = ShelfLayout(5, 25, coversOnRight = true)
-        assertEquals(5, l.spots.size)
-        assertEquals(listOf(0, 0, 0, 0, 1), l.spots.map { it.row })
-        assertEquals(2, l.planks.size)
-        // Binders on a row go left to right without touching.
-        val xs = l.spots.take(4).map { it.position.x }
-        assertTrue(xs.zipWithNext().all { (a, b) -> b > a })
+    fun spineSidePutsFiveBindersOnEachRow() {
+        val l = ShelfLayout(6, ShelfView.Spine)
+        assertEquals(6, l.spots.size)
+        assertEquals(listOf(0, 0, 0, 0, 0, 1), l.spots.map { it.row })
+        assertEquals(2, l.ledges.size)
+        // Binders on a row go left to right with the same gap between each.
+        val xs = l.spots.take(5).map { it.position.x }
+        val steps = xs.zipWithNext().map { (a, b) -> b - a }
+        assertTrue(steps.all { it > 0f })
+        assertTrue(steps.all { kotlin.math.abs(it - steps[0]) < 0.0001f })
         // The whole shelf is centred.
         assertEquals(-l.max.x, l.min.x, 0.001f)
     }
 
     @Test
-    fun turningLeftMirrorsTheBinders() {
-        val right = ShelfLayout(4, 30, coversOnRight = true)
-        val left = ShelfLayout(4, 30, coversOnRight = false)
-        assertEquals(1, right.dir)
-        assertEquals(-1, left.dir)
-        assertEquals(-right.turn, left.turn, 0.0001f)
-        // Straight binders always use the right-hand model.
-        assertEquals(1, ShelfLayout(3, 0, coversOnRight = false).dir)
+    fun coverSideUsesTheColumnsAsked() {
+        val folded = ShelfLayout(5, ShelfView.Cover, columns = 2)
+        assertEquals(listOf(0, 0, 1, 1, 2), folded.spots.map { it.row })
+        assertEquals(5, folded.labels.size)
+        val unfolded = ShelfLayout(5, ShelfView.Cover, columns = 4)
+        assertEquals(listOf(0, 0, 0, 0, 1), unfolded.spots.map { it.row })
+        // Spine side turns the spine to you; Cover side the cover. The cover is always on the right.
+        assertEquals(0f, folded.turn, 0.0001f)
+        assertEquals((Math.PI / 2).toFloat(), ShelfLayout(3).turn, 0.0001f)
+        assertEquals(1, folded.dir)
+        assertTrue(ShelfLayout(3).labels.isEmpty())
     }
 
     @Test

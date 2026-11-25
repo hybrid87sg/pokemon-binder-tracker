@@ -54,6 +54,7 @@ import com.hybrid87sg.bindertracker.ui.components.arrive
 import com.hybrid87sg.bindertracker.ui.components.countUp
 import com.hybrid87sg.bindertracker.ui.components.pressSquish
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -75,6 +76,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -174,7 +177,8 @@ fun ShelfScreen(
             val context = androidx.compose.ui.platform.LocalContext.current
             val screen = androidx.compose.ui.platform.LocalConfiguration.current
             val sheetColor = AppColors.Surface.toArgb()
-            val dir = if (look.angle == 0 || look.coversOnRight) 1 else -1
+            // On the 3D shelf the covers are always to the right of the spine.
+            val dir = 1
             val looks = binders.map { b ->
                 val c = covers[b.id]
                 com.hybrid87sg.bindertracker.ui.three.BinderLook3D(
@@ -197,7 +201,7 @@ fun ShelfScreen(
                     back = cardBack,
                 )
             }
-            // The name plate under each binder: "74 of 102", or "Shared · 12 cards".
+            // The words under each cover on Cover side: "74 of 102", or "Shared · 12 cards".
             val plates = binders.map { b ->
                 val f = fill[b.id]
                 com.hybrid87sg.bindertracker.ui.three.ShelfPlate(
@@ -216,9 +220,11 @@ fun ShelfScreen(
                 look = look,
                 colors = com.hybrid87sg.bindertracker.ui.three.ShelfColors(AppColors.Paper, AppColors.isDark),
                 plates = plates,
-                // Edit shelf takes the bottom 60% (folded) or a panel on the right (unfolded);
+                // Cover side: 2 covers a row folded (any phone), 4 when unfolded.
+                columns = if (wide) 4 else 2,
+                // Edit shelf takes the bottom of the screen (folded) or a panel on the right (unfolded);
                 // the shelf glides into the space that's left.
-                bottomInset = if (!wide && editing) with(density) { (screenH * SheetHeight).toPx() } else 0f,
+                bottomInset = if (!wide && editing) with(density) { sheetHeight(screenH).toPx() } else 0f,
                 rightInset = if (wide && editing) with(density) { (SheetWidth + 24.dp).toPx() } else 0f,
                 onOpen = { id, pageId ->
                     binders.firstOrNull { it.id == id }?.let { b ->
@@ -365,11 +371,11 @@ fun ShelfScreen(
         }
         }
     }
-        // Lights on / off, in the corner (only on the 3D shelf, when there are strips).
-        if (use3D && look.strips != com.hybrid87sg.bindertracker.data.LedStrips.Off && onLookChange != null) {
-            LightsPill(
-                on = look.lightsOn,
-                onToggle = { onLookChange(look.copy(lightsOn = !look.lightsOn)) },
+        // Spines / Covers, in the corner (only on the 3D shelf).
+        if (use3D && onLookChange != null) {
+            ViewPill(
+                view = look.view,
+                onPick = { onLookChange(look.copy(view = it)) },
                 modifier = Modifier.align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 16.dp + com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current)
                     .graphicsLayer { alpha = (1f - opening * 2.2f).coerceIn(0f, 1f) * (1f - editIn) },
@@ -383,7 +389,7 @@ fun ShelfScreen(
                 look = look,
                 onChange = onLookChange,
                 onDone = { editing = false },
-                showsLights = use3D,
+                wide = wide,
                 bottomPadding = if (wide) 0.dp else clearance,
                 modifier = (if (wide) {
                     Modifier.align(Alignment.TopEnd).statusBarsPadding()
@@ -391,7 +397,7 @@ fun ShelfScreen(
                         .width(SheetWidth).fillMaxSize()
                         .graphicsLayer { translationX = (1f - editIn) * (size.width + 24.dp.toPx()) }
                 } else {
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(screenH * SheetHeight)
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(sheetHeight(screenH))
                         .graphicsLayer { translationY = (1f - editIn) * size.height * 1.05f }
                 })
                     .shadow(16.dp, shape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
@@ -405,30 +411,33 @@ fun ShelfScreen(
 /** How wide Edit shelf is when it sits on the right (phone unfolded). */
 private val SheetWidth = 340.dp
 
-/** How much of the screen Edit shelf covers when it sits at the bottom (phone folded). */
-private const val SheetHeight = 0.6f
+/** How tall Edit shelf is when it sits at the bottom (phone folded): just its contents, at most 60% of the screen. */
+private fun sheetHeight(screenH: androidx.compose.ui.unit.Dp) = minOf(screenH * 0.6f, 460.dp)
 
-/** The Lights on / off pill in the corner of the 3D shelf. */
+/** The Spines / Covers switch in the corner of the 3D shelf. */
 @Composable
-private fun LightsPill(on: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
-    val press = remember { MutableInteractionSource() }
+private fun ViewPill(view: com.hybrid87sg.bindertracker.data.ShelfView, onPick: (com.hybrid87sg.bindertracker.data.ShelfView) -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        onClick = onToggle,
-        interactionSource = press,
         shape = RoundedCornerShape(percent = 50),
-        color = if (on) AppColors.Surface else AppColors.Surface2,
+        color = AppColors.Surface,
         shadowElevation = 6.dp,
-        modifier = modifier.heightIn(min = 44.dp).pressSquish(press).semantics {
-            contentDescription = if (on) "Lights on. Tap to switch the shelf lights off" else "Lights off. Tap to switch the shelf lights on"
-        },
+        modifier = modifier,
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(10.dp).clip(CircleShape)
-                    .background(if (on) Color(0xFFFFD27A) else AppColors.Muted.copy(alpha = 0.5f)),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(if (on) "Lights on" else "Lights off", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AppColors.Ink)
+        Row(Modifier.padding(4.dp)) {
+            for ((v, label) in listOf(com.hybrid87sg.bindertracker.data.ShelfView.Spine to "Spines", com.hybrid87sg.bindertracker.data.ShelfView.Cover to "Covers")) {
+                val picked = v == view
+                val press = remember { MutableInteractionSource() }
+                Box(
+                    Modifier.heightIn(min = 40.dp).pressSquish(press).clip(RoundedCornerShape(percent = 50))
+                        .background(if (picked) AppColors.Accent else Color.Transparent)
+                        .clickable(interactionSource = press, indication = androidx.compose.material3.ripple()) { if (!picked) onPick(v) }
+                        .semantics { selected = picked; role = androidx.compose.ui.semantics.Role.Tab; contentDescription = "Show binders by $label" }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (picked) AppColors.White else AppColors.Muted)
+                }
+            }
         }
     }
 }
