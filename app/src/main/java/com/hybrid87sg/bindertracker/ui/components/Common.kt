@@ -48,6 +48,16 @@ import com.hybrid87sg.bindertracker.ui.theme.LightPalette
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material3.Surface
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.hybrid87sg.bindertracker.ui.theme.AppShapes
 
 /** The cream paper label on every spine, the same in light and dark mode. */
 private val SpineLabel = Color(0xFFF6F4EF)
@@ -189,23 +199,48 @@ fun ShelfPlank(modifier: Modifier = Modifier, sideMargin: Dp = 8.dp) {
     }
 }
 
-/** "< Shelf" style back button used at the top of most screens. */
+/**
+ * The back button at the top of most screens: a round button with an arrow,
+ * then the name of where you are going back to (left out when it would just
+ * say "Back"). The arrow and the words are one tap target.
+ */
 @Composable
 fun BackButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = AppColors.Ink, maxLines: Int = Int.MAX_VALUE) {
     val press = remember { MutableInteractionSource() }
-    TextButton(
-        onClick = onClick,
-        interactionSource = press,
-        modifier = modifier.heightIn(min = 48.dp).pressSquish(press),
-        colors = ButtonDefaults.textButtonColors(contentColor = color),
+    // On camera screens the colour is light; give the circle a dark see-through fill there.
+    val onCamera = color != AppColors.Ink
+    val showLabel = label != "Back"
+    Row(
+        modifier
+            .heightIn(min = 48.dp)
+            .clip(AppShapes.Pill)
+            .clickable(interactionSource = press, indication = androidx.compose.material3.ripple(), role = Role.Button, onClickLabel = null, onClick = onClick)
+            .pressSquish(press)
+            .semantics { contentDescription = if (showLabel) "Back to $label" else "Back" }
+            .padding(end = if (showLabel) 12.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Box(
+            Modifier.size(44.dp)
+                .shadow(if (onCamera) 0.dp else 3.dp, CircleShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+                .clip(CircleShape)
+                .background(if (onCamera) Color(0x59000000) else AppColors.Group),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        }
+        if (showLabel) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                label, color = color, style = MaterialTheme.typography.titleMedium, maxLines = maxLines,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.clearAndSetSemantics { },
+            )
+        }
     }
 }
 
-/** The big full-width blue button. */
+/** The big blue button: a full-width pill. */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -220,7 +255,7 @@ fun PrimaryButton(
         enabled = enabled,
         interactionSource = press,
         modifier = modifier.fillMaxWidth().height(56.dp).pressSquish(press),
-        shape = RoundedCornerShape(14.dp),
+        shape = AppShapes.Pill,
         colors = ButtonDefaults.buttonColors(
             containerColor = AppColors.Accent,
             contentColor = AppColors.White,
@@ -236,6 +271,172 @@ fun PrimaryButton(
     }
 }
 
+/** A second-choice button: a soft tinted pill (instead of a heavy outline). */
+@Composable
+fun TonalButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    @DrawableRes icon: Int? = null,
+    fullWidth: Boolean = true,
+) {
+    val press = remember { MutableInteractionSource() }
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = press,
+        modifier = modifier.then(if (fullWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 52.dp).pressSquish(press),
+        shape = AppShapes.Pill,
+        elevation = null,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AppColors.Tonal,
+            contentColor = AppColors.OnTonal,
+            disabledContainerColor = AppColors.Disabled,
+            disabledContentColor = AppColors.OnDisabled,
+        ),
+    ) {
+        if (icon != null) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/**
+ * A round icon button that floats a little above the background, e.g. the
+ * pencil on My binders. [primary] fills it with the accent colour.
+ */
+@Composable
+fun RoundIconButton(
+    @DrawableRes icon: Int,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape,
+    elevated: Boolean = true,
+) {
+    val press = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = press,
+        shape = shape,
+        color = if (primary) AppColors.Accent else AppColors.Group,
+        contentColor = if (primary) AppColors.White else AppColors.Ink,
+        shadowElevation = if (elevated) 3.dp else 0.dp,
+        modifier = modifier.size(48.dp).pressSquish(press).semantics { contentDescription = description },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** One button in an [IconButtonGroup]. */
+class GroupButton(@DrawableRes val icon: Int, val description: String, val primary: Boolean = false, val onClick: () -> Unit)
+
+/**
+ * Small icon buttons joined into one rounded strip: round outer ends, tight
+ * inner corners. Reads as one tidy control instead of loose squares.
+ */
+@Composable
+fun IconButtonGroup(buttons: List<GroupButton>, modifier: Modifier = Modifier) {
+    Row(
+        modifier.shadow(3.dp, AppShapes.Pill, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow).clip(AppShapes.Pill),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        buttons.forEachIndexed { i, b ->
+            val first = i == 0
+            val last = i == buttons.lastIndex
+            val shape = RoundedCornerShape(
+                topStart = if (first) 24.dp else 8.dp, bottomStart = if (first) 24.dp else 8.dp,
+                topEnd = if (last) 24.dp else 8.dp, bottomEnd = if (last) 24.dp else 8.dp,
+            )
+            RoundIconButton(b.icon, b.description, b.onClick, primary = b.primary, shape = shape, elevated = false)
+        }
+    }
+}
+
+/** The small grey heading above a settings group, e.g. "Backups". */
+@Composable
+fun GroupLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier = modifier.padding(start = 6.dp, bottom = 8.dp).semantics { heading() },
+        color = AppColors.Muted,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+/**
+ * Rows grouped into one rounded block, like current Android settings: the
+ * block has big round outer corners and the rows inside are split by thin gaps.
+ * Put [SettingsRow]s (or any content) inside.
+ */
+@Composable
+fun SettingsGroup(modifier: Modifier = Modifier, label: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth()) {
+        if (label != null) GroupLabel(label)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            content = content,
+        )
+    }
+}
+
+/**
+ * One row in a [SettingsGroup]: a round tinted icon (or your own [leading]),
+ * a title, an optional line under it, and something on the right ([trailing],
+ * or a ">" when the row opens something).
+ */
+@Composable
+fun SettingsRow(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    @DrawableRes icon: Int? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    titleColor: Color = AppColors.Ink,
+    onClick: (() -> Unit)? = null,
+    below: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier.fillMaxWidth()
+            .background(AppColors.Group)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .heightIn(min = 60.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        when {
+            leading != null -> { Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { leading() }; Spacer(Modifier.width(14.dp)) }
+            icon != null -> {
+                Box(Modifier.size(40.dp).clip(CircleShape).background(AppColors.Tonal), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(icon), contentDescription = null, tint = AppColors.OnTonal, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(14.dp))
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = titleColor)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            below?.invoke()
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(10.dp))
+            trailing()
+        } else if (onClick != null) {
+            Spacer(Modifier.width(8.dp))
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = AppColors.Muted, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
 /** A strip pinned to the bottom of the screen that holds the main button. */
 @Composable
 fun BottomBar(content: @Composable () -> Unit) {
@@ -246,4 +447,10 @@ fun BottomBar(content: @Composable () -> Unit) {
             horizontalArrangement = Arrangement.Center,
         ) { content() }
     }
+}
+
+/** A small drawn icon (used where the app once typed symbols like ✕ or ▾, which look different on every phone). */
+@Composable
+fun SmallIcon(@DrawableRes res: Int, tint: Color, modifier: Modifier = Modifier, size: Dp = 18.dp) {
+    Icon(painterResource(res), contentDescription = null, tint = tint, modifier = modifier.size(size))
 }

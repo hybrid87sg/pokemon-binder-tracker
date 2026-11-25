@@ -354,7 +354,7 @@ fun MissingCardsScreen(
                 toast.orEmpty(),
                 color = AppColors.Paper,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AppColors.Ink).padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Ink).padding(horizontal = 16.dp, vertical = 12.dp),
             )
         }
     }
@@ -456,7 +456,7 @@ private fun <T> Segmented(options: List<Pair<String, T>>, selected: T, enabled: 
 
 @Composable
 private fun Tabs(modifier: Modifier, tabs: List<Pair<String, Show>>, selected: Show, onSelect: (Show) -> Unit) {
-    Row(modifier.clip(RoundedCornerShape(12.dp)).background(AppColors.Surface2).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row(modifier.clip(RoundedCornerShape(16.dp)).background(AppColors.Surface2).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         tabs.forEach { (label, value) ->
             val on = value == selected
             Box(
@@ -501,7 +501,7 @@ private fun Pill(text: String, selected: Boolean = false, foil: Boolean = false,
 
 @Composable
 private fun ExpansionChip(name: String, missing: Int, fraction: Float, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         Modifier.width(112.dp).clip(shape).background(AppColors.Surface)
             .border(if (selected) 2.dp else 1.dp, if (selected) AppColors.Accent else AppColors.BorderStrong, shape)
@@ -653,7 +653,7 @@ private fun CardSheet(
                 }
             }
 
-            val box = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AppColors.Surface2).border(1.dp, AppColors.Border, RoundedCornerShape(14.dp)).padding(12.dp)
+            val box = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Surface2).border(1.dp, AppColors.Border, RoundedCornerShape(16.dp)).padding(12.dp)
             when {
                 entry.owned -> Text(
                     where?.let { "In this binder: page ${it.first}, pocket ${it.second + 1}" } ?: "In this binder",
@@ -680,7 +680,7 @@ private fun CardSheet(
                 OutlinedButton(
                     onClick = { onScan(spot) },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(percent = 50),
                     border = BorderStroke(1.dp, AppColors.BorderStrong),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                 ) {
@@ -747,7 +747,7 @@ private fun NotCollecting(binder: Binder, suggestion: ExpansionCount?, onChoose:
             } else {
                 if (suggestion != null) {
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AppColors.Surface2).padding(12.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.Surface2).padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
@@ -760,7 +760,7 @@ private fun NotCollecting(binder: Binder, suggestion: ExpansionCount?, onChoose:
                 OutlinedButton(
                     onClick = onChoose,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(percent = 50),
                     border = BorderStroke(1.dp, AppColors.BorderStrong),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                 ) { Text(if (suggestion != null) "Choose another expansion" else "Choose expansions") }

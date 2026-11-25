@@ -32,6 +32,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.LocalConfiguration
@@ -67,9 +71,9 @@ fun MissingTabScreen(
     val opening = openingMoment()
 
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Eyebrow("Still to find")
-            Text("Missing cards", style = MaterialTheme.typography.headlineLarge)
+            Text("Missing", style = MaterialTheme.typography.headlineLarge)
         }
         if (binders.isEmpty()) {
             Text(
@@ -94,7 +98,7 @@ fun MissingTabScreen(
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Fixed(if (unfolded) 8 else 4),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp + com.hybrid87sg.bindertracker.ui.components.LocalTabBarClearance.current),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
@@ -119,26 +123,32 @@ fun MissingTabScreen(
 @Composable
 private fun BinderHeading(b: BinderMissing, onOpenList: () -> Unit) {
     val have = b.progress.total - b.progress.missing
+    // A big rounded card: binder name, percent done, a foil progress bar. Tap anywhere for the full list.
     Column(
-        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(14.dp)).background(AppColors.Surface)
-            .border(1.dp, AppColors.Border, RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().padding(top = 10.dp)
+            .shadow(8.dp, RoundedCornerShape(24.dp), ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+            .clip(RoundedCornerShape(24.dp)).background(AppColors.Surface)
+            .clickable(onClickLabel = "Open the full list", onClick = onOpenList)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(com.hybrid87sg.bindertracker.ui.components.colorFromHex(b.binder.colorHex)))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(b.binder.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = AppColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$have of ${b.progress.total} · ${b.progress.missing} to go", fontSize = 12.sp, color = AppColors.Muted)
+                Text(b.binder.name, style = MaterialTheme.typography.titleLarge, color = AppColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$have of ${b.progress.total} · ${b.progress.missing} to go", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
             }
             Text(
-                "Open list ›",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = AppColors.AccentText,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onOpenList).heightIn(min = 40.dp).padding(horizontal = 8.dp, vertical = 10.dp),
+                "${(b.progress.fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.headlineSmall,
+                color = AppColors.Ink,
             )
+            Spacer(Modifier.width(4.dp))
+            com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_chevron_right, AppColors.Muted)
         }
-        Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(AppColors.Surface2)) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(b.progress.fraction.coerceIn(0f, 1f)).drawBehind { drawRect(holoBrush(size.width.coerceAtLeast(1f))) })
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(AppColors.Surface2)) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(b.progress.fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(4.dp)).drawBehind { drawRect(holoBrush(size.width.coerceAtLeast(1f))) })
         }
     }
 }
@@ -150,10 +160,10 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
         text,
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        color = if (selected) AppColors.White else AppColors.Ink,
+        color = if (selected) AppColors.Paper else AppColors.Ink,
         maxLines = 1,
         modifier = Modifier.clip(shape)
-            .then(if (selected) Modifier.background(AppColors.Accent) else Modifier.background(AppColors.Surface).border(1.dp, AppColors.Border, shape))
+            .background(if (selected) AppColors.Ink else AppColors.Group)
             .clickable(onClick = onClick)
             .heightIn(min = 36.dp)
             .padding(horizontal = 14.dp, vertical = 9.dp),

@@ -200,7 +200,7 @@ fun ShareScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(
                                     onClick = { copyCode(context, invite.code) },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(percent = 50),
                                     border = BorderStroke(1.dp, AppColors.BorderStrong),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Ink),
                                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -211,7 +211,7 @@ fun ShareScreen(
                                 }
                                 androidx.compose.material3.Button(
                                     onClick = { sendCode(context, binder.name, invite.code) },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(percent = 50),
                                     colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.White),
                                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                 ) {
@@ -316,7 +316,7 @@ private fun RoleOption(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface,
         border = BorderStroke(2.dp, if (selected) AppColors.Accent else AppColors.Border),
         modifier = modifier.selectable(selected = selected, onClick = onClick, role = Role.RadioButton),
@@ -382,7 +382,7 @@ private fun MemberRow(member: Member, isOwner: Boolean, onToggleRole: () -> Unit
 @Composable
 private fun Notice(text: String) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = AppColors.Surface2,
         modifier = Modifier.fillMaxWidth(),
     ) {

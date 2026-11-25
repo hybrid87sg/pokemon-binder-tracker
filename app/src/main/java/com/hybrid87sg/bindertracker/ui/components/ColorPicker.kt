@@ -202,7 +202,7 @@ fun ColorPicker(
             isError = ColorMath.parseHex(codeText) == null,
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 unfocusedContainerColor = AppColors.Surface,
                 focusedContainerColor = AppColors.Surface,

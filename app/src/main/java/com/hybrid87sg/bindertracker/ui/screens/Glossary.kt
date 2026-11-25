@@ -158,7 +158,7 @@ fun GlossaryPopup(
                             item(key = "add") {
                                 Surface(
                                     onClick = { addingPages = true },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = androidx.compose.ui.graphics.Color.Transparent,
                                     border = BorderStroke(1.dp, AppColors.BorderStrong),
                                     modifier = Modifier.fillMaxWidth(),
@@ -241,7 +241,7 @@ private fun GlossaryHeader(
                 Modifier.size(44.dp).clip(CircleShape).clickable(onClickLabel = "Close the Glossary", onClick = onDismiss),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("✕", fontSize = 18.sp, color = AppColors.Muted)
+                com.hybrid87sg.bindertracker.ui.components.SmallIcon(com.hybrid87sg.bindertracker.R.drawable.ic_close, AppColors.Muted, size = 20.dp)
             }
         }
         val cards = pages.sumOf { it.identified }
@@ -275,7 +275,7 @@ private fun GlossaryRow(
     Surface(
         onClick = onClick,
         interactionSource = press,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (here) AppColors.Surface2 else AppColors.Surface,
         border = BorderStroke(if (here) 2.dp else 1.dp, if (here) AppColors.AccentText else AppColors.Border),
         modifier = Modifier.fillMaxWidth().pressSquish(press, 0.97f).semantics {

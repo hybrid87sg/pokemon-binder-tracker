@@ -226,7 +226,7 @@ private fun CollectingSection(
             ids.zip(names).forEach { (id, name) ->
                 Surface(
                     onClick = { onRemove(id) },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = AppColors.Accent,
                     modifier = Modifier.semantics { contentDescription = "$name, tap to remove" },
                 ) {
@@ -235,7 +235,7 @@ private fun CollectingSection(
             }
             Surface(
                 onClick = onAdd,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = AppColors.Surface,
                 border = BorderStroke(1.dp, AppColors.BorderStrong),
             ) {
@@ -276,7 +276,7 @@ private fun SizeChangeNote(binder: Binder, size: BinderSize, pageCount: Int, fil
         color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surface)
             .padding(14.dp),
     )
