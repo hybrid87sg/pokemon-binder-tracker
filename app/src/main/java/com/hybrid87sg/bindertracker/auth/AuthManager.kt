@@ -109,7 +109,11 @@ class AuthManager(private val context: Context) {
         } catch (e: GetCredentialCancellationException) {
             null // the person closed the account picker; nothing to report
         } catch (e: NoCredentialException) {
-            "No Google account found on this phone. Add one in Settings, then try again."
+            // Android gives this same error when the phone has no Google account
+            // AND when Google doesn't recognise this app yet (its SHA-1
+            // fingerprint isn't registered in Firebase), so mention both.
+            "Google sign-in couldn't start. Check that a Google account is added in your phone's " +
+                "Settings. If one is, the app isn't registered with Google yet: use \"Use on this phone only\" for now."
         } catch (e: Exception) {
             "Couldn't sign in: ${e.message ?: "unknown problem"}. Check your internet connection and try again."
         }

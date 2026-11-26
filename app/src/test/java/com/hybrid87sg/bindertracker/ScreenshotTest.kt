@@ -101,6 +101,15 @@ class ScreenshotTest {
         SignInScreen(firebaseReady = true, signingIn = false, error = null, onGoogleSignIn = {}, onUseLocalOnly = {})
     }
 
+    @Test fun signInDarkWithError() = shoot("1c-sign-in-dark-error", dark = true) {
+        SignInScreen(
+            firebaseReady = true, signingIn = false,
+            error = "Google sign-in couldn't start. Check that a Google account is added in your phone's Settings. " +
+                "If one is, the app isn't registered with Google yet: use \"Use on this phone only\" for now.",
+            onGoogleSignIn = {}, onUseLocalOnly = {},
+        )
+    }
+
     @Test fun signInNotConfigured() = shoot("1b-sign-in-no-firebase") {
         SignInScreen(firebaseReady = false, signingIn = false, error = null, onGoogleSignIn = {}, onUseLocalOnly = {})
     }
