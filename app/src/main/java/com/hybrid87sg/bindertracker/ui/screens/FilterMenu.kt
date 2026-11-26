@@ -81,39 +81,39 @@ import com.hybrid87sg.bindertracker.ui.screens.FilterLogic.Quick
 import com.hybrid87sg.bindertracker.ui.screens.FilterLogic.Section
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 
-/** The "Filter" button in the binder page's header, with how many things are ticked. */
+/**
+ * The round Filter button at the bottom right of the binder page, next to the
+ * right page arrow (same size as the arrows). Glows neon with a count when on.
+ */
 @Composable
-internal fun FilterButton(count: Int, open: Boolean, onClick: () -> Unit) {
+internal fun FilterIconButton(count: Int, open: Boolean, onClick: () -> Unit) {
     val neon = BatchNeon
     val on = count > 0
-    val turn by animateFloatAsState(if (open) 180f else 0f, label = "filterChevron")
-    Row(
-        Modifier.height(44.dp)
-            .then(if (on) Modifier.drawBehind { drawRoundRect(neon.copy(alpha = 0.35f), topLeft = Offset(-3f * density, -3f * density), size = Size(size.width + 6f * density, size.height + 6f * density), cornerRadius = CornerRadius(size.height)) }
-                else Modifier.shadow(3.dp, RoundedCornerShape(50), ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow))
-            .clip(RoundedCornerShape(50))
-            .background(if (on) neon else AppColors.Group)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = if (on) "Filter, $count on" else "Filter" }
-            .padding(start = 12.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        val ink = if (on) OnNeon else AppColors.Ink
-        androidx.compose.material3.Icon(
-            androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_filter),
-            contentDescription = null, tint = ink, modifier = Modifier.size(18.dp),
-        )
-        Text("Filter", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ink)
+    Box(Modifier.size(52.dp)) {
+        Box(
+            Modifier.matchParentSize()
+                .then(if (on) Modifier.drawBehind { drawCircle(neon.copy(alpha = 0.35f), radius = size.minDimension / 2 + 3f * density) }
+                    else Modifier.shadow(3.dp, CircleShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow))
+                .clip(CircleShape)
+                .background(if (on) neon else if (open) AppColors.Surface2 else AppColors.Group)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = if (on) "Filter, $count on" else "Filter" },
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Icon(
+                androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_filter),
+                contentDescription = null, tint = if (on) OnNeon else AppColors.Ink, modifier = Modifier.size(20.dp),
+            )
+        }
         if (on) {
-            Box(Modifier.size(20.dp).clip(CircleShape).background(OnNeon), contentAlignment = Alignment.Center) {
+            // The count sits on the button's top-right edge.
+            Box(
+                Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(20.dp).clip(CircleShape).background(OnNeon),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text("$count", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = neon)
             }
         }
-        androidx.compose.material3.Icon(
-            androidx.compose.ui.res.painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_expand_more),
-            contentDescription = null, tint = ink, modifier = Modifier.size(18.dp).rotate(turn),
-        )
     }
 }
 
@@ -147,7 +147,7 @@ internal fun FilterMatchBar(here: Int, total: Int, onNext: (() -> Unit)?) {
 }
 
 /**
- * The Filter menu that drops down from the header: Main/Master set, quick
+ * The Filter menu that rises from the Filter button (bottom right): Main/Master set, quick
  * picks, and lists you can tick several things in. The binder page behind
  * changes as you tick. Drawn over the page (call inside the screen's Box).
  */
@@ -179,12 +179,14 @@ internal fun BoxScope.FilterMenu(
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose),
         )
     }
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.78f).dp
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.72f).dp
     AnimatedVisibility(
         visible,
-        enter = fadeIn() + scaleIn(initialScale = 0.92f, transformOrigin = TransformOrigin(0.75f, 0f)),
-        exit = fadeOut() + scaleOut(targetScale = 0.95f, transformOrigin = TransformOrigin(0.75f, 0f)),
-        modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 60.dp, start = 8.dp, end = 8.dp).widthIn(max = 520.dp),
+        enter = fadeIn() + scaleIn(initialScale = 0.92f, transformOrigin = TransformOrigin(1f, 1f)),
+        exit = fadeOut() + scaleOut(targetScale = 0.95f, transformOrigin = TransformOrigin(1f, 1f)),
+        // Sits just above the bottom row (page arrows + Filter), lined up with its right edge.
+        modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().statusBarsPadding()
+            .padding(bottom = 78.dp, start = 8.dp, end = 8.dp, top = 8.dp).widthIn(max = 520.dp),
     ) {
         val shape = RoundedCornerShape(18.dp)
         Column(
