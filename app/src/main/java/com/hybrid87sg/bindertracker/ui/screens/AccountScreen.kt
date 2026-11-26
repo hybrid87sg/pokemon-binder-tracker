@@ -193,6 +193,7 @@ fun AccountScreen(
             )
         }
     }
+    val fixes: @Composable () -> Unit = { ResetAnimationsSection() }
     val versionRow: @Composable () -> Unit = {
         SettingsGroup {
             SettingsRow(
@@ -226,11 +227,11 @@ fun AccountScreen(
             if (unfolded) {
                 // Unfolded: two columns side by side.
                 Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { profile(); versionRow() }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { profile(); fixes(); versionRow() }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp)) { appearance(); offline(); Column { backups() } }
                 }
             } else {
-                profile(); appearance(); offline(); Column { backups() }; versionRow()
+                profile(); appearance(); offline(); Column { backups() }; fixes(); versionRow()
             }
         }
     }
@@ -564,4 +565,31 @@ private fun CardBackRow(onOpen: () -> Unit) {
         },
         onClick = onOpen,
     )
+}
+
+/**
+ * "Fix problems > Reset animations": forgets the saved helpers behind the
+ * animations (the page pictures and card spots the 3D binder lines up with,
+ * and any card stuck mid-flight). Only press it if something looks stuck or
+ * wrong; the openings relearn as each binder is opened again. Cards, offline
+ * artwork, photos, covers and settings stay as they are.
+ */
+@Composable
+private fun ResetAnimationsSection() {
+    val context = LocalContext.current
+    var done by rememberSaveable { mutableStateOf(false) }
+    SettingsGroup(label = "Fix problems") {
+        SettingsRow(
+            title = "Reset animations",
+            subtitle = if (done) "Done. Openings will line up again as you open each binder."
+            else "If a binder opening or a card looks stuck or wrong. Your cards and settings stay.",
+            icon = if (done) R.drawable.ic_check else R.drawable.ic_restore,
+            onClick = {
+                com.hybrid87sg.bindertracker.ui.three.PageLanding.reset(context)
+                com.hybrid87sg.bindertracker.ui.components.CardFlight.reset()
+                done = true
+            },
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+    }
 }
