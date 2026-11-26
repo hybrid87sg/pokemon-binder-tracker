@@ -10,8 +10,13 @@ import kotlin.math.roundToInt
  * One colour picked on the colour ring.
  * [hue] is the place on the rainbow, 0 to 360 (0 = red, 120 = green, 240 = blue).
  * [strength] is the outer ring: 0 = soft (the gentle look the app always had), 1 = vivid.
+ * [brightness] is the inner ring: 0 = darker, 0.5 = automatic (how it always looked), 1 = lighter.
+ * Together the three rings are the "HSV" way of picking a colour: hue, saturation, value.
  */
-data class ColourChoice(val hue: Float, val strength: Float)
+data class ColourChoice(val hue: Float, val strength: Float, val brightness: Float = AUTO_BRIGHTNESS)
+
+/** The middle of the brightness ring: the colour exactly as the app works it out. */
+const val AUTO_BRIGHTNESS = 0.5f
 
 /** A ready-made colour: a gem under the ring and a dot on it. */
 data class ColourPreset(val name: String, val hue: Float)
@@ -94,6 +99,19 @@ object AppColourMath {
         strength < 0.70f -> "Rich"
         else -> "Vivid"
     }
+
+    /** The brightness ring, as a word: "Auto" in the middle (it snaps there), else darker or lighter. */
+    fun brightnessWord(brightness: Float): String = when {
+        abs(brightness - AUTO_BRIGHTNESS) < 0.005f -> "Auto"
+        brightness < 0.2f -> "Darkest"
+        brightness < AUTO_BRIGHTNESS -> "Darker"
+        brightness > 0.8f -> "Lightest"
+        else -> "Lighter"
+    }
+
+    /** Snaps the brightness ring onto Auto when it's close (within 3 of the 100 steps). */
+    fun snapBrightness(brightness: Float): Float =
+        if (abs(brightness - AUTO_BRIGHTNESS) <= 0.03f) AUTO_BRIGHTNESS else brightness.coerceIn(0f, 1f)
 
     val GLITTER_STEPS = listOf("Off", "Faint", "Sparkly", "Dazzling", "Full holo")
 
@@ -191,11 +209,27 @@ object AppColourMath {
         val k = main.strength.coerceIn(0f, 1f)
         val extras = choices.drop(1).take(MAX_COLOURS - 1)
 
+        // The brightness ring moves the background lighter or darker (the text colours then
+        // adjust themselves below, so they stay easy to read).
+        fun lit(l: Float, b: Float) = (l + (b.coerceIn(0f, 1f) - AUTO_BRIGHTNESS) * (if (dark) 16f else 24f)).coerceIn(if (dark) 2f else 40f, if (dark) 40f else 99.5f)
+        val mb = main.brightness
+        // The background never gets so dark (light mode) or so light (dark mode) that the text
+        // on it stops being easy to read.
+        // (At Auto the colours are exactly as they always were.)
+        fun bg(hue: Float, sat: Float, l: Float, b: Float): Int {
+            var ll = lit(l, b)
+            var c = hsl(hue, sat, ll)
+            if (b == AUTO_BRIGHTNESS) return c
+            while (!dark && luminance(c) < 0.24 && ll < 99f) { ll += 1f; c = hsl(hue, sat, ll) }
+            while (dark && luminance(c) > 0.1 && ll > 1f) { ll -= 1f; c = hsl(hue, sat, ll) }
+            return c
+        }
+
         return if (!dark) {
-            val s1 = hsl(h, 80f, 98.5f - 11 * k)
-            val s2 = hsl(h + 6, 65 + 30 * k, 94.5f - 16 * k)
-            val stops = if (extras.isEmpty()) listOf(s1, s2, hsl(h - 28, 70 + 25 * k, 92 - 20 * k))
-            else listOf(s1, s2) + extras.map { e -> val ek = e.strength.coerceIn(0f, 1f); hsl(e.hue, 70 + 25 * ek, 92 - 20 * ek) }
+            val s1 = bg(h, 80f, 98.5f - 11 * k, mb)
+            val s2 = bg(h + 6, 65 + 30 * k, 94.5f - 16 * k, mb)
+            val stops = if (extras.isEmpty()) listOf(s1, s2, bg(h - 28, 70 + 25 * k, 92 - 20 * k, mb))
+            else listOf(s1, s2) + extras.map { e -> val ek = e.strength.coerceIn(0f, 1f); bg(e.hue, 70 + 25 * ek, 92 - 20 * ek, e.brightness) }
             val background = resample(stops)
             val paper = hsl(h, 55 + 30 * k, 96.5f - 9 * k)
             val surface = hsl(h, 100f, 100 - 5 * k)
@@ -231,10 +265,10 @@ object AppColourMath {
                 glow = withAlpha(hsl(h + 140, 100f, 79 - 6 * k), 0.35f + 0.15f * k),
             )
         } else {
-            val s1 = hsl(h, 37 + 38 * k, 15 + 9 * k)
-            val s2 = hsl(h, 43 + 35 * k, 12 + 6 * k)
-            val stops = if (extras.isEmpty()) listOf(s1, s2, hsl(h - 28, 50 + 35 * k, 9 + 5 * k))
-            else listOf(s1, s2) + extras.map { e -> val ek = e.strength.coerceIn(0f, 1f); hsl(e.hue, 50 + 35 * ek, 11 + 7 * ek) }
+            val s1 = bg(h, 37 + 38 * k, 15 + 9 * k, mb)
+            val s2 = bg(h, 43 + 35 * k, 12 + 6 * k, mb)
+            val stops = if (extras.isEmpty()) listOf(s1, s2, bg(h - 28, 50 + 35 * k, 9 + 5 * k, mb))
+            else listOf(s1, s2) + extras.map { e -> val ek = e.strength.coerceIn(0f, 1f); bg(e.hue, 50 + 35 * ek, 11 + 7 * ek, e.brightness) }
             val background = resample(stops)
             val paper = hsl(h, 32 + 25 * k, 9 + 3 * k)
             val surface = hsl(h, 29 + 25 * k, 15 + 5 * k)
@@ -275,8 +309,13 @@ object AppColourMath {
 
     // ---------------------------------------------------------------- saving
 
-    /** Turns the picks into a short line of text for saving, like "214.0:0.65,286.0:0.65". */
-    fun encode(choices: List<ColourChoice>): String = choices.joinToString(",") { "${it.hue}:${it.strength}" }
+    /**
+     * Turns the picks into a short line of text for saving, like "214.0:0.65,286.0:0.65".
+     * A brightness other than Auto adds a third number: "214.0:0.65:0.3".
+     */
+    fun encode(choices: List<ColourChoice>): String = choices.joinToString(",") {
+        if (it.brightness == AUTO_BRIGHTNESS) "${it.hue}:${it.strength}" else "${it.hue}:${it.strength}:${it.brightness}"
+    }
 
     /** Reads [encode]'s text back. Anything broken gives null (the original colours). */
     fun decode(text: String?): List<ColourChoice>? {
@@ -285,7 +324,8 @@ object AppColourMath {
             val bits = part.split(":")
             val hue = bits.getOrNull(0)?.toFloatOrNull() ?: return@mapNotNull null
             val strength = bits.getOrNull(1)?.toFloatOrNull() ?: return@mapNotNull null
-            ColourChoice(((hue % 360f) + 360f) % 360f, strength.coerceIn(0f, 1f))
+            val brightness = bits.getOrNull(2)?.toFloatOrNull() ?: AUTO_BRIGHTNESS
+            ColourChoice(((hue % 360f) + 360f) % 360f, strength.coerceIn(0f, 1f), brightness.coerceIn(0f, 1f))
         }.take(MAX_COLOURS)
         return list.ifEmpty { null }
     }

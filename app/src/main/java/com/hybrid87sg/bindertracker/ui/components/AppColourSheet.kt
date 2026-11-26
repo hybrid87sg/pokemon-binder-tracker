@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import com.hybrid87sg.bindertracker.ui.theme.AppColors
 import com.hybrid87sg.bindertracker.ui.theme.AppColourMath
 import com.hybrid87sg.bindertracker.ui.theme.AppColourSetting
+import com.hybrid87sg.bindertracker.ui.theme.AUTO_BRIGHTNESS
 import com.hybrid87sg.bindertracker.ui.theme.ColourChoice
 import com.hybrid87sg.bindertracker.ui.theme.DisplayFont
 import kotlinx.coroutines.launch
@@ -89,7 +90,7 @@ private fun gemColour(c: ColourChoice): Color =
     Color(AppColourMath.build(listOf(c.copy(strength = maxOf(c.strength, 0.5f))), dark = false).accent)
 
 /** How the colour ring shows a hue: bright and clear, the same in light and dark mode. */
-private fun ringColour(hue: Float): Color = Color(AppColourMath.hsl(hue, 78f, 58f))
+internal fun ringColour(hue: Float): Color = Color(AppColourMath.hsl(hue, 78f, 58f))
 
 /**
  * The "App colour" row on the Me tab: an orb showing your colours and their
@@ -203,9 +204,9 @@ fun AppColourSheet(onClose: () -> Unit) {
                     preview()
                 },
             )
-            Text("Inner ring: colour. Outer ring: strength.", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
+            Text("Middle ring: colour. Outer ring: strength. Inner ring: brightness (Auto at the top).", style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
 
-            ColourWheel(
+            AppColourWheel(
                 choice = colours[active],
                 isMain = active == 0,
                 onChange = { c ->
@@ -333,46 +334,82 @@ private const val STRENGTH_START = 210f
 private const val STRENGTH_SWEEP = 300f
 
 /**
- * The foil colour ring. Drag around the inner rainbow ring to pick the colour
- * (it snaps onto the eight ready-made colours), or around the outer ring to
- * go from Soft to Vivid. The middle shows the background and the colour's name.
+ * The app's colour picker: three rings, the same everywhere a colour is picked
+ * (App colour, and the ball and page colours of the binder page pattern).
+ *
+ * - The middle rainbow ring picks the colour (hue). It snaps onto [snapHues].
+ * - The outer ring goes from soft/plain to vivid (strength, or saturation).
+ * - The inner ring goes from darker to lighter (brightness, or value), with
+ *   Auto at the top; it snaps back to Auto when you come close.
+ *
+ * Together that's the "HSV" way of picking any colour. [centre] fills the
+ * middle (a little window onto the result).
  */
 @Composable
-private fun ColourWheel(choice: ColourChoice, isMain: Boolean, onChange: (ColourChoice) -> Unit, modifier: Modifier = Modifier) {
+internal fun ColourWheel(
+    choice: ColourChoice,
+    onChange: (ColourChoice) -> Unit,
+    modifier: Modifier = Modifier,
+    snapHues: List<Float> = AppColourMath.PRESETS.map { it.hue },
+    // The outer ring's two ends for a hue: soft/plain, then vivid.
+    strengthEnds: (hue: Float) -> Pair<Color, Color>,
+    // The inner ring's colour at a brightness (0 darker, 0.5 Auto, 1 lighter).
+    brightnessColour: (brightness: Float) -> Color,
+    strengthLabels: Pair<String, String> = "SOFT" to "VIVID",
+    strengthWord: (Float) -> String = { AppColourMath.strengthWord(it) },
+    // The middle circle's background, drawn under [centre].
+    middle: DrawScope.(centre: Offset, radius: Float) -> Unit,
+    centre: @Composable () -> Unit,
+) {
     val haptics = LocalHapticFeedback.current
     val current by rememberUpdatedState(choice)
     val change by rememberUpdatedState(onChange)
-    val dark = AppColors.isDark
-    val accent = if (isMain) AppColors.Accent else Color(AppColourMath.build(listOf(choice), dark).accent)
+    val snaps by rememberUpdatedState(snapHues)
+    val border = AppColors.Border
 
     Box(
         modifier
-            .size(252.dp)
+            .size(268.dp)
             .semantics {
-                contentDescription = "Colour ring"
-                stateDescription = "${AppColourMath.nameFor(choice.hue)}, ${AppColourMath.strengthWord(choice.strength)}"
+                contentDescription = "Colour rings"
+                stateDescription = "${AppColourMath.nameFor(choice.hue)}, ${strengthWord(choice.strength)}, brightness ${AppColourMath.brightnessWord(choice.brightness)}"
             }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     val s = size.width.toFloat()
                     val c = Offset(s / 2f, s / 2f)
-                    // Touching the outer band moves strength; anywhere inside it moves the colour.
-                    val onStrength = (down.position - c).getDistance() / s > 0.42f
+                    // Which ring you touched: outer = strength, middle = colour, inner = brightness.
+                    val d = (down.position - c).getDistance() / s
+                    if (d < 0.19f) return@awaitEachGesture
+                    val ring = when {
+                        d > 0.42f -> 2
+                        d > 0.29f -> 1
+                        else -> 0
+                    }
+                    fun arc(angle: Float): Float {
+                        var a = (angle - STRENGTH_START + 360f) % 360f
+                        if (a > STRENGTH_SWEEP) a = if (a > 330f) 0f else STRENGTH_SWEEP
+                        return ((a / STRENGTH_SWEEP) * 100f).roundToInt() / 100f
+                    }
                     fun handle(p: Offset) {
                         val angle = topAngle(p, c)
-                        if (onStrength) {
-                            var a = (angle - STRENGTH_START + 360f) % 360f
-                            if (a > STRENGTH_SWEEP) a = if (a > 330f) 0f else STRENGTH_SWEEP
-                            change(current.copy(strength = ((a / STRENGTH_SWEEP) * 100f).roundToInt() / 100f))
-                        } else {
-                            var hue = angle.roundToInt().toFloat()
-                            val near = AppColourMath.PRESETS.firstOrNull { AppColourMath.hueDistance(it.hue, hue) < 5f }
-                            if (near != null) {
-                                if (current.hue != near.hue) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                hue = near.hue
+                        when (ring) {
+                            2 -> change(current.copy(strength = arc(angle)))
+                            0 -> {
+                                val b = AppColourMath.snapBrightness(arc(angle))
+                                if (b == AUTO_BRIGHTNESS && current.brightness != AUTO_BRIGHTNESS) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                change(current.copy(brightness = b))
                             }
-                            change(current.copy(hue = hue % 360f))
+                            else -> {
+                                var hue = angle.roundToInt().toFloat()
+                                val near = snaps.firstOrNull { AppColourMath.hueDistance(it, hue) < 5f }
+                                if (near != null) {
+                                    if (current.hue != near) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    hue = near
+                                }
+                                change(current.copy(hue = hue % 360f))
+                            }
                         }
                     }
                     handle(down.position)
@@ -387,53 +424,87 @@ private fun ColourWheel(choice: ColourChoice, isMain: Boolean, onChange: (Colour
                 }
             },
     ) {
-        val background = AppColors.BackgroundStops
-        val border = AppColors.Border
         Canvas(Modifier.fillMaxSize()) {
             val s = size.width
             val c = center
-            // Outer strength ring: from a soft grey-ish version of the colour to the vivid one.
-            val soft = Color(AppColourMath.hsl(choice.hue, if (dark) 12f else 14f, if (dark) 42f else 80f))
-            val vivid = Color(AppColourMath.hsl(choice.hue, 100f, if (dark) 56f else 50f))
-            val rp = s * 0.468f
-            val steps = 60
-            for (i in 0 until steps) {
-                val t = i / (steps - 1f)
-                drawArc(
-                    color = androidx.compose.ui.graphics.lerp(soft, vivid, t),
-                    startAngle = STRENGTH_START + i * (STRENGTH_SWEEP / steps) - 90f,
-                    sweepAngle = STRENGTH_SWEEP / steps + 0.6f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - rp, c.y - rp),
-                    size = Size(rp * 2, rp * 2),
-                    style = Stroke(width = s * 0.06f),
-                )
+            fun band(radius: Float, width: Float, colourAt: (Float) -> Color) {
+                val steps = 60
+                for (i in 0 until steps) {
+                    drawArc(
+                        color = colourAt(i / (steps - 1f)),
+                        startAngle = STRENGTH_START + i * (STRENGTH_SWEEP / steps) - 90f,
+                        sweepAngle = STRENGTH_SWEEP / steps + 0.6f,
+                        useCenter = false,
+                        topLeft = Offset(c.x - radius, c.y - radius),
+                        size = Size(radius * 2, radius * 2),
+                        style = Stroke(width = width),
+                    )
+                }
             }
-            // Inner rainbow ring. A sweep gradient starts at 3 o'clock, which is 90° from the top.
+            // Outer strength ring: from a soft version of the colour to the vivid one.
+            val (soft, vivid) = strengthEnds(choice.hue)
+            val rp = s * 0.468f
+            band(rp, s * 0.06f) { androidx.compose.ui.graphics.lerp(soft, vivid, it) }
+            // Middle rainbow ring. A sweep gradient starts at 3 o'clock, which is 90° from the top.
             val rh = s * 0.35f
             val rainbow = (0..12).map { ringColour((it * 30f + 90f) % 360f) }
             drawCircle(Brush.sweepGradient(rainbow, c), radius = rh, style = Stroke(width = s * 0.10f))
-            AppColourMath.PRESETS.forEach { p ->
-                drawCircle(Color.White.copy(alpha = 0.9f), radius = 3.dp.toPx(), center = polar(c, rh, p.hue))
+            snapHues.forEach { h ->
+                drawCircle(Color.White.copy(alpha = 0.9f), radius = 3.dp.toPx(), center = polar(c, rh, h))
             }
-            // The middle: a little window onto the background.
-            drawCircle(Brush.linearGradient(background, start = Offset(c.x - s * 0.27f, c.y - s * 0.27f), end = Offset(c.x + s * 0.27f, c.y + s * 0.27f)), radius = s * 0.27f)
-            drawCircle(border, radius = s * 0.27f, style = Stroke(width = 1.dp.toPx()))
-            // The two gems.
+            // Inner brightness ring: darker to lighter, Auto at the top.
+            val rb = s * 0.26f
+            band(rb, s * 0.05f) { brightnessColour(it) }
+            // The middle.
+            val rm = s * 0.215f
+            middle(c, rm)
+            drawCircle(border, radius = rm, style = Stroke(width = 1.dp.toPx()))
+            // The three gems.
             gem(polar(c, rh, choice.hue), 17.dp.toPx(), ringColour(choice.hue))
             gem(polar(c, rp, STRENGTH_START + choice.strength * STRENGTH_SWEEP), 12.dp.toPx(),
                 androidx.compose.ui.graphics.lerp(soft, vivid, choice.strength))
+            gem(polar(c, rb, STRENGTH_START + choice.brightness * STRENGTH_SWEEP), 10.dp.toPx(), brightnessColour(choice.brightness))
         }
         Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
-            Text("SOFT", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = AppColors.Muted)
-            Text("VIVID", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = AppColors.Muted)
+            Text(strengthLabels.first, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = AppColors.Muted)
+            Text(strengthLabels.second, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = AppColors.Muted)
         }
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(width = 24.dp, height = 34.dp).clip(RoundedCornerShape(4.dp)).background(accent))
-            Spacer(Modifier.height(4.dp))
-            Text(AppColourMath.nameFor(choice.hue), fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppColors.Ink)
+        Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) { centre() }
+    }
+}
+
+/**
+ * The App colour version of the rings: the middle shows the background and
+ * the colour's name.
+ */
+@Composable
+private fun AppColourWheel(choice: ColourChoice, isMain: Boolean, onChange: (ColourChoice) -> Unit, modifier: Modifier = Modifier) {
+    val dark = AppColors.isDark
+    val accent = if (isMain) AppColors.Accent else Color(AppColourMath.build(listOf(choice), dark).accent)
+    val background = AppColors.BackgroundStops
+    ColourWheel(
+        choice = choice,
+        onChange = onChange,
+        modifier = modifier,
+        strengthEnds = { hue ->
+            Color(AppColourMath.hsl(hue, if (dark) 12f else 14f, if (dark) 42f else 80f)) to
+                Color(AppColourMath.hsl(hue, 100f, if (dark) 56f else 50f))
+        },
+        // What the brightness ring does to the background: a darker or lighter version of it.
+        brightnessColour = { b ->
+            val mid = AppColourMath.build(listOf(choice.copy(brightness = b)), dark).background[1]
+            Color(mid)
+        },
+        middle = { c, r ->
+            drawCircle(Brush.linearGradient(background, start = Offset(c.x - r, c.y - r), end = Offset(c.x + r, c.y + r)), radius = r, center = c)
+        },
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(width = 20.dp, height = 28.dp).clip(RoundedCornerShape(4.dp)).background(accent))
+            Spacer(Modifier.height(3.dp))
+            Text(AppColourMath.nameFor(choice.hue), fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = AppColors.Ink)
             Text(
-                "${AppColourMath.strengthWord(choice.strength)} · ${(choice.strength * 100).roundToInt()}%",
+                "${AppColourMath.strengthWord(choice.strength)} · ${AppColourMath.brightnessWord(choice.brightness)}",
                 fontSize = 11.sp, color = AppColors.Muted,
             )
         }
@@ -441,7 +512,7 @@ private fun ColourWheel(choice: ColourChoice, isMain: Boolean, onChange: (Colour
 }
 
 /** A glossy gem: white rim, colour inside, a shine at the top-left. */
-private fun DrawScope.gem(at: Offset, radius: Float, fill: Color) {
+internal fun DrawScope.gem(at: Offset, radius: Float, fill: Color) {
     drawCircle(Color.Black.copy(alpha = 0.22f), radius = radius + 1.5f, center = at + Offset(0f, 2.dp.toPx()))
     drawCircle(Color.White, radius = radius, center = at)
     val inner = radius - 3.dp.toPx()

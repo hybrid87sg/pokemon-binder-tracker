@@ -138,6 +138,7 @@ class MainActivity : ComponentActivity() {
         // anything is drawn, so the first frame already has the right ones.
         ThemeSetting.load(this)
         AppColourSetting.load(this)
+        com.hybrid87sg.bindertracker.ui.theme.PagePatternSetting.load(this)
         val startDark = ThemeSetting.isDark(ThemeSetting.mode, ThemeSetting.phoneIsDark(this))
         AppColors.palette = paletteFor(startDark)
         drawBehindSystemBars(startDark)
