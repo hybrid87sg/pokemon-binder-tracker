@@ -27,7 +27,8 @@ android {
     androidResources {
         noCompress += "tflite"
     }
-    // OpenCV and MediaPipe both bring this helper library; keep one copy.
+    // If two libraries bring this helper library, keep one copy. (Today only
+    // OpenCV brings it; older MediaPipe versions did too.)
     packaging {
         jniLibs {
             pickFirsts += "**/libc++_shared.so"
