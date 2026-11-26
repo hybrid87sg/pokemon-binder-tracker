@@ -93,6 +93,8 @@ fun SpreadTurnStage(
     // The binder's own colour, peeking out round the pages and down the spine.
     coverColor: Color,
     modifier: Modifier = Modifier,
+    // The colour of a sheet's back while it turns (the binder page's own colour).
+    sheetColor: Color = AppColors.Surface,
     // A sheet that has to stay alive although it was turned away: the page a
     // card is being dragged from (its finger is still being followed there).
     // Given as (which, side), like [sheet]; it is kept out of sight.
@@ -268,7 +270,6 @@ fun SpreadTurnStage(
         }
 
         if (d != 0) {
-            val sheetColor = AppColors.Surface
             Canvas(Modifier.matchParentSize()) {
                 val gap = SpineGap.toPx()
                 val width = (size.width - gap) / 2f

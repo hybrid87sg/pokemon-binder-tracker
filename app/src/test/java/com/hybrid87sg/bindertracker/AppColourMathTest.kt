@@ -11,7 +11,9 @@ class AppColourMathTest {
     private val white = 0xFFFFFFFF.toInt()
 
     /** Every hue, at soft, middle and vivid strength. */
-    private fun everyChoice() = (0 until 360 step 5).flatMap { h -> listOf(0f, 0.5f, 1f).map { ColourChoice(h.toFloat(), it) } }
+    private fun everyChoice() = (0 until 360 step 5).flatMap { h ->
+        listOf(0f, 0.5f, 1f).flatMap { s -> listOf(0f, 0.5f, 1f).map { b -> ColourChoice(h.toFloat(), s, b) } }
+    }
 
     @Test
     fun textIsReadableForEveryColourInBothModes() {
@@ -49,8 +51,10 @@ class AppColourMathTest {
 
     @Test
     fun savedTextComesBackTheSame() {
-        val picks = listOf(ColourChoice(214f, 0.65f), ColourChoice(286f, 0.3f))
+        val picks = listOf(ColourChoice(214f, 0.65f), ColourChoice(286f, 0.3f, 0.2f))
         assertEquals(picks, AppColourMath.decode(AppColourMath.encode(picks)))
+        // Colours saved before the brightness ring existed read back as Auto.
+        assertEquals(listOf(ColourChoice(214f, 0.65f, 0.5f)), AppColourMath.decode("214.0:0.65"))
         assertNull(AppColourMath.decode(null))
         assertNull(AppColourMath.decode("rubbish"))
         // Never more than four colours, even if the saved text has more.
@@ -69,6 +73,10 @@ class AppColourMathTest {
         assertEquals("Off", AppColourMath.tiltWord(0f))
         assertEquals("Medium", AppColourMath.tiltWord(0.6f))
         assertEquals("Strong", AppColourMath.tiltWord(1f))
+        assertEquals("Auto", AppColourMath.brightnessWord(0.5f))
+        assertEquals("Darker", AppColourMath.brightnessWord(0.3f))
+        assertEquals(0.5f, AppColourMath.snapBrightness(0.52f), 0.0001f)
+        assertEquals(0.6f, AppColourMath.snapBrightness(0.6f), 0.0001f)
     }
 
     @Test

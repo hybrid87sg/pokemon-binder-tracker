@@ -85,6 +85,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import com.hybrid87sg.bindertracker.ui.components.LocalOnPage
+import com.hybrid87sg.bindertracker.ui.components.onPage
+import com.hybrid87sg.bindertracker.ui.components.pageColor
+import com.hybrid87sg.bindertracker.ui.components.pagePattern
+import com.hybrid87sg.bindertracker.ui.theme.PagePattern
+import com.hybrid87sg.bindertracker.ui.theme.PagePatternSetting
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.hybrid87sg.bindertracker.R
@@ -263,6 +269,22 @@ fun PageScreen(
     // Together = the matching cards gathered onto their own results pages; false = in place (the rest go dark).
     var filterTogether by rememberSaveable { mutableStateOf(true) }
     androidx.activity.compose.BackHandler(enabled = filterOpen) { filterOpen = false }
+    // Page pattern (the paintbrush): the Poké Balls on this binder's pages. The editor sits
+    // under the page (folded) or pushes in from the right (unfolded), and the page changes live.
+    // Kept per binder, on this phone only.
+    val patternContext = androidx.compose.ui.platform.LocalContext.current
+    var patternOpen by rememberSaveable { mutableStateOf(false) }
+    val pattern = PagePatternSetting.of(landingBinderId)
+    fun closePattern() {
+        patternOpen = false
+        landingBinderId?.let { PagePatternSetting.save(patternContext, it, PagePatternSetting.of(it)) }
+    }
+    androidx.activity.compose.BackHandler(enabled = patternOpen) { closePattern() }
+    val patternIn by animateFloatAsState(
+        if (patternOpen) 1f else 0f,
+        tween(420, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "pattern",
+    )
     LaunchedEffect(openPosition, pockets) {
         val pocket = openPosition?.let { p -> pockets.firstOrNull { it.position == p } } ?: return@LaunchedEffect
         selected = pocket
@@ -332,7 +354,11 @@ fun PageScreen(
     // carry on from that page.
     val config = LocalConfiguration.current
     val here = pageIds.indexOf(pageId)
-    val open = config.screenWidthDp >= 600 && config.screenHeightDp >= 480 && here >= 0
+    val wideScreen = config.screenWidthDp >= 600 && config.screenHeightDp >= 480
+    // (While Page pattern is open on an unfolded phone, just the page you're on shows, on the left.)
+    val open = wideScreen && here >= 0 && !patternOpen
+    // The Page pattern panel: the right half when unfolded, the bottom of the screen when folded.
+    val patternPanel = if (wideScreen) (config.screenWidthDp / 2).dp else minOf(config.screenHeightDp.dp * 0.58f, 480.dp)
 
     // Note where this page's cards sit on the screen once it has settled, so the
     // 3D binder on the shelf can open with its cards in exactly these spots and
@@ -360,8 +386,10 @@ fun PageScreen(
         (spreadPockets[id] ?: pageCards[id].orEmpty()).map { Triple(it.cardId, it.isEmpty, it.position) } to
             ghosts[id].orEmpty().mapValues { it.value.id }
     } else null
-    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, secondPageLook, filter.active) {
+    LaunchedEffect(pageId, columns, rows, config.screenWidthDp, config.screenHeightDp, open, editing, pageLook, pageGhostLook, secondPageLook, filter.active, patternOpen, pattern) {
         if (open && pageId != pageIds.firstOrNull()) return@LaunchedEffect
+        // Not while Page pattern is open: the page is squeezed (or alone) beside the editor.
+        if (patternOpen) return@LaunchedEffect
         // Not while a filter is on: the page is dimmed or swapped for results. (Clearing it takes the picture.)
         if (filter.active) return@LaunchedEffect
         lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
@@ -374,7 +402,7 @@ fun PageScreen(
         for (attempt in 0 until 30) {
             if (attempt > 0) delay(300)
             // (Not while editing: the Delete page bar makes the page smaller.)
-            if (editing || turnState.direction != 0 || drag.origin != null || landingPockets.size != count) continue
+            if (editing || patternOpen || turnState.direction != 0 || drag.origin != null || landingPockets.size != count) continue
             val screen = drag.screen?.takeIf { it.isAttached } ?: continue
             val o = screen.localToWindow(Offset.Zero)
             val cards = (0 until count).map { drag.cardRects[it] }
@@ -896,7 +924,12 @@ fun PageScreen(
     val canNextTurn = if (open) leftIndex + 2 < pageIds.size else nextPockets != null
 
     Box(Modifier.fillMaxSize().windowBackground().onGloballyPositioned { drag.screen = it }) {
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(
+        Modifier.fillMaxSize()
+            // Room for Page pattern: the page moves over (unfolded) or up (folded) as it comes in.
+            .padding(end = if (wideScreen) patternPanel * patternIn else 0.dp, bottom = if (!wideScreen) patternPanel * patternIn else 0.dp)
+            .statusBarsPadding(),
+    ) {
         if (editing) {
             // Batch edit: Select all, how many are ticked, undo (hold for the history) and Done.
             val tickable = shownPockets.filter { !it.isFreeSlot() }
@@ -930,6 +963,8 @@ fun PageScreen(
                 Box(Modifier.weight(1f)) { BackButton(binderName, onBack, maxLines = 1) }
                 // (Filter lives at the bottom right now, next to the page's right arrow.)
                 // The tips used to sit under the page as fine print (and made the page scroll).
+                // Page pattern: the Poké Balls on this binder's pages.
+                if (landingBinderId != null) PatternButton { filterOpen = false; patternOpen = true }
                 TipsButton { showTips = true }
                 // Batch edit (and deleting the page) lives behind Edit, with Done to leave.
                 if (canEdit) {
@@ -1005,6 +1040,7 @@ fun PageScreen(
                     isPage = { which, side -> pageAt(leftIndex + which * 2 + side) != null },
                     keyOf = { which, side -> pageAt(leftIndex + which * 2 + side) ?: "end:$which:$side" },
                     coverColor = coverColor ?: AppColors.CardBack,
+                    sheetColor = pattern.pageColor(),
                     // The page the card is being dragged from stays alive (out of sight) if it's turned away.
                     keep = if (dragSpread != null && here >= 0) Pair(Math.floorDiv(here - leftIndex, 2), here % 2) else null,
                     edgeGlow = when {
@@ -1040,6 +1076,7 @@ fun PageScreen(
                             onOtherTap = if (other) ({ p -> tapOther(id, p) }) else null,
                             onOtherHold = if (other) ({ p -> holdOther(id, p) }) else null,
                             peer = if (other) drag else null,
+                            pattern = pattern,
                         )
                     }
                 }
@@ -1071,6 +1108,7 @@ fun PageScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    sheetColor = pattern.pageColor(),
                 ) { which ->
                     // Every sheet is drawn by this ONE BinderSheet call. (Separate calls
                     // for "this page" and "next page" would count as different things,
@@ -1098,6 +1136,7 @@ fun PageScreen(
                         filterMark = { p -> filterMark(sheetKey, p.position) },
                         drag = if (live) drag else null,
                         gestures = if (live) gestures else null,
+                        pattern = pattern,
                     )
                 }
                 }
@@ -1106,6 +1145,8 @@ fun PageScreen(
         }
         }
 
+        // (Folded with Page pattern open, the page gets all the room above the editor.)
+        if (!(patternOpen && !wideScreen)) {
         // How full the page is, just above the page navigation (under the binder).
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1198,11 +1239,12 @@ fun PageScreen(
             }
         }
         }
+        }
     }
 
     // The Filter menu, rising from the Filter button at the bottom right.
     FilterMenu(
-        visible = filterOpen && !editing,
+        visible = filterOpen && !editing && !patternOpen,
         choice = filter,
         onChange = { filter = it },
         onClose = { filterOpen = false },
@@ -1223,6 +1265,18 @@ fun PageScreen(
         sgd = filterSgd,
         rarityRank = { com.hybrid87sg.bindertracker.data.Checklist.rarityRank(it) },
     )
+
+    // Page pattern: the editor (and its colour pop-up).
+    if (landingBinderId != null && (patternOpen || patternIn > 0.001f)) {
+        PagePatternEditor(
+            pattern = pattern,
+            onChange = { PagePatternSetting.show(landingBinderId, it) },
+            onDone = { closePattern() },
+            progress = patternIn,
+            wide = wideScreen,
+            panelSize = patternPanel,
+        )
+    }
 
     // The card under your finger while dragging, drawn above everything.
     val dragged = drag.card
@@ -1464,6 +1518,8 @@ private fun BinderSheet(
     batchMark: (PocketWithCard) -> Pair<BatchMark, Int>? = { null },
     // Filter: null = off, true = this card matches (glows), false = it doesn't (goes dark).
     filterMark: (PocketWithCard) -> Boolean? = { null },
+    // The binder's Poké Ball page pattern (null = the plain page with the expansion's pattern).
+    pattern: PagePattern? = null,
 ) {
     val shape = if (mirrored) {
         RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp)
@@ -1481,8 +1537,8 @@ private fun BinderSheet(
                     Modifier.onGloballyPositioned { drag.sheet = it }.pointerInput(gestures) { detectPocketGestures(gestures) }
                 } else Modifier,
             )
-            .clip(shape).background(AppColors.Surface)
-            .expansionPattern(accent)
+            .clip(shape)
+            .then(if (pattern != null) Modifier.pagePattern(pattern) else Modifier.background(AppColors.Surface).expansionPattern(accent))
             .border(1.dp, AppColors.Border, shape)
             .drawBehind {
                 // Punched holes for the rings.
@@ -1492,6 +1548,8 @@ private fun BinderSheet(
             .padding(start = if (mirrored) 10.dp else 26.dp, end = if (mirrored) 26.dp else 10.dp, top = 10.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // Card names stay easy to read on a dark page.
+        androidx.compose.runtime.CompositionLocalProvider(LocalOnPage provides pattern?.onPage()) {
         key(pageKey) {
             pockets.chunked(columns.coerceAtLeast(1)).forEachIndexed { rowIndex, row ->
                 // The row with a lifted or moving card is drawn above the others,
@@ -1560,6 +1618,7 @@ private fun BinderSheet(
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+        }
         }
     }
 }
@@ -1874,6 +1933,7 @@ private fun PocketTile(
             },
     ) {
         Column {
+            val onPage = LocalOnPage.current
             val shape = RoundedCornerShape(6.dp)
             val cardShadow = AppColors.Shadow
             val outline = AppColors.BorderStrong
@@ -2007,10 +2067,10 @@ private fun PocketTile(
                 overflow = TextOverflow.Ellipsis,
                 color = when {
                     batch == BatchMark.Target -> OnNeon
-                    batch == BatchMark.Free -> AppColors.Muted
-                    ghost != null -> AppColors.Muted
+                    batch == BatchMark.Free -> onPage?.muted ?: AppColors.Muted
+                    ghost != null -> onPage?.muted ?: AppColors.Muted
                     pocket.cardId == null && !pocket.isEmpty -> AppColors.Black
-                    else -> AppColors.Ink
+                    else -> onPage?.ink ?: AppColors.Ink
                 },
                 modifier = Modifier.graphicsLayer { alpha = 1f - 0.6f * filterDim }.then(when {
                     batch == BatchMark.Target -> Modifier.clip(RoundedCornerShape(6.dp)).background(neon).padding(horizontal = 5.dp, vertical = 2.dp)
@@ -2028,7 +2088,7 @@ private fun PocketTile(
                     "#$number",
                     fontSize = 12.sp,
                     lineHeight = NumberLine,
-                    color = AppColors.Muted,
+                    color = onPage?.muted ?: AppColors.Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.graphicsLayer { alpha = 1f - 0.6f * filterDim }.padding(horizontal = LabelInset),
@@ -2172,6 +2232,22 @@ private val FilterChoiceSaver = androidx.compose.runtime.saveable.listSaver<Filt
     save = { it.save() },
     restore = { FilterLogic.Choice.restore(it) },
 )
+
+@Composable
+private fun PatternButton(onClick: () -> Unit) {
+    // A round floating button with a paintbrush (same style as the "?" button).
+    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(44.dp)
+                .shadow(3.dp, CircleShape, ambientColor = AppColors.Shadow, spotColor = AppColors.Shadow)
+                .clip(CircleShape).background(AppColors.Group)
+                .clickable(onClickLabel = "Change the page pattern", onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(com.hybrid87sg.bindertracker.R.drawable.ic_brush), contentDescription = "Page pattern", tint = AppColors.Ink, modifier = Modifier.size(20.dp))
+        }
+    }
+}
 
 @Composable
 private fun TipsButton(onClick: () -> Unit) {

@@ -128,6 +128,8 @@ fun PageTurnStage(
     canNext: Boolean,
     onTurned: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    // The colour of the sheet's back while it turns (the binder page's own colour).
+    sheetColor: Color = AppColors.Surface,
     // The binder's pocket layout, so the back of a turning sheet shows the same
     // grid as its front (0 rows = as many as fit).
     columns: Int = 3,
@@ -255,7 +257,6 @@ fun PageTurnStage(
         }
 
         if (d != 0) {
-            val sheetColor = AppColors.Surface
             val holeColor = AppColors.Paper
             Canvas(Modifier.matchParentSize()) {
                 val picture = state.picture
