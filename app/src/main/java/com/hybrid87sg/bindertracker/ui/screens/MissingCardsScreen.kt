@@ -742,8 +742,8 @@ private fun NotCollecting(binder: Binder, suggestion: ExpansionCount?, onChoose:
                 "Choose one and this page lists every card from it that isn't in the binder.",
                 style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted, textAlign = TextAlign.Center,
             )
-            if (!binder.isOwner) {
-                Text("Only ${binder.ownerName ?: "the owner"} can choose what it collects.", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted, textAlign = TextAlign.Center)
+            if (!binder.canEdit) {
+                Text("${binder.ownerName ?: "The owner"} or an Editor can choose what it collects.", style = MaterialTheme.typography.bodyMedium, color = AppColors.Muted, textAlign = TextAlign.Center)
             } else {
                 if (suggestion != null) {
                     Column(

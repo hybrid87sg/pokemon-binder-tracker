@@ -29,8 +29,10 @@ Each person signs in with Google and gets their own shelf of binders.
 - **Online saving**: when signed in with Google, binders are also kept in Cloud Firestore, so they
   come back on any phone you sign in on (page photos stay on the phone that took them)
 - **Shared binders**: the owner taps Share on a binder and shows a QR code (or sends the code).
-  A friend taps the QR button on their shelf to scan it. The owner picks **Editor** (can add, move
-  and remove cards) or **Viewer** (look only) and can change or remove people later
+  A friend taps the QR button on their shelf to scan it. The owner picks **Editor** (can do
+  everything the owner can inside the binder: cards, pages, name, colour, size and the expansions it
+  collects) or **Viewer** (look only). Only the owner can delete the binder, invite people, or change
+  and remove people later
 
 Coming next: prices in SGD (#10–#12),
 and page value totals (#38).

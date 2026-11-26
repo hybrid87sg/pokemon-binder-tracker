@@ -307,7 +307,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Repaints a binder's spine. [colorHex] is text like "#F2C230". */
     fun setBinderColor(binder: Binder, colorHex: String) {
-        if (!binder.isOwner) return
+        if (!binder.canEdit) return
         viewModelScope.launch {
             binderDao.updateColor(binder.id, colorHex)
             cloud.binderSettingsChanged(binder.copy(colorHex = colorHex))
@@ -336,7 +336,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         collecting: List<String>? = null,
         countSecretRares: Boolean? = null,
     ) {
-        if (!binder.isOwner) return
+        if (!binder.canEdit) return
         // Main/Master is this phone's own choice, so it's saved here, not on the shared binder.
         countSecretRares?.let { viewPrefs.setMasterSet(binder.id, it) }
         viewModelScope.launch {
@@ -509,11 +509,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun topExpansion(binderId: String): ExpansionCount? = checklistDao.topExpansion(binderId)
 
     /**
-     * Saves which expansions a binder collects (shared, owner only).
+     * Saves which expansions a binder collects (shared; owner or Editors).
      * Main/Master set is this phone's own choice, see [setMasterSet].
      */
     fun setCollecting(binder: Binder, setIds: List<String>) {
-        if (!binder.isOwner) return
+        if (!binder.canEdit) return
         viewModelScope.launch {
             val stored = binderDao.get(binder.id) ?: return@launch
             val updated = stored.copy(followedSets = Binder.joinSetIds(setIds))

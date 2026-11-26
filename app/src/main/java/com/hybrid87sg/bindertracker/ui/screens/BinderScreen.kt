@@ -96,17 +96,17 @@ fun BinderScreen(
         ) {
             BackButton("Shelf", onBack)
             Spacer(Modifier.weight(1f))
-            // Only the owner can share, rename, resize or delete a binder.
-            // Editors can add pages; viewers can only look.
+            // Only the owner can share or delete a binder. Editors can rename,
+            // recolour, resize and add pages like the owner; viewers can only look.
             if (binder.isOwner) {
                 IconButton(onClick = onShare, modifier = Modifier.size(48.dp)) {
                     Icon(painterResource(R.drawable.ic_share), contentDescription = "Share binder ${binder.name}", tint = AppColors.Ink)
                 }
+            }
+            if (binder.canEdit) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
                     Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit binder ${binder.name}", tint = AppColors.Ink)
                 }
-            }
-            if (binder.canEdit) {
                 IconButton(onClick = { addingPages = true }, modifier = Modifier.size(48.dp)) {
                     Icon(painterResource(R.drawable.ic_plus), contentDescription = "Add pages", tint = AppColors.Ink)
                 }
@@ -170,7 +170,7 @@ fun BinderScreen(
         ) {
             // The way into the Missing cards page. Hidden from people who can't
             // choose an expansion when the binder doesn't collect one yet.
-            if (progress != null || binder.isOwner) {
+            if (progress != null || binder.canEdit) {
                 item(key = "missing") { MissingStrip(progress, collectingLabel, onOpenMissing) }
             }
             if (pages.isEmpty()) {
