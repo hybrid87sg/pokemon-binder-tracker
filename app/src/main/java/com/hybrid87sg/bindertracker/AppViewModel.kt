@@ -106,7 +106,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setShelfLook(look: com.hybrid87sg.bindertracker.data.ShelfLook) = shelfPrefs.set(look)
 
-    /** Your own binder cover pictures, kept on this phone only. */
+    /** Binder cover pictures. The owner's cover is shared with everyone in the binder (see CloudSync). */
     private val coverPictures = com.hybrid87sg.bindertracker.data.CoverPictures(app)
     val covers: StateFlow<Map<String, com.hybrid87sg.bindertracker.data.CoverPicture>> = coverPictures.all
 
@@ -134,7 +134,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Saves (path + placement) or removes (null path) a binder's cover picture. */
     fun setCover(binderId: String, path: String?, placement: com.hybrid87sg.bindertracker.data.CoverPlacement) {
         viewModelScope.launch {
+            // Only the owner chooses the cover; friends see the owner's.
+            if (binderDao.get(binderId)?.isOwner == false) return@launch
             if (path == null) coverPictures.remove(binderId) else coverPictures.save(binderId, path, placement)
+            // Shared binders: everyone sees the owner's cover.
+            cloud.coverChanged(binderId)
         }
     }
 
@@ -159,7 +163,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Keeps binders in the Google account and handles sharing (see CloudSync). */
-    private val cloud = CloudSync(app, db, viewModelScope)
+    private val cloud = CloudSync(app, db, viewModelScope, coverPictures)
 
     /** Who each binder is shared with, by binder ID. */
     val sharing: StateFlow<Map<String, SharingInfo>> = cloud.sharing

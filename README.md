@@ -128,6 +128,9 @@ What is stored online:
 
 - `binders/{id}`: name, colour, size, the owner, and who else can use it (`memberIds`, `roles`)
 - `binders/{id}/pages/{pageId}`: which card is in each pocket
+- `binders/{id}/cover/picture`: the owner's cover picture as a small JPEG (about 640 pixels,
+  under 100 KB) and where it sits. Everyone in the binder sees it; only the owner can change it.
+  Keeping it in the database instead of Firebase Storage means the free plan is enough.
 - `invites/{code}`: share codes (which binder, Editor or Viewer, expires after 7 days)
 
 Page photos are not uploaded (that needs Firebase Storage, which is on the paid plan).
