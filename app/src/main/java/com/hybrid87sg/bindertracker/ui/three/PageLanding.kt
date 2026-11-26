@@ -224,4 +224,28 @@ object PageLanding {
 
     /** How long the page screen should wait before showing itself (0: show it now). */
     fun revealDelay(): Int = (revealAt - SystemClock.uptimeMillis()).coerceIn(0L, 2000L).toInt()
+
+    // ---- Me > Reset animations ----
+
+    /**
+     * Forgets everything saved to make the 3D opening line up: the card spots,
+     * the page pictures (and their files) and any landing still in progress.
+     * The next openings use the plain fallback until each page has been seen
+     * once again. Cards, offline artwork, photos, covers and settings are not
+     * touched. Call on the main thread; the files are deleted in the background.
+     */
+    fun reset(context: Context) {
+        saved.clear()
+        loaded = true
+        shots.clear()
+        shotsLoaded = true
+        prefs(context).edit().clear().apply()
+        shotPrefs(context).edit().clear().apply()
+        arrivingUntil = 0L
+        revealAt = 0L
+        softReveal = false
+        version++
+        val dir = java.io.File(context.applicationContext.filesDir, "page-shots")
+        Thread { runCatching { dir.deleteRecursively() } }.start()
+    }
 }

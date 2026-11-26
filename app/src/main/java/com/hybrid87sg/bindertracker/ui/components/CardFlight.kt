@@ -56,6 +56,12 @@ object CardFlight {
 
     /** The card sliding up out of its sleeve on the way to the card screen, by its key. */
     var lifting by mutableStateOf<String?>(null)
+
+    /** Me > Reset animations: lets go of a card stuck mid-lift or mid-close. */
+    fun reset() {
+        lifting = null
+        closing = false
+    }
 }
 
 /** Set round the whole app (see MainActivity), so any screen can fly a card. */
